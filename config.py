@@ -1,7 +1,11 @@
 import os
 from dataclasses import dataclass
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv() -> None:
+        return None
 
 
 load_dotenv()
@@ -61,6 +65,10 @@ class Config:
         "PAPER_SUMMARY_STATE_PATH",
         ".paper_summary_state",
     )
+    orchestrator_profile: str = os.getenv("ORCHESTRATOR_PROFILE", "NORMAL")
+    log_retention_days: int = _get_int("LOG_RETENTION_DAYS", 14)
+    db_retention_days: int = _get_int("DB_RETENTION_DAYS", 90)
+    max_log_bytes: int = _get_int("MAX_LOG_BYTES", 5_000_000)
 
     @property
     def telegram_enabled(self) -> bool:

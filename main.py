@@ -1,7 +1,51 @@
 import argparse
 import csv
+import os
+import sqlite3
+import sys
 import time
 from typing import List, Dict, Any
+
+if "--health" in sys.argv:
+    from config import config as _health_config
+    from database import db_health_check as _db_health_check
+
+    _health = _db_health_check(
+        database_url=_health_config.database_url or _health_config.database_path,
+        migrate_csv=False,
+        backup=False,
+    )
+    _counts: Dict[str, int] = {}
+    try:
+        with sqlite3.connect(_health_config.database_path) as _connection:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades"]:
+                try:
+                    _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
+                except sqlite3.Error:
+                    _counts[_table] = 0
+    except sqlite3.Error:
+        pass
+    _latest_heartbeat = "-"
+    _latest_uptime = "0"
+    if os.path.exists("orchestrator_log.csv"):
+        try:
+            with open("orchestrator_log.csv", newline="", encoding="utf-8") as _log_file:
+                _rows = [row for row in csv.DictReader(_log_file) if row.get("engine") == "heartbeat"]
+                if _rows:
+                    _latest_heartbeat = _rows[-1].get("timestamp", "-")
+                    _message = _rows[-1].get("message", "")
+                    for _part in _message.split(";"):
+                        if _part.startswith("uptime="):
+                            _latest_uptime = _part.replace("uptime=", "").replace("s", "")
+        except OSError:
+            pass
+    print("RUNTIME HEALTH")
+    print(f"OK: {bool(_health.get('ok'))}")
+    print(f"Database: {_health_config.database_path}")
+    print(f"Latest Heartbeat: {_latest_heartbeat}")
+    print(f"Latest Uptime Seconds: {_latest_uptime}")
+    print(f"Table Counts: {_counts}")
+    sys.exit(0)
 
 from config import config
 from database import (
@@ -23,7 +67,7 @@ from market_regime import (
     log_regime_history,
 )
 from ml_engine import run_ml_research
-from orchestrator import run_orchestrator
+from orchestrator import run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from report_generator import generate_performance_report
@@ -194,16 +238,58 @@ def run_orchestrator_command() -> Dict[str, Any]:
     }
     result = run_orchestrator(
         callbacks=callbacks,
-        profile="NORMAL",
+        profile=config.orchestrator_profile,
         db_path=config.database_path,
         log_path="orchestrator_log.csv",
         cycles=1,
         retries=1,
+        retention_days=config.log_retention_days,
+        db_retention_days=config.db_retention_days,
+        max_log_bytes=config.max_log_bytes,
     )
     message = format_orchestrator_message(result)
     print(message)
     send_message_if_enabled(message)
     return result
+
+
+def run_health() -> Dict[str, Any]:
+    health = db_health_check(database_url=database_url(), migrate_csv=False, backup=False)
+    table_counts: Dict[str, int] = {}
+    try:
+        with sqlite3.connect(config.database_path) as connection:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades"]:
+                try:
+                    table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                except sqlite3.Error:
+                    table_counts[table] = 0
+    except sqlite3.Error:
+        pass
+
+    latest_heartbeat = "-"
+    if os.path.exists("orchestrator_log.csv"):
+        try:
+            with open("orchestrator_log.csv", newline="", encoding="utf-8") as log_file:
+                rows = [row for row in csv.DictReader(log_file) if row.get("engine") == "heartbeat"]
+                if rows:
+                    latest_heartbeat = rows[-1].get("timestamp", "-")
+        except OSError:
+            latest_heartbeat = "-"
+
+    status = {
+        "ok": bool(health.get("ok")),
+        "database": config.database_path,
+        "table_counts": table_counts,
+        "latest_heartbeat": latest_heartbeat,
+        "uptime_seconds": uptime_seconds(),
+    }
+    print("RUNTIME HEALTH")
+    print(f"OK: {status['ok']}")
+    print(f"Database: {status['database']}")
+    print(f"Latest Heartbeat: {status['latest_heartbeat']}")
+    print(f"Uptime Seconds: {status['uptime_seconds']}")
+    print(f"Table Counts: {status['table_counts']}")
+    return status
 
 
 def run_db_check() -> Dict[str, Any]:
@@ -393,12 +479,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Jalankan orchestration engine satu siklus.",
     )
+    parser.add_argument(
+        "--health",
+        action="store_true",
+        help="Tampilkan lightweight runtime health monitor.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.orchestrator:
+    if args.health:
+        run_health()
+    elif args.orchestrator:
         run_orchestrator_command()
     elif args.shadow:
         run_shadow()

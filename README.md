@@ -735,6 +735,48 @@ Scheduler Mode:
 
 Ini coordination-only, tidak membuat real order.
 
+## 24/7 VPS Runtime
+
+Untuk Oracle Cloud VPS / Ubuntu 24.04, jalankan di `tmux`:
+
+```bash
+tmux new -s mamuyy
+source .venv/bin/activate
+python main.py --orchestrator
+```
+
+Lightweight health monitor:
+
+```bash
+python main.py --health
+```
+
+Runtime stabilization:
+
+- Orchestrator menulis heartbeat setiap cycle ke `orchestrator_log.csv`.
+- Setiap engine dijalankan terisolasi; crash satu engine tidak mematikan orchestrator.
+- Auto retry dan restart simulation tersedia per engine.
+- Binance public request memakai retry ringan untuk gangguan sementara.
+- Orchestrator melakukan daily/size-based rotation untuk `orchestrator_log.csv`.
+- Chart dan backup lama dibersihkan sesuai `LOG_RETENTION_DAYS`.
+- DB temporary records lama dibersihkan sesuai `DB_RETENTION_DAYS`.
+- `system_health_score` turun jika DB lambat, failure tinggi, atau memory tinggi.
+- Scheduler auto-degrade dari `FAST` ke `NORMAL` atau `SAFE` saat runtime tidak sehat.
+
+Operasional cepat:
+
+```bash
+python main.py --health
+tail -f orchestrator_log.csv
+python main.py --db-check
+```
+
+Catatan keamanan VPS:
+
+- Jangan print `.env`.
+- Jangan commit token Telegram.
+- Engine tetap read-only/simulated; tidak ada auto trading.
+
 ## Database Engine
 
 Default database memakai SQLite bawaan Python, tanpa ORM. Jalankan health check, auto-create table, migration CSV, dan backup:
@@ -757,6 +799,7 @@ Tables:
 - `regime_logs`
 - `ml_results`
 - `walkforward_results`
+- `shadow_trades`
 
 Yang dilakukan `--db-check`:
 
@@ -857,6 +900,10 @@ MODEL_OUTPUT_PATH=model_output.json
 WALKFORWARD_RESULTS_PATH=walkforward_results.csv
 CHART_OUTPUT_DIR=charts
 PAPER_SUMMARY_STATE_PATH=.paper_summary_state
+ORCHESTRATOR_PROFILE=NORMAL
+LOG_RETENTION_DAYS=14
+DB_RETENTION_DAYS=90
+MAX_LOG_BYTES=5000000
 ```
 
 ## Struktur File

@@ -3,7 +3,7 @@ import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List
 
 
@@ -14,6 +14,7 @@ SCHEDULER_PROFILES = {
 }
 
 LOG_FIELDS = ["timestamp", "engine", "state", "execution_time", "failure_count", "restart_count", "avg_runtime", "last_success_timestamp", "message"]
+PROCESS_START = time.time()
 
 
 @dataclass
@@ -37,12 +38,78 @@ def _now() -> str:
 
 
 def _append_log(row: Dict[str, Any], path: str) -> None:
-    exists = os.path.exists(path)
-    with open(path, "a", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=LOG_FIELDS)
-        if not exists:
-            writer.writeheader()
-        writer.writerow({field: row.get(field, "") for field in LOG_FIELDS})
+    try:
+        exists = os.path.exists(path)
+        with open(path, "a", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=LOG_FIELDS)
+            if not exists:
+                writer.writeheader()
+            writer.writerow({field: row.get(field, "") for field in LOG_FIELDS})
+    except OSError:
+        return
+
+
+def rotate_log_if_needed(path: str, max_bytes: int = 5_000_000) -> str:
+    try:
+        if not os.path.exists(path):
+            return ""
+        mtime = datetime.fromtimestamp(os.path.getmtime(path)).date()
+        today = datetime.now().date()
+        if os.path.getsize(path) < max_bytes and mtime == today:
+            return ""
+        rotated = f"{path}.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        os.replace(path, rotated)
+        return rotated
+    except OSError:
+        return ""
+
+
+def cleanup_old_files(paths: List[str], retention_days: int = 14) -> int:
+    cutoff = time.time() - retention_days * 86400
+    removed = 0
+    for path in paths:
+        if os.path.isdir(path):
+            try:
+                names = os.listdir(path)
+            except OSError:
+                continue
+            for name in names:
+                full_path = os.path.join(path, name)
+                try:
+                    if os.path.isfile(full_path) and os.path.getmtime(full_path) < cutoff:
+                        os.remove(full_path)
+                        removed += 1
+                except OSError:
+                    continue
+        else:
+            try:
+                if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+                    removed += 1
+            except OSError:
+                continue
+    return removed
+
+
+def cleanup_old_db_records(db_path: str, retention_days: int = 90) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    tables = ["ml_results", "walkforward_results", "shadow_trades"]
+    deleted = 0
+    try:
+        with sqlite3.connect(db_path) as connection:
+            for table in tables:
+                try:
+                    cursor = connection.execute(
+                        f"DELETE FROM {table} WHERE timestamp IS NOT NULL AND timestamp < ?",
+                        (cutoff,),
+                    )
+                    deleted += cursor.rowcount if cursor.rowcount else 0
+                except sqlite3.Error:
+                    continue
+            connection.commit()
+    except sqlite3.Error:
+        return deleted
+    return deleted
 
 
 def _db_latency(db_path: str) -> float:
@@ -61,6 +128,10 @@ def _memory_warning() -> bool:
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > 1_500_000
     except Exception:
         return False
+
+
+def uptime_seconds() -> int:
+    return int(time.time() - PROCESS_START)
 
 
 def _degrade_profile(profile: str, db_slow: bool, failures_high: bool, memory_high: bool) -> str:
@@ -131,7 +202,13 @@ def run_orchestrator(
     log_path: str = "orchestrator_log.csv",
     cycles: int = 1,
     retries: int = 1,
+    retention_days: int = 14,
+    db_retention_days: int = 90,
+    max_log_bytes: int = 5_000_000,
 ) -> Dict[str, Any]:
+    rotated_log = rotate_log_if_needed(log_path, max_log_bytes)
+    cleanup_count = cleanup_old_files(["charts", "db_backups"], retention_days)
+    db_deleted = cleanup_old_db_records(db_path, db_retention_days)
     scheduler = profile if profile in SCHEDULER_PROFILES else "NORMAL"
     engines = {name: EngineRuntime(name=name, callback=callback) for name, callback in callbacks.items()}
     db_seconds = _db_latency(db_path)
@@ -140,7 +217,7 @@ def run_orchestrator(
     intervals = SCHEDULER_PROFILES[scheduler]
     recovery_actions = []
 
-    for _ in range(max(1, cycles)):
+    for cycle in range(max(1, cycles)):
         for name, engine in engines.items():
             if name not in intervals:
                 engine.state = "WARNING"
@@ -149,6 +226,20 @@ def run_orchestrator(
             _run_engine(engine, retries, log_path)
             if engine.restart_count:
                 recovery_actions.append(f"{name}: retry/restart simulation")
+        _append_log(
+            {
+                "timestamp": _now(),
+                "engine": "heartbeat",
+                "state": "IDLE",
+                "execution_time": db_seconds,
+                "failure_count": sum(engine.failure_count for engine in engines.values()),
+                "restart_count": sum(engine.restart_count for engine in engines.values()),
+                "avg_runtime": sum(engine.avg_runtime for engine in engines.values()) / max(len(engines), 1),
+                "last_success_timestamp": _now(),
+                "message": f"cycle={cycle + 1};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
+            },
+            log_path,
+        )
 
     failures_high = sum(engine.failure_count for engine in engines.values()) >= 3
     scheduler = _degrade_profile(scheduler, db_seconds > 0.5, failures_high, memory_high)
@@ -166,7 +257,7 @@ def run_orchestrator(
             "restart_count": sum(engine.restart_count for engine in engines.values()),
             "avg_runtime": sum(engine.avg_runtime for engine in engines.values()) / max(len(engines), 1),
             "last_success_timestamp": _now(),
-            "message": f"system_health_score={health};scheduler={scheduler}",
+            "message": f"system_health_score={health};scheduler={scheduler};uptime={uptime_seconds()}s",
         },
         log_path,
     )
@@ -176,6 +267,8 @@ def run_orchestrator(
         "failed_engines": failed,
         "recovery_actions": recovery_actions or ["none"],
         "scheduler_mode": scheduler,
+        "uptime_seconds": uptime_seconds(),
+        "cleanup": {"rotated_log": rotated_log, "files_removed": cleanup_count, "db_records_deleted": db_deleted},
         "engine_states": {name: engine.state for name, engine in engines.items()},
         "runtime_metrics": {
             name: {

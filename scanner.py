@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import time
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -17,9 +18,17 @@ class BinanceFuturesScanner:
 
     def _get(self, path: str, params: Dict[str, Any] | None = None) -> Any:
         url = f"{self.base_url}{path}"
-        response = self.session.get(url, params=params, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = self.session.get(url, params=params, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+        raise last_error
 
     def get_top_usdt_symbols(
         self,
