@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.paper_summary_state
+charts/
+performance_report.html
+.matplotlib/
+model_output.json
+walkforward_results.csv
+mamuyy_hunter.db
+db_backups/

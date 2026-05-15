@@ -1,0 +1,1 @@
+timestamp,symbol,execution_profile,expected_fill_price,slippage_percent,execution_cost,fill_probability,latency_risk,liquidity_risk,execution_quality_score,pnl_before_execution,execution_adjusted_pnl
