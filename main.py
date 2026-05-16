@@ -18,7 +18,7 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
@@ -47,6 +47,23 @@ if "--health" in sys.argv:
     print(f"Table Counts: {_counts}")
     sys.exit(0)
 
+if "--label-outcomes" in sys.argv:
+    from config import config as _label_config
+    from outcome_labeler import label_historical_outcomes as _label_historical_outcomes
+
+    _days = 7
+    if "--days" in sys.argv:
+        try:
+            _days = int(sys.argv[sys.argv.index("--days") + 1])
+        except (IndexError, ValueError):
+            print("Invalid --days value. Use an integer, for example: python main.py --label-outcomes --days 7")
+            sys.exit(2)
+    _label_historical_outcomes(
+        database_url=_label_config.database_url or _label_config.database_path,
+        days=_days,
+    )
+    sys.exit(0)
+
 if "--backfill" in sys.argv:
     from backfill import run_historical_backfill as _run_historical_backfill
     from config import config as _backfill_config
@@ -71,6 +88,7 @@ if "--backfill" in sys.argv:
 
 from config import config
 from backfill import run_historical_backfill
+from outcome_labeler import label_historical_outcomes
 from database import (
     backup_database,
     db_health_check,
@@ -281,7 +299,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -324,6 +342,13 @@ def run_backfill(days: int) -> Dict[str, Any]:
         top_symbols_limit=config.top_symbols_limit,
         min_quote_volume=config.min_quote_volume,
         timeout=config.request_timeout_seconds,
+    )
+
+
+def run_label_outcomes(days: int) -> Dict[str, Any]:
+    return label_historical_outcomes(
+        database_url=database_url(),
+        days=days,
     )
 
 
@@ -525,6 +550,11 @@ def parse_args() -> argparse.Namespace:
         help="Isi SQLite dengan historical Binance Futures data.",
     )
     parser.add_argument(
+        "--label-outcomes",
+        action="store_true",
+        help="Label historical signal outcomes dari historical_klines.",
+    )
+    parser.add_argument(
         "--days",
         type=int,
         default=7,
@@ -535,7 +565,9 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.backfill:
+    if args.label_outcomes:
+        run_label_outcomes(days=args.days)
+    elif args.backfill:
         run_backfill(days=args.days)
     elif args.health:
         run_health()

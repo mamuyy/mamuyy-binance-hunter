@@ -183,6 +183,25 @@ SCHEMAS = {
             open_interest REAL
         )
     """,
+    "historical_outcomes": """
+        CREATE TABLE IF NOT EXISTS historical_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_timestamp TEXT,
+            close_timestamp TEXT,
+            symbol TEXT,
+            entry REAL,
+            exit_price REAL,
+            pnl_pct REAL,
+            status TEXT,
+            win_loss TEXT,
+            sl REAL,
+            tp1 REAL,
+            tp2 REAL,
+            score REAL,
+            holding_candles INTEGER,
+            exit_reason TEXT
+        )
+    """,
 }
 
 
@@ -207,6 +226,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_historical_open_interest_timestamp ON historical_open_interest(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_historical_open_interest_symbol ON historical_open_interest(symbol)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_open_interest_unique ON historical_open_interest(timestamp, symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_outcomes_signal_timestamp ON historical_outcomes(signal_timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_outcomes_symbol ON historical_outcomes(symbol)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_outcomes_unique ON historical_outcomes(symbol, signal_timestamp)",
 ]
 
 

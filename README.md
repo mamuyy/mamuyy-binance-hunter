@@ -430,6 +430,7 @@ Tables yang diisi:
 - `historical_klines`
 - `historical_funding`
 - `historical_open_interest`
+- `historical_outcomes`
 - `signals`
 - `flow_logs`
 
@@ -441,6 +442,31 @@ Proteksi runtime:
 - Funding/OI fallback graceful ke OHLCV-only mode jika endpoint historis tidak lengkap.
 
 Engine ini tidak membuat order, tidak auto buy/sell, dan tidak mengubah live scanner logic.
+
+## Historical Outcome Labeling
+
+Label hasil historical signal memakai data `historical_klines`:
+
+```bash
+python main.py --label-outcomes --days 7
+```
+
+Logic:
+
+- Entry price memakai close candle pada timestamp signal.
+- Simulasi SL `-2%`, TP1 `+3%`, dan TP2 `+5%`.
+- Jika TP/SL tidak tersentuh, outcome ditutup pada fixed holding period default 20 candle.
+- `pnl_pct`, status, dan `WIN`/`LOSS` disimpan ke SQLite.
+
+Output table:
+
+- `historical_outcomes`
+
+Proteksi:
+
+- Dedupe berdasarkan `symbol + signal_timestamp`.
+- Tidak menghapus DB, CSV, atau data live.
+- Tidak membuat order Binance dan tidak mengubah strategy live.
 
 ## Regime-Specific Model Engine
 
@@ -964,6 +990,7 @@ report_generator.py
 ml_engine.py
 walkforward.py
 backfill.py
+outcome_labeler.py
 regime_models.py
 portfolio_engine.py
 execution_engine.py
