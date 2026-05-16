@@ -405,6 +405,43 @@ Best Regime:
 Worst Regime:
 ```
 
+## Historical Backfill Engine
+
+Isi SQLite dengan data historis Binance USDT Futures untuk analytics, ML research, dan walk-forward validation:
+
+```bash
+python main.py --backfill --days 7
+```
+
+File utama:
+
+- `backfill.py`
+
+Data yang diambil:
+
+- OHLCV klines dari Binance Futures.
+- Funding history jika endpoint tersedia.
+- Open interest history jika endpoint tersedia.
+
+Backfill memakai symbol USDT teratas berdasarkan quote volume, mengikuti konfigurasi `TOP_SYMBOLS_LIMIT`, `MIN_QUOTE_VOLUME`, dan `CANDLE_INTERVAL`. Engine ini memakai scoring scanner existing untuk membuat historical signal record, lalu menyimpan data ke SQLite tanpa menghapus data live.
+
+Tables yang diisi:
+
+- `historical_klines`
+- `historical_funding`
+- `historical_open_interest`
+- `signals`
+- `flow_logs`
+
+Proteksi runtime:
+
+- Dedupe berdasarkan `timestamp + symbol` untuk generated signal/flow.
+- Dedupe berdasarkan `timestamp + symbol + interval` untuk historical candle.
+- Safe rate limiting antar request.
+- Funding/OI fallback graceful ke OHLCV-only mode jika endpoint historis tidak lengkap.
+
+Engine ini tidak membuat order, tidak auto buy/sell, dan tidak mengubah live scanner logic.
+
 ## Regime-Specific Model Engine
 
 Jalankan analysis:
@@ -800,6 +837,9 @@ Tables:
 - `ml_results`
 - `walkforward_results`
 - `shadow_trades`
+- `historical_klines`
+- `historical_funding`
+- `historical_open_interest`
 
 Yang dilakukan `--db-check`:
 
@@ -923,6 +963,7 @@ analytics.py
 report_generator.py
 ml_engine.py
 walkforward.py
+backfill.py
 regime_models.py
 portfolio_engine.py
 execution_engine.py

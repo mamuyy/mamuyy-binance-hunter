@@ -18,7 +18,7 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
@@ -47,7 +47,30 @@ if "--health" in sys.argv:
     print(f"Table Counts: {_counts}")
     sys.exit(0)
 
+if "--backfill" in sys.argv:
+    from backfill import run_historical_backfill as _run_historical_backfill
+    from config import config as _backfill_config
+
+    _days = 7
+    if "--days" in sys.argv:
+        try:
+            _days = int(sys.argv[sys.argv.index("--days") + 1])
+        except (IndexError, ValueError):
+            print("Invalid --days value. Use an integer, for example: python main.py --backfill --days 7")
+            sys.exit(2)
+    _run_historical_backfill(
+        days=_days,
+        database_url=_backfill_config.database_url or _backfill_config.database_path,
+        base_url=_backfill_config.binance_base_url,
+        interval=_backfill_config.candle_interval,
+        top_symbols_limit=_backfill_config.top_symbols_limit,
+        min_quote_volume=_backfill_config.min_quote_volume,
+        timeout=_backfill_config.request_timeout_seconds,
+    )
+    sys.exit(0)
+
 from config import config
+from backfill import run_historical_backfill
 from database import (
     backup_database,
     db_health_check,
@@ -258,7 +281,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -290,6 +313,18 @@ def run_health() -> Dict[str, Any]:
     print(f"Uptime Seconds: {status['uptime_seconds']}")
     print(f"Table Counts: {status['table_counts']}")
     return status
+
+
+def run_backfill(days: int) -> Dict[str, Any]:
+    return run_historical_backfill(
+        days=days,
+        database_url=database_url(),
+        base_url=config.binance_base_url,
+        interval=config.candle_interval,
+        top_symbols_limit=config.top_symbols_limit,
+        min_quote_volume=config.min_quote_volume,
+        timeout=config.request_timeout_seconds,
+    )
 
 
 def run_db_check() -> Dict[str, Any]:
@@ -484,12 +519,25 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Tampilkan lightweight runtime health monitor.",
     )
+    parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Isi SQLite dengan historical Binance Futures data.",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=7,
+        help="Jumlah hari historical data untuk --backfill.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.health:
+    if args.backfill:
+        run_backfill(days=args.days)
+    elif args.health:
         run_health()
     elif args.orchestrator:
         run_orchestrator_command()

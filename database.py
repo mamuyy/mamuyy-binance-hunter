@@ -150,6 +150,39 @@ SCHEMAS = {
             execution_quality_score REAL
         )
     """,
+    "historical_klines": """
+        CREATE TABLE IF NOT EXISTS historical_klines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            interval TEXT,
+            open REAL,
+            high REAL,
+            low REAL,
+            close REAL,
+            volume REAL,
+            quote_asset_volume REAL,
+            number_of_trades REAL,
+            taker_buy_base_asset_volume REAL,
+            taker_buy_quote_asset_volume REAL
+        )
+    """,
+    "historical_funding": """
+        CREATE TABLE IF NOT EXISTS historical_funding (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            funding_rate REAL
+        )
+    """,
+    "historical_open_interest": """
+        CREATE TABLE IF NOT EXISTS historical_open_interest (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            open_interest REAL
+        )
+    """,
 }
 
 
@@ -165,6 +198,15 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_walkforward_results_timestamp ON walkforward_results(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_trades_timestamp ON shadow_trades(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_shadow_trades_symbol ON shadow_trades(symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_klines_timestamp ON historical_klines(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_klines_symbol ON historical_klines(symbol)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_klines_unique ON historical_klines(timestamp, symbol, interval)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_funding_timestamp ON historical_funding(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_funding_symbol ON historical_funding(symbol)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_funding_unique ON historical_funding(timestamp, symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_open_interest_timestamp ON historical_open_interest(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_historical_open_interest_symbol ON historical_open_interest(symbol)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_open_interest_unique ON historical_open_interest(timestamp, symbol)",
 ]
 
 
