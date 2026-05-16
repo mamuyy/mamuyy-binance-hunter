@@ -258,6 +258,8 @@ Metrics yang dihitung:
 
 Report HTML berisi summary cards, tables, charts, regime analysis, top performing coins, worst performing coins, dan latest signals.
 
+Jika `paper_trades.csv` kosong, report otomatis memakai table SQLite `historical_outcomes` sebagai fallback backtest labeling. `historical_outcomes` adalah hasil simulasi historis untuk riset, bukan live trade dan bukan order Binance.
+
 Telegram summary:
 
 ```text
@@ -289,6 +291,7 @@ Data source:
 - `paper_trades.csv`
 - `signals_log.csv`
 - `flow_log.csv`
+- fallback SQLite `historical_outcomes` join `signals` dan `flow_logs` jika `paper_trades.csv` kosong
 
 Target klasifikasi:
 
@@ -356,6 +359,7 @@ Data source:
 
 - `paper_trades.csv`
 - `signals_log.csv`
+- fallback SQLite `historical_outcomes` jika `paper_trades.csv` kosong
 
 Fitur:
 

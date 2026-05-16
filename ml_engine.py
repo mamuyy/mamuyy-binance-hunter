@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 from typing import Any, Dict
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".matplotlib"))
@@ -43,6 +44,54 @@ def _read_csv(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _paper_trades_available(path: str) -> bool:
+    trades = _read_csv(path)
+    return not trades.empty
+
+
+def _historical_dataset(database_path: str = "mamuyy_hunter.db") -> pd.DataFrame:
+    if not os.path.exists(database_path):
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    query = """
+        SELECT
+            o.signal_timestamp AS timestamp,
+            o.symbol,
+            o.status,
+            o.win_loss,
+            o.pnl_pct AS pnl_percent,
+            o.score,
+            s.volume_spike,
+            s.breakout,
+            s.liquidity_sweep,
+            s.regime_score,
+            s.regime_name,
+            f.funding_zscore,
+            f.oi_expansion_rate,
+            f.taker_delta,
+            f.pressure_score,
+            f.squeeze_probability,
+            f.whale_activity,
+            f.funding_warning
+        FROM historical_outcomes o
+        LEFT JOIN signals s
+          ON s.symbol = o.symbol
+         AND s.timestamp = o.signal_timestamp
+        LEFT JOIN flow_logs f
+          ON f.symbol = o.symbol
+         AND f.timestamp = o.signal_timestamp
+        ORDER BY o.signal_timestamp ASC
+    """
+    try:
+        with sqlite3.connect(database_path) as connection:
+            dataset = pd.read_sql_query(query, connection)
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    if dataset.empty:
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    dataset["status"] = dataset["status"].where(dataset["status"].isin(TARGET_LABELS), dataset["win_loss"])
+    return _prepare_dataset(dataset)
+
+
 def _status(value: Any) -> str:
     value = str(value or "").strip().upper()
     return value if value in TARGET_LABELS else ""
@@ -58,14 +107,37 @@ def _latest_by_symbol(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop_duplicates("symbol", keep="last")
 
 
+def _prepare_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
+    for column in NUMERIC_FEATURES:
+        if column not in dataset.columns:
+            dataset[column] = 0
+        dataset[column] = pd.to_numeric(dataset[column], errors="coerce").fillna(0.0)
+    for column in ["breakout", "liquidity_sweep"]:
+        dataset[column] = dataset[column].astype(str).str.lower().isin(["true", "1", "yes"]).astype(int)
+    for column in CATEGORICAL_FEATURES:
+        if column not in dataset.columns:
+            dataset[column] = "UNKNOWN"
+        dataset[column] = dataset[column].fillna("UNKNOWN").replace("", "UNKNOWN").astype(str)
+    if "timestamp" in dataset.columns:
+        dataset["timestamp"] = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
+    dataset["target"] = dataset.get("status", "").apply(_status)
+    keep_columns = [
+        column
+        for column in ["timestamp", "symbol", "pnl_percent", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]
+        if column in dataset.columns
+    ]
+    return dataset[dataset["target"].isin(TARGET_LABELS)][keep_columns].copy()
+
+
 def build_ml_dataset(
     paper_trades_path: str,
     signals_log_path: str,
     flow_log_path: str,
+    database_path: str = "mamuyy_hunter.db",
 ) -> pd.DataFrame:
     trades = _read_csv(paper_trades_path)
     if trades.empty:
-        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+        return _historical_dataset(database_path)
 
     dataset = trades.copy()
     sources = [_latest_by_symbol(_read_csv(signals_log_path)), _latest_by_symbol(_read_csv(flow_log_path))]
@@ -84,19 +156,7 @@ def build_ml_dataset(
                 dataset[column] = dataset[column].where(dataset[column].notna(), dataset[src_column])
             dataset = dataset.drop(columns=[src_column])
 
-    for column in NUMERIC_FEATURES:
-        if column not in dataset.columns:
-            dataset[column] = 0
-        dataset[column] = pd.to_numeric(dataset[column], errors="coerce").fillna(0.0)
-    for column in ["breakout", "liquidity_sweep"]:
-        dataset[column] = dataset[column].astype(str).str.lower().isin(["true", "1", "yes"]).astype(int)
-    for column in CATEGORICAL_FEATURES:
-        if column not in dataset.columns:
-            dataset[column] = "UNKNOWN"
-        dataset[column] = dataset[column].fillna("UNKNOWN").replace("", "UNKNOWN").astype(str)
-
-    dataset["target"] = dataset.get("status", "").apply(_status)
-    return dataset[dataset["target"].isin(TARGET_LABELS)].copy()
+    return _prepare_dataset(dataset)
 
 
 def _encode(dataset: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -207,6 +267,7 @@ def run_ml_research(
     flow_log_path: str = "flow_log.csv",
     output_path: str = "model_output.json",
     chart_dir: str = "charts",
+    database_path: str = "mamuyy_hunter.db",
 ) -> Dict[str, Any]:
     os.makedirs(chart_dir, exist_ok=True)
     charts = {
@@ -214,8 +275,9 @@ def run_ml_research(
         "correlation_heatmap": os.path.join(chart_dir, "correlation_heatmap.png"),
         "prediction_distribution": os.path.join(chart_dir, "prediction_distribution.png"),
     }
-    dataset = build_ml_dataset(paper_trades_path, signals_log_path, flow_log_path)
+    dataset = build_ml_dataset(paper_trades_path, signals_log_path, flow_log_path, database_path=database_path)
     result = _base_result(len(dataset), charts)
+    result["data_source"] = "paper_trades" if _paper_trades_available(paper_trades_path) else "historical_outcomes"
     result["correlation_matrix"] = _plot_correlation(dataset, charts["correlation_heatmap"])
     result["most_profitable_regime"], result["worst_regime"] = _regime_profitability(dataset)
 

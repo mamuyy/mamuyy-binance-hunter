@@ -1,5 +1,6 @@
 import math
 import os
+import sqlite3
 from typing import Any, Dict, List, Tuple
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".matplotlib"))
@@ -35,11 +36,53 @@ def _empty_trades_frame() -> pd.DataFrame:
     )
 
 
-def load_trades(path: str = "paper_trades.csv") -> pd.DataFrame:
-    if not os.path.exists(path):
+def _load_historical_outcomes(database_path: str = "mamuyy_hunter.db") -> pd.DataFrame:
+    if not os.path.exists(database_path):
         return _empty_trades_frame()
+    try:
+        with sqlite3.connect(database_path) as connection:
+            df = pd.read_sql_query(
+                """
+                SELECT
+                    o.signal_timestamp AS timestamp,
+                    o.symbol,
+                    o.entry,
+                    o.exit_price AS current_price,
+                    o.pnl_pct AS pnl_percent,
+                    CASE
+                        WHEN o.win_loss = 'WIN' THEN 'WIN'
+                        WHEN o.win_loss = 'LOSS' THEN 'LOSS'
+                        ELSE status
+                    END AS status,
+                    o.sl,
+                    o.tp1,
+                    o.tp2,
+                    o.score,
+                    COALESCE(NULLIF(s.regime_name, ''), 'HISTORICAL_BACKTEST') AS regime_name,
+                    COALESCE(s.regime_score, 0) AS regime_score
+                FROM historical_outcomes o
+                LEFT JOIN signals s
+                  ON s.symbol = o.symbol
+                 AND s.timestamp = o.signal_timestamp
+                ORDER BY o.signal_timestamp ASC
+                """,
+                connection,
+            )
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return _empty_trades_frame()
+    if df.empty:
+        return _empty_trades_frame()
+    return df
 
-    df = pd.read_csv(path)
+
+def load_trades(path: str = "paper_trades.csv", database_path: str = "mamuyy_hunter.db") -> pd.DataFrame:
+    if not os.path.exists(path):
+        df = _empty_trades_frame()
+    else:
+        df = pd.read_csv(path)
+
+    if df.empty:
+        df = _load_historical_outcomes(database_path)
     if df.empty:
         return _empty_trades_frame()
 
@@ -120,7 +163,12 @@ def _coin_performance(trades: pd.DataFrame) -> Tuple[str, str, pd.DataFrame]:
 
 def _regime_performance(trades: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     performance = {}
-    for regime in REGIME_LABELS:
+    regimes = list(REGIME_LABELS)
+    if not trades.empty and "regime_name" in trades.columns:
+        for regime in sorted(str(value) for value in trades["regime_name"].dropna().unique()):
+            if regime and regime not in regimes:
+                regimes.append(regime)
+    for regime in regimes:
         regime_trades = trades[trades["regime_name"] == regime]
         wins = regime_trades[regime_trades["status"] == "WIN"]
         total = len(regime_trades)
@@ -136,8 +184,9 @@ def _regime_performance(trades: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 def calculate_performance_metrics(
     paper_trades_path: str = "paper_trades.csv",
     equity_curve_path: str = "equity_curve.csv",
+    database_path: str = "mamuyy_hunter.db",
 ) -> Dict[str, Any]:
-    trades = load_trades(paper_trades_path)
+    trades = load_trades(paper_trades_path, database_path=database_path)
     equity_curve = build_equity_curve(trades, output_path=equity_curve_path)
 
     total_trades = len(trades)

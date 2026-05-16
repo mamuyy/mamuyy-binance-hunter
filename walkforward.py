@@ -132,6 +132,7 @@ def run_walkforward_validation(
     signals_log_path: str = "signals_log.csv",
     output_path: str = "walkforward_results.csv",
     chart_dir: str = "charts",
+    database_path: str = "mamuyy_hunter.db",
     train_window: int = 30,
     test_window: int = 10,
 ) -> Dict[str, Any]:
@@ -141,7 +142,12 @@ def run_walkforward_validation(
         "rolling_accuracy": os.path.join(chart_dir, "rolling_accuracy.png"),
         "rolling_winrate": os.path.join(chart_dir, "rolling_winrate.png"),
     }
-    dataset = build_ml_dataset(paper_trades_path, signals_log_path, "__missing_flow_log.csv")
+    dataset = build_ml_dataset(
+        paper_trades_path,
+        signals_log_path,
+        "__missing_flow_log.csv",
+        database_path=database_path,
+    )
     if "timestamp" in dataset.columns:
         dataset["timestamp"] = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
         dataset = dataset.sort_values("timestamp").reset_index(drop=True)

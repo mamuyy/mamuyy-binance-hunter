@@ -87,7 +87,6 @@ if "--backfill" in sys.argv:
     sys.exit(0)
 
 from config import config
-from backfill import run_historical_backfill
 from outcome_labeler import label_historical_outcomes
 from database import (
     backup_database,
@@ -172,6 +171,7 @@ def run_report() -> Dict[str, Any]:
         equity_curve_path=config.equity_curve_path,
         output_path=config.performance_report_path,
         chart_dir=config.chart_output_dir,
+        database_path=config.database_path,
     )
     message = format_performance_report_message(metrics)
     print(message)
@@ -188,6 +188,7 @@ def run_ml() -> Dict[str, Any]:
         flow_log_path=config.flow_log_path,
         output_path=config.model_output_path,
         chart_dir=config.chart_output_dir,
+        database_path=config.database_path,
     )
     message = format_ml_analysis_message(result)
     print(message)
@@ -203,6 +204,7 @@ def run_walkforward() -> Dict[str, Any]:
         signals_log_path=config.signals_log_path,
         output_path=config.walkforward_results_path,
         chart_dir=config.chart_output_dir,
+        database_path=config.database_path,
     )
     message = format_walkforward_report_message(result)
     print(message)
@@ -334,6 +336,8 @@ def run_health() -> Dict[str, Any]:
 
 
 def run_backfill(days: int) -> Dict[str, Any]:
+    from backfill import run_historical_backfill
+
     return run_historical_backfill(
         days=days,
         database_url=database_url(),

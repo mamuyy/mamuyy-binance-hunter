@@ -119,10 +119,12 @@ def generate_performance_report(
     equity_curve_path: str = "equity_curve.csv",
     output_path: str = "performance_report.html",
     chart_dir: str = "charts",
+    database_path: str = "mamuyy_hunter.db",
 ) -> Dict[str, Any]:
     metrics = calculate_performance_metrics(
         paper_trades_path=paper_trades_path,
         equity_curve_path=equity_curve_path,
+        database_path=database_path,
     )
     charts = generate_charts(metrics, output_dir=chart_dir)
 
@@ -174,7 +176,7 @@ def generate_performance_report(
 <body>
   <header>
     <h1>MAMUYY Binance Hunter Performance Report</h1>
-    <p>Paper trading analytics generated from paper_trades.csv</p>
+    <p>Analytics generated from paper_trades.csv, with historical_outcomes fallback when paper trades are empty.</p>
   </header>
   <main>
     {warning}
