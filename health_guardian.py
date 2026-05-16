@@ -146,15 +146,22 @@ def _tmux_available() -> bool:
 def _tmux_session_exists(session_name: str) -> bool:
     if not _tmux_available():
         return False
+    target = session_name.strip()
     try:
         completed = subprocess.run(
-            ["tmux", "has-session", "-t", session_name],
+            ["tmux", "ls"],
             check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
             timeout=5,
         )
-        return completed.returncode == 0
+        if completed.returncode != 0:
+            return False
+        for line in completed.stdout.splitlines():
+            name = line.split(":", 1)[0].strip()
+            if name == target:
+                return True
+        return False
     except (subprocess.SubprocessError, OSError):
         return False
 
