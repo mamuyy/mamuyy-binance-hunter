@@ -472,6 +472,43 @@ Proteksi:
 - Tidak menghapus DB, CSV, atau data live.
 - Tidak membuat order Binance dan tidak mengubah strategy live.
 
+## Historical Filter Optimizer
+
+Cari kombinasi filter historis yang meningkatkan profit factor dan menekan drawdown:
+
+```bash
+python main.py --optimize-filters
+```
+
+Data source:
+
+- SQLite `historical_outcomes`
+- Join dengan `signals`
+- Join dengan `flow_logs`
+
+Filter yang diuji:
+
+- `min_score`: 70, 75, 80, 85, 90
+- `flow_state`
+- `whale_activity`
+- `squeeze_risk` LOW only
+- range `funding_zscore`
+- `oi_expansion_rate` positive only
+- threshold `taker_delta`
+- `regime_name`
+- threshold `volume_spike`
+- `breakout` true/false
+- `liquidity_sweep` true/false
+
+Output:
+
+- `optimizer_results.csv`
+- top setups by profit factor
+- winrate, trade count, average PnL, max drawdown, expectancy
+- recommended conservative setup
+
+Optimizer ini hanya research/backtest filtering. Tidak mengubah live strategy, tidak membuat order, dan tidak menghapus DB.
+
 ## Regime-Specific Model Engine
 
 Jalankan analysis:
@@ -995,6 +1032,7 @@ ml_engine.py
 walkforward.py
 backfill.py
 outcome_labeler.py
+filter_optimizer.py
 regime_models.py
 portfolio_engine.py
 execution_engine.py

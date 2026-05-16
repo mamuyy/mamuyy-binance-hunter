@@ -86,6 +86,13 @@ if "--backfill" in sys.argv:
     )
     sys.exit(0)
 
+if "--optimize-filters" in sys.argv:
+    from config import config as _optimizer_config
+    from filter_optimizer import run_filter_optimizer as _run_filter_optimizer
+
+    _run_filter_optimizer(database_path=_optimizer_config.database_path)
+    sys.exit(0)
+
 from config import config
 from outcome_labeler import label_historical_outcomes
 from database import (
@@ -356,6 +363,12 @@ def run_label_outcomes(days: int) -> Dict[str, Any]:
     )
 
 
+def run_optimize_filters() -> Dict[str, Any]:
+    from filter_optimizer import run_filter_optimizer
+
+    return run_filter_optimizer(database_path=config.database_path)
+
+
 def run_db_check() -> Dict[str, Any]:
     health = db_health_check(database_url=database_url(), migrate_csv=True, backup=False)
     backup_path = ""
@@ -559,6 +572,11 @@ def parse_args() -> argparse.Namespace:
         help="Label historical signal outcomes dari historical_klines.",
     )
     parser.add_argument(
+        "--optimize-filters",
+        action="store_true",
+        help="Cari filter historis terbaik dari historical_outcomes.",
+    )
+    parser.add_argument(
         "--days",
         type=int,
         default=7,
@@ -571,6 +589,8 @@ if __name__ == "__main__":
     args = parse_args()
     if args.label_outcomes:
         run_label_outcomes(days=args.days)
+    elif args.optimize_filters:
+        run_optimize_filters()
     elif args.backfill:
         run_backfill(days=args.days)
     elif args.health:
