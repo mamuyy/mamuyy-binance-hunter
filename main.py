@@ -143,6 +143,20 @@ if "--heartbeat-test" in sys.argv:
     print(f"OK: {_heartbeat.get('source') == 'heartbeat_table' and _heartbeat.get('timestamp') == _timestamp}")
     sys.exit(0)
 
+if "--shadow-analysis" in sys.argv:
+    from config import config as _shadow_analysis_config
+    from shadow_analysis import format_shadow_analysis_summary as _format_shadow_analysis_summary
+    from shadow_analysis import run_shadow_equity_analysis as _run_shadow_equity_analysis
+
+    _shadow_result = _run_shadow_equity_analysis(
+        database_path=_shadow_analysis_config.database_path,
+        threshold=_shadow_analysis_config.alert_score_threshold,
+        equity_output_path="shadow_equity_curve.csv",
+        comparison_output_path="shadow_comparison.csv",
+    )
+    print(_format_shadow_analysis_summary(_shadow_result))
+    sys.exit(0)
+
 if "--label-outcomes" in sys.argv:
     from config import config as _label_config
     from outcome_labeler import label_historical_outcomes as _label_historical_outcomes
@@ -227,6 +241,7 @@ from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
 from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
+from shadow_analysis import format_shadow_analysis_summary, run_shadow_equity_analysis
 from shadow_engine import run_shadow_live
 from telegram import (
     format_execution_message,
@@ -559,6 +574,17 @@ def run_heartbeat_test() -> Dict[str, Any]:
     return result
 
 
+def run_shadow_analysis() -> Dict[str, Any]:
+    result = run_shadow_equity_analysis(
+        database_path=config.database_path,
+        threshold=config.alert_score_threshold,
+        equity_output_path="shadow_equity_curve.csv",
+        comparison_output_path="shadow_comparison.csv",
+    )
+    print(format_shadow_analysis_summary(result))
+    return result
+
+
 def run_backfill(days: int) -> Dict[str, Any]:
     from backfill import run_historical_backfill
 
@@ -808,6 +834,11 @@ def parse_args() -> argparse.Namespace:
         help="Tulis dan verifikasi satu row runtime heartbeat SQLite.",
     )
     parser.add_argument(
+        "--shadow-analysis",
+        action="store_true",
+        help="Bandingkan original vs adaptive regime shadow penalty equity curve.",
+    )
+    parser.add_argument(
         "--backfill",
         action="store_true",
         help="Isi SQLite dengan historical Binance Futures data.",
@@ -854,6 +885,8 @@ if __name__ == "__main__":
         run_health_guardian_once()
     elif args.heartbeat_test:
         run_heartbeat_test()
+    elif args.shadow_analysis:
+        run_shadow_analysis()
     elif args.orchestrator:
         run_orchestrator_command()
     elif args.shadow:

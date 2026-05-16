@@ -956,6 +956,24 @@ Nilai yang disimpan ke `signals`:
 
 Dashboard menampilkan rata-rata calculated score, rata-rata shadow score, impact persentase, dan symbol yang paling terdampak.
 
+Shadow equity validation:
+
+```bash
+python main.py --shadow-analysis
+```
+
+Command ini membandingkan:
+
+- Original historical outcomes equity curve.
+- Hypothetical shadow curve jika trade dengan `shadow_score < ALERT_SCORE_THRESHOLD` dilewati.
+
+Output:
+
+- `shadow_equity_curve.csv`
+- `shadow_comparison.csv`
+
+Dashboard menampilkan `Shadow Penalty Simulation` dengan original vs shadow equity curve, drawdown reduction, trade reduction, avoided losses, skipped winners, dan regime impact summary.
+
 ## Health Guardian Watchdog
 
 `health_guardian.py` adalah watchdog ringan untuk VPS yang tetap kompatibel dengan `tmux`. Default-nya `DRY_RUN`, jadi aman untuk inspeksi tanpa memaksa restart.
@@ -1176,6 +1194,7 @@ filter_optimizer.py
 regime_labeler.py
 regime_models.py
 regime_shadow.py
+shadow_analysis.py
 portfolio_engine.py
 execution_engine.py
 shadow_engine.py
