@@ -31,6 +31,13 @@ def _get_float(name: str, default: float) -> float:
         return default
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 @dataclass(frozen=True)
 class Config:
     binance_base_url: str = os.getenv("BINANCE_BASE_URL", "https://fapi.binance.com")
@@ -77,6 +84,13 @@ class Config:
     risk_loss_cooldown: int = _get_int("RISK_LOSS_COOLDOWN", 3)
     risk_base_position_multiplier: float = _get_float("RISK_BASE_POSITION_MULTIPLIER", 1.0)
     risk_high_vol_confidence_min: float = _get_float("RISK_HIGH_VOL_CONFIDENCE_MIN", 55.0)
+    health_guardian_interval_seconds: int = _get_int("HEALTH_GUARDIAN_INTERVAL_SECONDS", 300)
+    health_guardian_stale_minutes: int = _get_int("HEALTH_GUARDIAN_STALE_MINUTES", 10)
+    health_guardian_dry_run: bool = _get_bool("HEALTH_GUARDIAN_DRY_RUN", True)
+    health_guardian_restart_dashboard: bool = _get_bool("HEALTH_GUARDIAN_RESTART_DASHBOARD", False)
+    health_guardian_project_dir: str = os.getenv("HEALTH_GUARDIAN_PROJECT_DIR", "")
+    health_guardian_hunter_session: str = os.getenv("HEALTH_GUARDIAN_HUNTER_SESSION", "hunter")
+    health_guardian_dashboard_session: str = os.getenv("HEALTH_GUARDIAN_DASHBOARD_SESSION", "dashboard")
 
     @property
     def telegram_enabled(self) -> bool:

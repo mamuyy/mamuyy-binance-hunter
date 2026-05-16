@@ -27,6 +27,7 @@ Crypto scanner read-only untuk Binance USDT Futures. Project ini hanya memakai p
 - Shadow live engine untuk real-time live simulation tanpa real order placement.
 - Orchestration engine untuk scheduler, health management, retry, dan failure isolation.
 - Risk manager circuit breaker untuk safety gate, drawdown guard, stale heartbeat guard, dan exposure multiplier.
+- Health guardian watchdog untuk memantau heartbeat, SQLite, dan session `tmux` secara ringan.
 - Mode loop otomatis setiap 15 menit.
 - Error handling per symbol agar scanner tetap jalan walaupun ada symbol yang gagal dibaca.
 
@@ -895,6 +896,7 @@ Operasional cepat:
 ```bash
 python main.py --health
 python main.py --risk-check
+python main.py --health-guardian-once
 tail -f orchestrator_log.csv
 python main.py --db-check
 ```
@@ -933,6 +935,44 @@ Gate default:
 - Max open/shadow trade dan consecutive loss cooldown dibatasi oleh konfigurasi.
 
 Risk events dicatat ke table SQLite `risk_events`. Dashboard menampilkan bagian `Risk Engine Status` secara read-only tanpa menulis event baru.
+
+## Health Guardian Watchdog
+
+`health_guardian.py` adalah watchdog ringan untuk VPS yang tetap kompatibel dengan `tmux`. Default-nya `DRY_RUN`, jadi aman untuk inspeksi tanpa memaksa restart.
+
+Jalankan sekali:
+
+```bash
+python main.py --health-guardian-once
+```
+
+Yang dicek:
+
+- SQLite health.
+- Heartbeat orchestrator di `orchestrator_log.csv`.
+- Stale runtime jika heartbeat lebih lama dari `HEALTH_GUARDIAN_STALE_MINUTES`.
+- Session `tmux` `hunter`.
+- Session `tmux` `dashboard`.
+
+Perilaku:
+
+- Jika `hunter` hilang, guardian mencatat recovery action. Dengan `HEALTH_GUARDIAN_DRY_RUN=true`, guardian hanya menampilkan rencana restart.
+- Jika `HEALTH_GUARDIAN_DRY_RUN=false`, guardian bisa membuat ulang session `hunter` dengan `python main.py --orchestrator`.
+- Jika `dashboard` hilang, guardian hanya log warning secara default.
+- Dashboard restart hanya aktif jika `HEALTH_GUARDIAN_RESTART_DASHBOARD=true`.
+- Semua event warning/stale dicatat ke table `risk_events`.
+
+Contoh konfigurasi aman:
+
+```env
+HEALTH_GUARDIAN_DRY_RUN=true
+HEALTH_GUARDIAN_STALE_MINUTES=10
+HEALTH_GUARDIAN_HUNTER_SESSION=hunter
+HEALTH_GUARDIAN_DASHBOARD_SESSION=dashboard
+HEALTH_GUARDIAN_RESTART_DASHBOARD=false
+```
+
+Untuk menjalankan berkala di VPS tanpa PM2, pakai cron/systemd timer atau loop shell sederhana yang memanggil command ini tiap 5 menit. Tetap gunakan `tmux`, bukan PM2.
 
 ## Database Engine
 
@@ -1074,6 +1114,13 @@ RISK_MAX_OPEN_TRADES=10
 RISK_LOSS_COOLDOWN=3
 RISK_BASE_POSITION_MULTIPLIER=1.0
 RISK_HIGH_VOL_CONFIDENCE_MIN=55
+HEALTH_GUARDIAN_INTERVAL_SECONDS=300
+HEALTH_GUARDIAN_STALE_MINUTES=10
+HEALTH_GUARDIAN_DRY_RUN=true
+HEALTH_GUARDIAN_RESTART_DASHBOARD=false
+HEALTH_GUARDIAN_PROJECT_DIR=
+HEALTH_GUARDIAN_HUNTER_SESSION=hunter
+HEALTH_GUARDIAN_DASHBOARD_SESSION=dashboard
 ```
 
 ## Struktur File
@@ -1103,6 +1150,7 @@ execution_engine.py
 shadow_engine.py
 orchestrator.py
 risk_manager.py
+health_guardian.py
 symbol_tags.json
 requirements.txt
 README.md

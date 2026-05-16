@@ -77,6 +77,28 @@ if "--risk-check" in sys.argv:
     print(f"Metrics: {_risk_result['metrics']}")
     sys.exit(0)
 
+if "--health-guardian-once" in sys.argv:
+    from config import config as _guardian_config
+    from health_guardian import HealthGuardianConfig as _HealthGuardianConfig
+    from health_guardian import check_health_guardian_once as _check_health_guardian_once
+    from health_guardian import format_health_guardian_result as _format_health_guardian_result
+
+    _guardian_result = _check_health_guardian_once(
+        _HealthGuardianConfig(
+            database_path=_guardian_config.database_path,
+            orchestrator_log_path="orchestrator_log.csv",
+            project_dir=_guardian_config.health_guardian_project_dir or os.getcwd(),
+            hunter_session=_guardian_config.health_guardian_hunter_session,
+            dashboard_session=_guardian_config.health_guardian_dashboard_session,
+            stale_minutes=_guardian_config.health_guardian_stale_minutes,
+            interval_seconds=_guardian_config.health_guardian_interval_seconds,
+            dry_run=_guardian_config.health_guardian_dry_run,
+            restart_dashboard=_guardian_config.health_guardian_restart_dashboard,
+        )
+    )
+    print(_format_health_guardian_result(_guardian_result))
+    sys.exit(0)
+
 if "--label-outcomes" in sys.argv:
     from config import config as _label_config
     from outcome_labeler import label_historical_outcomes as _label_historical_outcomes
@@ -145,6 +167,7 @@ from database import (
 )
 from execution_engine import run_execution_simulation
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
+from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result
 from logger import log_signal
 from market_regime import (
     MarketRegimeEngine,
@@ -412,6 +435,26 @@ def run_risk_check() -> Dict[str, Any]:
     return result
 
 
+def health_guardian_config_from_env() -> HealthGuardianConfig:
+    return HealthGuardianConfig(
+        database_path=config.database_path,
+        orchestrator_log_path="orchestrator_log.csv",
+        project_dir=config.health_guardian_project_dir or os.getcwd(),
+        hunter_session=config.health_guardian_hunter_session,
+        dashboard_session=config.health_guardian_dashboard_session,
+        stale_minutes=config.health_guardian_stale_minutes,
+        interval_seconds=config.health_guardian_interval_seconds,
+        dry_run=config.health_guardian_dry_run,
+        restart_dashboard=config.health_guardian_restart_dashboard,
+    )
+
+
+def run_health_guardian_once() -> Dict[str, Any]:
+    result = check_health_guardian_once(health_guardian_config_from_env())
+    print(format_health_guardian_result(result))
+    return result
+
+
 def run_backfill(days: int) -> Dict[str, Any]:
     from backfill import run_historical_backfill
 
@@ -641,6 +684,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan risk manager circuit breaker check.",
     )
     parser.add_argument(
+        "--health-guardian-once",
+        action="store_true",
+        help="Jalankan tmux-compatible health guardian sekali dalam mode aman.",
+    )
+    parser.add_argument(
         "--backfill",
         action="store_true",
         help="Isi SQLite dengan historical Binance Futures data.",
@@ -683,6 +731,8 @@ if __name__ == "__main__":
         run_health()
     elif args.risk_check:
         run_risk_check()
+    elif args.health_guardian_once:
+        run_health_guardian_once()
     elif args.orchestrator:
         run_orchestrator_command()
     elif args.shadow:
