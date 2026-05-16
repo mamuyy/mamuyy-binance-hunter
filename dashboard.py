@@ -194,6 +194,38 @@ def render_risk_engine_status(risk_status: dict[str, Any]) -> None:
     )
 
 
+def render_shadow_penalty_insight(signals: pd.DataFrame) -> None:
+    st.subheader("Adaptive Regime Shadow Penalty")
+    required = {"calculated_score", "shadow_score", "symbol"}
+    if signals.empty or not required.issubset(set(signals.columns)):
+        st.info("No shadow penalty analytics yet. New signals will populate calculated_score and shadow_score.")
+        return
+
+    df = signals.copy()
+    df["calculated_score"] = pd.to_numeric(df["calculated_score"], errors="coerce")
+    df["shadow_score"] = pd.to_numeric(df["shadow_score"], errors="coerce")
+    df = df.dropna(subset=["calculated_score", "shadow_score"])
+    if df.empty:
+        st.info("Shadow penalty analytics are not numeric yet.")
+        return
+
+    df["penalty_impact"] = df["calculated_score"] - df["shadow_score"]
+    average_calculated = df["calculated_score"].mean()
+    average_shadow = df["shadow_score"].mean()
+    impact_percent = ((average_calculated - average_shadow) / average_calculated * 100) if average_calculated else 0.0
+
+    affected = int((df["penalty_impact"] > 0).sum())
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Avg Calculated Score", f"{average_calculated:.2f}")
+    col2.metric("Avg Shadow Score", f"{average_shadow:.2f}")
+    col3.metric("Regime Penalty Impact", f"{impact_percent:.2f}%")
+    col4.metric("Affected Signals", affected)
+
+    columns = ["symbol", "regime_name", "calculated_score", "shadow_score", "penalty_impact"]
+    top_affected = df.sort_values("penalty_impact", ascending=False)
+    st.dataframe(top_affected[[c for c in columns if c in top_affected.columns]].head(20), use_container_width=True)
+
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def read_historical_outcomes(limit: int = 500) -> pd.DataFrame:
     try:
@@ -558,12 +590,16 @@ def main() -> None:
         "timestamp",
         "symbol",
         "score",
+        "calculated_score",
+        "shadow_score",
+        "penalty_applied",
         "flow_state",
         "whale_activity",
         "squeeze_risk",
         "regime_name",
     ]
     st.dataframe(signals[[c for c in signal_cols if c in signals.columns]].head(50), use_container_width=True)
+    render_shadow_penalty_insight(signals)
 
     st.header("4. PAPER TRADING")
     open_trades = trades[trades.get("status", pd.Series(dtype=str)).isin(["OPEN", "TP1 HIT"])] if not trades.empty else trades

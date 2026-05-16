@@ -223,6 +223,7 @@ from ml_engine import run_ml_research
 from orchestrator import run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
+from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
 from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
@@ -667,7 +668,10 @@ def run_once(paper: bool = False) -> List[Dict[str, Any]]:
             flow_adjusted_signals.append(signal)
 
     signals = sorted(
-        [apply_regime_model_to_signal(signal) for signal in flow_adjusted_signals],
+        [
+            apply_adaptive_regime_shadow_penalty(apply_regime_model_to_signal(signal))
+            for signal in flow_adjusted_signals
+        ],
         key=lambda item: item["score"],
         reverse=True,
     )
@@ -681,6 +685,13 @@ def run_once(paper: bool = False) -> List[Dict[str, Any]]:
     print(f"Scan selesai. Symbols valid: {len(signals)} | Alerts: {len(alerts)}")
 
     for signal in alerts:
+        print(
+            "Shadow penalty | "
+            f"regime={signal.get('regime_name')} | "
+            f"calculated_score={signal.get('calculated_score')} | "
+            f"shadow_score={signal.get('shadow_score')} | "
+            f"penalty_applied={bool(signal.get('penalty_applied'))}"
+        )
         log_signal(signal, path=config.signals_log_path)
         insert_signal(signal, database_url=database_url())
         message = format_signal_message(signal)

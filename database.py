@@ -19,6 +19,9 @@ SCHEMAS = {
             symbol TEXT,
             price REAL,
             score REAL,
+            calculated_score REAL,
+            shadow_score REAL,
+            penalty_applied INTEGER,
             base_score REAL,
             regime_name TEXT,
             regime_score REAL,
@@ -329,6 +332,9 @@ def _ensure_columns(connection: sqlite3.Connection) -> None:
         "adaptive_confidence_score": "REAL",
         "model_confidence": "REAL",
         "expected_behavior": "TEXT",
+        "calculated_score": "REAL",
+        "shadow_score": "REAL",
+        "penalty_applied": "INTEGER",
     }
     for column, column_type in columns.items():
         if column not in existing:

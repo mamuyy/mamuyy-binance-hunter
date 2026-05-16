@@ -28,6 +28,7 @@ Crypto scanner read-only untuk Binance USDT Futures. Project ini hanya memakai p
 - Orchestration engine untuk scheduler, health management, retry, dan failure isolation.
 - Risk manager circuit breaker untuk safety gate, drawdown guard, stale heartbeat guard, dan exposure multiplier.
 - Health guardian watchdog untuk memantau heartbeat, SQLite, dan session `tmux` secara ringan.
+- Adaptive regime shadow penalty untuk riset dampak SIDEWAYS/RISK OFF tanpa mengubah alert live.
 - Mode loop otomatis setiap 15 menit.
 - Error handling per symbol agar scanner tetap jalan walaupun ada symbol yang gagal dibaca.
 
@@ -937,6 +938,24 @@ Gate default:
 
 Risk events dicatat ke table SQLite `risk_events`. Dashboard menampilkan bagian `Risk Engine Status` secara read-only tanpa menulis event baru.
 
+## Adaptive Regime Shadow Penalty
+
+`regime_shadow.py` menghitung score bayangan untuk riset, tanpa mengubah `score` asli, threshold alert, paper trading, shadow runtime, atau scanner strategy.
+
+Rules analytics-only:
+
+- `SIDEWAYS / CHOPPY`: `shadow_score = calculated_score * 0.20`
+- `RISK OFF`: `shadow_score = calculated_score * 0.50`
+- Regime lain: `shadow_score = calculated_score`
+
+Nilai yang disimpan ke `signals`:
+
+- `calculated_score`
+- `shadow_score`
+- `penalty_applied`
+
+Dashboard menampilkan rata-rata calculated score, rata-rata shadow score, impact persentase, dan symbol yang paling terdampak.
+
 ## Health Guardian Watchdog
 
 `health_guardian.py` adalah watchdog ringan untuk VPS yang tetap kompatibel dengan `tmux`. Default-nya `DRY_RUN`, jadi aman untuk inspeksi tanpa memaksa restart.
@@ -1156,6 +1175,7 @@ outcome_labeler.py
 filter_optimizer.py
 regime_labeler.py
 regime_models.py
+regime_shadow.py
 portfolio_engine.py
 execution_engine.py
 shadow_engine.py
