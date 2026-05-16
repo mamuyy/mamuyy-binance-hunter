@@ -59,7 +59,7 @@ def _load_dataset(database_path: str) -> pd.DataFrame:
             s.volume_spike,
             s.breakout,
             s.liquidity_sweep,
-            COALESCE(NULLIF(s.regime_name, ''), 'UNKNOWN') AS regime_name,
+            COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED') AS regime_name,
             f.flow_state,
             f.whale_activity,
             f.squeeze_risk,
@@ -101,7 +101,8 @@ def _load_dataset(database_path: str) -> pd.DataFrame:
     for column in ["breakout", "liquidity_sweep"]:
         df[column] = df[column].astype(str).str.lower().isin(["true", "1", "yes"])
     for column in ["regime_name", "flow_state", "whale_activity", "squeeze_risk"]:
-        df[column] = df[column].fillna("UNKNOWN").replace("", "UNKNOWN").astype(str)
+        fallback = "HISTORICAL_DERIVED" if column == "regime_name" else "UNKNOWN"
+        df[column] = df[column].fillna(fallback).replace({"": fallback, "UNKNOWN": fallback}).astype(str)
     df["win_loss"] = df["win_loss"].fillna("").astype(str).str.upper()
     return df
 

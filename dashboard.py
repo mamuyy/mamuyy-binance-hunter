@@ -67,6 +67,7 @@ def table_counts() -> dict[str, int]:
         "regime_logs",
         "ml_results",
         "walkforward_results",
+        "historical_outcomes",
     ]
     counts = {}
     try:
@@ -120,6 +121,38 @@ def metric_value(df: pd.DataFrame, column: str, default: Any = "-") -> Any:
         return default
     value = df.iloc[0].get(column, default)
     return default if pd.isna(value) else value
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_historical_outcomes(limit: int = 500) -> pd.DataFrame:
+    try:
+        with _connect() as connection:
+            df = pd.read_sql_query(
+                """
+                SELECT
+                    o.signal_timestamp AS timestamp,
+                    o.symbol,
+                    o.entry,
+                    o.exit_price AS current_price,
+                    o.pnl_pct AS pnl_percent,
+                    o.status,
+                    o.score,
+                    COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED') AS regime_name
+                FROM historical_outcomes o
+                LEFT JOIN signals s
+                  ON s.symbol = o.symbol
+                 AND s.timestamp = o.signal_timestamp
+                ORDER BY o.id DESC
+                LIMIT ?
+                """,
+                connection,
+                params=(limit,),
+            )
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+        return df
+    except Exception:
+        return _empty_df()
 
 
 def pnl_curve(trades: pd.DataFrame) -> pd.DataFrame:
@@ -213,6 +246,8 @@ def render_alerts(signals: pd.DataFrame, trades: pd.DataFrame, ml_results: pd.Da
 def main() -> None:
     signals = read_table("signals")
     trades = read_table("paper_trades")
+    if trades.empty:
+        trades = read_historical_outcomes()
     flows = read_table("flow_logs")
     regimes = read_table("regime_logs")
     ml_results = read_table("ml_results", limit=50)

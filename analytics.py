@@ -58,7 +58,7 @@ def _load_historical_outcomes(database_path: str = "mamuyy_hunter.db") -> pd.Dat
                     o.tp1,
                     o.tp2,
                     o.score,
-                    COALESCE(NULLIF(s.regime_name, ''), 'HISTORICAL_BACKTEST') AS regime_name,
+                    COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED') AS regime_name,
                     COALESCE(s.regime_score, 0) AS regime_score
                 FROM historical_outcomes o
                 LEFT JOIN signals s
@@ -100,7 +100,7 @@ def load_trades(path: str = "paper_trades.csv", database_path: str = "mamuyy_hun
 
     df["status"] = df.get("status", "").fillna("OPEN")
     df["symbol"] = df.get("symbol", "").fillna("")
-    df["regime_name"] = df["regime_name"].fillna("UNKNOWN").replace("", "UNKNOWN")
+    df["regime_name"] = df["regime_name"].fillna("HISTORICAL_DERIVED").replace({"": "HISTORICAL_DERIVED", "UNKNOWN": "HISTORICAL_DERIVED"})
     return df
 
 

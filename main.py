@@ -93,8 +93,16 @@ if "--optimize-filters" in sys.argv:
     _run_filter_optimizer(database_path=_optimizer_config.database_path)
     sys.exit(0)
 
+if "--fix-regime-labels" in sys.argv:
+    from config import config as _regime_fix_config
+    from regime_labeler import fix_historical_regime_labels as _fix_historical_regime_labels
+
+    _fix_historical_regime_labels(database_path=_regime_fix_config.database_path)
+    sys.exit(0)
+
 from config import config
 from outcome_labeler import label_historical_outcomes
+from regime_labeler import fix_historical_regime_labels
 from database import (
     backup_database,
     db_health_check,
@@ -369,6 +377,10 @@ def run_optimize_filters() -> Dict[str, Any]:
     return run_filter_optimizer(database_path=config.database_path)
 
 
+def run_fix_regime_labels() -> Dict[str, Any]:
+    return fix_historical_regime_labels(database_path=config.database_path)
+
+
 def run_db_check() -> Dict[str, Any]:
     health = db_health_check(database_url=database_url(), migrate_csv=True, backup=False)
     backup_path = ""
@@ -577,6 +589,11 @@ def parse_args() -> argparse.Namespace:
         help="Cari filter historis terbaik dari historical_outcomes.",
     )
     parser.add_argument(
+        "--fix-regime-labels",
+        action="store_true",
+        help="Isi regime label historis yang masih kosong/UNKNOWN.",
+    )
+    parser.add_argument(
         "--days",
         type=int,
         default=7,
@@ -589,6 +606,8 @@ if __name__ == "__main__":
     args = parse_args()
     if args.label_outcomes:
         run_label_outcomes(days=args.days)
+    elif args.fix_regime_labels:
+        run_fix_regime_labels()
     elif args.optimize_filters:
         run_optimize_filters()
     elif args.backfill:

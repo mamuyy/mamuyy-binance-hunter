@@ -64,7 +64,7 @@ def _historical_dataset(database_path: str = "mamuyy_hunter.db") -> pd.DataFrame
             s.breakout,
             s.liquidity_sweep,
             s.regime_score,
-            s.regime_name,
+            COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED') AS regime_name,
             f.funding_zscore,
             f.oi_expansion_rate,
             f.taker_delta,
@@ -117,7 +117,8 @@ def _prepare_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
     for column in CATEGORICAL_FEATURES:
         if column not in dataset.columns:
             dataset[column] = "UNKNOWN"
-        dataset[column] = dataset[column].fillna("UNKNOWN").replace("", "UNKNOWN").astype(str)
+        fallback = "HISTORICAL_DERIVED" if column == "regime_name" else "UNKNOWN"
+        dataset[column] = dataset[column].fillna(fallback).replace({"": fallback, "UNKNOWN": fallback}).astype(str)
     if "timestamp" in dataset.columns:
         dataset["timestamp"] = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
     dataset["target"] = dataset.get("status", "").apply(_status)

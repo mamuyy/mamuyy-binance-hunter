@@ -509,6 +509,28 @@ Output:
 
 Optimizer ini hanya research/backtest filtering. Tidak mengubah live strategy, tidak membuat order, dan tidak menghapus DB.
 
+## Historical Regime Label Fix
+
+Isi label regime historis yang masih kosong atau `UNKNOWN` tanpa menimpa label valid:
+
+```bash
+python main.py --fix-regime-labels
+```
+
+Command ini membaca `historical_outcomes`, `signals`, dan `flow_logs`, lalu mengisi `signals.regime_name` secara konservatif memakai konteks historis seperti breakout, liquidity sweep, volume spike, squeeze risk, funding z-score, OI expansion, pressure score, dan taker delta.
+
+Label turunan yang mungkin muncul:
+
+- `TRENDING BULL`
+- `TRENDING BEAR`
+- `SIDEWAYS / CHOPPY`
+- `HIGH VOLATILITY`
+- `BREAKOUT EXPANSION`
+- `MEAN REVERSION`
+- `HISTORICAL_DERIVED`
+
+Output command menampilkan `UNKNOWN before`, jumlah label yang diperbaiki, `UNKNOWN after`, dan distribusi regime. Ini hanya memperbaiki metadata riset historis; tidak mengubah live strategy, tidak auto trade, dan tidak menghapus DB.
+
 ## Regime-Specific Model Engine
 
 Jalankan analysis:
@@ -1033,6 +1055,7 @@ walkforward.py
 backfill.py
 outcome_labeler.py
 filter_optimizer.py
+regime_labeler.py
 regime_models.py
 portfolio_engine.py
 execution_engine.py
