@@ -26,6 +26,7 @@ Crypto scanner read-only untuk Binance USDT Futures. Project ini hanya memakai p
 - Execution simulation engine untuk simulasi slippage, spread, fee, fill, latency, dan liquidity impact.
 - Shadow live engine untuk real-time live simulation tanpa real order placement.
 - Orchestration engine untuk scheduler, health management, retry, dan failure isolation.
+- Risk manager circuit breaker untuk safety gate, drawdown guard, stale heartbeat guard, dan exposure multiplier.
 - Mode loop otomatis setiap 15 menit.
 - Error handling per symbol agar scanner tetap jalan walaupun ada symbol yang gagal dibaca.
 
@@ -893,6 +894,7 @@ Operasional cepat:
 
 ```bash
 python main.py --health
+python main.py --risk-check
 tail -f orchestrator_log.csv
 python main.py --db-check
 ```
@@ -902,6 +904,35 @@ Catatan keamanan VPS:
 - Jangan print `.env`.
 - Jangan commit token Telegram.
 - Engine tetap read-only/simulated; tidak ada auto trading.
+
+## Risk Manager / Circuit Breaker
+
+`risk_manager.py` adalah safety layer read-only untuk persiapan shadow execution. Modul ini tidak mengirim order dan tidak mengubah logic scanner.
+
+Jalankan check manual:
+
+```bash
+python main.py --risk-check
+```
+
+Output utama:
+
+- `SAFE`, `WATCH`, atau `HALT`.
+- `risk_score`.
+- `position_multiplier`.
+- alasan risk gate aktif.
+
+Gate default:
+
+- HALT jika ML accuracy di bawah `RISK_ML_ACCURACY_HALT`.
+- HALT jika drawdown mencapai `RISK_DRAWDOWN_HALT`; WATCH jika melewati `RISK_DRAWDOWN_WATCH`.
+- HALT jika heartbeat orchestrator stale lebih dari `RISK_STALE_MINUTES`.
+- SIDEWAYS / CHOPPY mengurangi multiplier 70%.
+- TRENDING BEAR melakukan risk halt konservatif.
+- HIGH VOLATILITY hanya diizinkan jika model confidence cukup.
+- Max open/shadow trade dan consecutive loss cooldown dibatasi oleh konfigurasi.
+
+Risk events dicatat ke table SQLite `risk_events`. Dashboard menampilkan bagian `Risk Engine Status` secara read-only tanpa menulis event baru.
 
 ## Database Engine
 
@@ -929,6 +960,8 @@ Tables:
 - `historical_klines`
 - `historical_funding`
 - `historical_open_interest`
+- `historical_outcomes`
+- `risk_events`
 
 Yang dilakukan `--db-check`:
 
@@ -1033,6 +1066,14 @@ ORCHESTRATOR_PROFILE=NORMAL
 LOG_RETENTION_DAYS=14
 DB_RETENTION_DAYS=90
 MAX_LOG_BYTES=5000000
+RISK_ML_ACCURACY_HALT=45
+RISK_DRAWDOWN_HALT=-20
+RISK_DRAWDOWN_WATCH=-10
+RISK_STALE_MINUTES=10
+RISK_MAX_OPEN_TRADES=10
+RISK_LOSS_COOLDOWN=3
+RISK_BASE_POSITION_MULTIPLIER=1.0
+RISK_HIGH_VOL_CONFIDENCE_MIN=55
 ```
 
 ## Struktur File
@@ -1061,6 +1102,7 @@ portfolio_engine.py
 execution_engine.py
 shadow_engine.py
 orchestrator.py
+risk_manager.py
 symbol_tags.json
 requirements.txt
 README.md

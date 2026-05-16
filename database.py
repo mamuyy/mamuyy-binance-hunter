@@ -202,6 +202,24 @@ SCHEMAS = {
             exit_reason TEXT
         )
     """,
+    "risk_events": """
+        CREATE TABLE IF NOT EXISTS risk_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            status TEXT,
+            safe INTEGER,
+            risk_score REAL,
+            position_multiplier REAL,
+            reasons_json TEXT,
+            ml_accuracy REAL,
+            model_confidence REAL,
+            drawdown REAL,
+            regime_name TEXT,
+            heartbeat_age_minutes REAL,
+            open_trades INTEGER,
+            consecutive_losses INTEGER
+        )
+    """,
 }
 
 
@@ -229,6 +247,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_historical_outcomes_signal_timestamp ON historical_outcomes(signal_timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_historical_outcomes_symbol ON historical_outcomes(symbol)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_outcomes_unique ON historical_outcomes(symbol, signal_timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_risk_events_timestamp ON risk_events(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_risk_events_status ON risk_events(status)",
 ]
 
 

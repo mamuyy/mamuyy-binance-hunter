@@ -47,6 +47,36 @@ if "--health" in sys.argv:
     print(f"Table Counts: {_counts}")
     sys.exit(0)
 
+if "--risk-check" in sys.argv:
+    from config import config as _risk_config
+    from risk_manager import RiskConfig as _RiskConfig
+    from risk_manager import check_execution_safety as _check_execution_safety
+
+    _risk_result = _check_execution_safety(
+        db_path=_risk_config.database_path,
+        orchestrator_log_path="orchestrator_log.csv",
+        model_output_path="model_output.json",
+        config=_RiskConfig(
+            ml_accuracy_halt=_risk_config.risk_ml_accuracy_halt,
+            drawdown_halt=_risk_config.risk_drawdown_halt,
+            drawdown_watch=_risk_config.risk_drawdown_watch,
+            stale_minutes=_risk_config.risk_stale_minutes,
+            max_open_trades=_risk_config.risk_max_open_trades,
+            loss_cooldown=_risk_config.risk_loss_cooldown,
+            base_position_multiplier=_risk_config.risk_base_position_multiplier,
+            high_vol_confidence_min=_risk_config.risk_high_vol_confidence_min,
+        ),
+        log_event=True,
+    )
+    print("RISK CHECK")
+    print(f"Safe: {_risk_result['safe']}")
+    print(f"Status: {_risk_result['status']}")
+    print(f"Risk Score: {_risk_result['risk_score']}")
+    print(f"Position Multiplier: {_risk_result['position_multiplier']}")
+    print(f"Reasons: {_risk_result['reasons'] or ['none']}")
+    print(f"Metrics: {_risk_result['metrics']}")
+    sys.exit(0)
+
 if "--label-outcomes" in sys.argv:
     from config import config as _label_config
     from outcome_labeler import label_historical_outcomes as _label_historical_outcomes
@@ -126,6 +156,7 @@ from orchestrator import run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from report_generator import generate_performance_report
+from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
 from shadow_engine import run_shadow_live
 from telegram import (
@@ -348,6 +379,37 @@ def run_health() -> Dict[str, Any]:
     print(f"Uptime Seconds: {status['uptime_seconds']}")
     print(f"Table Counts: {status['table_counts']}")
     return status
+
+
+def risk_config_from_env() -> RiskConfig:
+    return RiskConfig(
+        ml_accuracy_halt=config.risk_ml_accuracy_halt,
+        drawdown_halt=config.risk_drawdown_halt,
+        drawdown_watch=config.risk_drawdown_watch,
+        stale_minutes=config.risk_stale_minutes,
+        max_open_trades=config.risk_max_open_trades,
+        loss_cooldown=config.risk_loss_cooldown,
+        base_position_multiplier=config.risk_base_position_multiplier,
+        high_vol_confidence_min=config.risk_high_vol_confidence_min,
+    )
+
+
+def run_risk_check() -> Dict[str, Any]:
+    result = check_execution_safety(
+        db_path=config.database_path,
+        orchestrator_log_path="orchestrator_log.csv",
+        model_output_path="model_output.json",
+        config=risk_config_from_env(),
+        log_event=True,
+    )
+    print("RISK CHECK")
+    print(f"Safe: {result['safe']}")
+    print(f"Status: {result['status']}")
+    print(f"Risk Score: {result['risk_score']}")
+    print(f"Position Multiplier: {result['position_multiplier']}")
+    print(f"Reasons: {result['reasons'] or ['none']}")
+    print(f"Metrics: {result['metrics']}")
+    return result
 
 
 def run_backfill(days: int) -> Dict[str, Any]:
@@ -574,6 +636,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan lightweight runtime health monitor.",
     )
     parser.add_argument(
+        "--risk-check",
+        action="store_true",
+        help="Jalankan risk manager circuit breaker check.",
+    )
+    parser.add_argument(
         "--backfill",
         action="store_true",
         help="Isi SQLite dengan historical Binance Futures data.",
@@ -614,6 +681,8 @@ if __name__ == "__main__":
         run_backfill(days=args.days)
     elif args.health:
         run_health()
+    elif args.risk_check:
+        run_risk_check()
     elif args.orchestrator:
         run_orchestrator_command()
     elif args.shadow:

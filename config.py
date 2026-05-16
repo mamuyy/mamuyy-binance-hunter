@@ -69,6 +69,14 @@ class Config:
     log_retention_days: int = _get_int("LOG_RETENTION_DAYS", 14)
     db_retention_days: int = _get_int("DB_RETENTION_DAYS", 90)
     max_log_bytes: int = _get_int("MAX_LOG_BYTES", 5_000_000)
+    risk_ml_accuracy_halt: float = _get_float("RISK_ML_ACCURACY_HALT", 45.0)
+    risk_drawdown_halt: float = _get_float("RISK_DRAWDOWN_HALT", -20.0)
+    risk_drawdown_watch: float = _get_float("RISK_DRAWDOWN_WATCH", -10.0)
+    risk_stale_minutes: int = _get_int("RISK_STALE_MINUTES", 10)
+    risk_max_open_trades: int = _get_int("RISK_MAX_OPEN_TRADES", 10)
+    risk_loss_cooldown: int = _get_int("RISK_LOSS_COOLDOWN", 3)
+    risk_base_position_multiplier: float = _get_float("RISK_BASE_POSITION_MULTIPLIER", 1.0)
+    risk_high_vol_confidence_min: float = _get_float("RISK_HIGH_VOL_CONFIDENCE_MIN", 55.0)
 
     @property
     def telegram_enabled(self) -> bool:

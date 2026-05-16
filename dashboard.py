@@ -13,6 +13,7 @@ from database import (
     db_health_check,
     init_db,
 )
+from risk_manager import RiskConfig, check_execution_safety
 
 
 DB_PATH = config.database_url or config.database_path
@@ -76,6 +77,40 @@ def table_counts() -> dict[str, int]:
     return counts
 
 
+def risk_config_from_env() -> RiskConfig:
+    return RiskConfig(
+        ml_accuracy_halt=config.risk_ml_accuracy_halt,
+        drawdown_halt=config.risk_drawdown_halt,
+        drawdown_watch=config.risk_drawdown_watch,
+        stale_minutes=config.risk_stale_minutes,
+        max_open_trades=config.risk_max_open_trades,
+        loss_cooldown=config.risk_loss_cooldown,
+        base_position_multiplier=config.risk_base_position_multiplier,
+        high_vol_confidence_min=config.risk_high_vol_confidence_min,
+    )
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_risk_status() -> dict[str, Any]:
+    try:
+        return check_execution_safety(
+            db_path=config.database_path,
+            orchestrator_log_path="orchestrator_log.csv",
+            model_output_path="model_output.json",
+            config=risk_config_from_env(),
+            log_event=False,
+        )
+    except Exception as exc:
+        return {
+            "safe": False,
+            "status": "WATCH",
+            "reasons": [f"Risk engine unavailable: {exc}"],
+            "position_multiplier": 0.0,
+            "risk_score": 0,
+            "metrics": {},
+        }
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -116,6 +151,47 @@ def metric_value(df: pd.DataFrame, column: str, default: Any = "-") -> Any:
         return default
     value = df.iloc[0].get(column, default)
     return default if pd.isna(value) else value
+
+
+def render_risk_engine_status(risk_status: dict[str, Any]) -> None:
+    status = str(risk_status.get("status", "WATCH")).upper()
+    metrics = risk_status.get("metrics", {}) or {}
+    badge_color = "GREEN" if status == "SAFE" else "YELLOW" if status == "WATCH" else "RED"
+
+    st.header("Risk Engine Status")
+    status_badge("Circuit Breaker", badge_color, f" {status}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Risk Score", risk_status.get("risk_score", 0))
+    col2.metric("Position Multiplier", f"{float(risk_status.get('position_multiplier', 0.0)):.2f}x")
+    col3.metric("Drawdown", f"{float(metrics.get('drawdown', 0.0)):.2f}%")
+    col4.metric("Heartbeat Age", f"{float(metrics.get('heartbeat_age_minutes', 0.0)):.1f}m")
+
+    reasons = risk_status.get("reasons") or ["No active risk warnings."]
+    if status == "HALT":
+        st.error("RISK HALT")
+    elif status == "WATCH":
+        st.warning("SAFE MODE / WATCH")
+    else:
+        st.success("SAFE MODE")
+
+    ml_accuracy = float(metrics.get("ml_accuracy", 0.0))
+    regime_name = str(metrics.get("regime_name", "UNKNOWN")).upper()
+    heartbeat_age = float(metrics.get("heartbeat_age_minutes", 0.0))
+    drawdown = float(metrics.get("drawdown", 0.0))
+    if ml_accuracy < config.risk_ml_accuracy_halt:
+        st.warning("MODEL UNSTABLE")
+    if regime_name in {"SIDEWAYS / CHOPPY", "TRENDING BEAR", "HIGH VOLATILITY"}:
+        st.warning("HOSTILE REGIME")
+    if heartbeat_age > config.risk_stale_minutes:
+        st.warning("Stale runtime heartbeat detected.")
+    if drawdown <= config.risk_drawdown_watch:
+        st.warning("Drawdown warning active.")
+
+    st.dataframe(
+        pd.DataFrame({"reason": reasons}),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 @st.cache_data(ttl=REFRESH_SECONDS)
@@ -440,6 +516,7 @@ def main() -> None:
     ml_results = read_table("ml_results", limit=50)
     walkforward = read_table("walkforward_results")
     counts = table_counts()
+    risk_status = read_risk_status()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -465,6 +542,8 @@ def main() -> None:
     with col4:
         st.metric("Latest Walkforward Run", latest_timestamp(walkforward))
         st.dataframe(pd.DataFrame([counts]), use_container_width=True)
+
+    render_risk_engine_status(risk_status)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
