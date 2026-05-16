@@ -10,13 +10,8 @@ import streamlit as st
 
 from config import config
 from database import (
-    best_regime,
-    best_symbol,
     db_health_check,
-    feature_profitability,
     init_db,
-    top_profitable_setup,
-    worst_symbol,
 )
 
 
@@ -209,6 +204,198 @@ def query_helper_df(fn) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def _safe_numeric(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce").fillna(0.0)
+
+
+def _with_winrate(df: pd.DataFrame, pnl_column: str = "pnl_pct") -> pd.DataFrame:
+    if df.empty or pnl_column not in df.columns:
+        return df
+    temp = df.copy()
+    temp["win"] = (_safe_numeric(temp[pnl_column]) > 0).astype(int)
+    return temp
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_symbol_performance(limit: int = 20) -> pd.DataFrame:
+    try:
+        with _connect() as connection:
+            return pd.read_sql_query(
+                """
+                SELECT
+                    symbol,
+                    COUNT(*) AS trades,
+                    AVG(pnl_pct) AS avg_pnl,
+                    SUM(pnl_pct) AS total_pnl,
+                    AVG(CASE WHEN pnl_pct > 0 THEN 1.0 ELSE 0.0 END) * 100 AS winrate
+                FROM historical_outcomes
+                GROUP BY symbol
+                ORDER BY total_pnl DESC
+                LIMIT ?
+                """,
+                connection,
+                params=(limit,),
+            )
+    except Exception:
+        return _empty_df()
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_worst_symbol_performance(limit: int = 20) -> pd.DataFrame:
+    try:
+        with _connect() as connection:
+            return pd.read_sql_query(
+                """
+                SELECT
+                    symbol,
+                    COUNT(*) AS trades,
+                    AVG(pnl_pct) AS avg_pnl,
+                    SUM(pnl_pct) AS total_pnl,
+                    AVG(CASE WHEN pnl_pct > 0 THEN 1.0 ELSE 0.0 END) * 100 AS winrate
+                FROM historical_outcomes
+                GROUP BY symbol
+                ORDER BY total_pnl ASC
+                LIMIT ?
+                """,
+                connection,
+                params=(limit,),
+            )
+    except Exception:
+        return _empty_df()
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_regime_performance(limit: int = 20) -> pd.DataFrame:
+    try:
+        with _connect() as connection:
+            return pd.read_sql_query(
+                """
+                SELECT
+                    COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED') AS regime_name,
+                    COUNT(*) AS trades,
+                    AVG(o.pnl_pct) AS avg_pnl,
+                    SUM(o.pnl_pct) AS total_pnl,
+                    AVG(CASE WHEN o.pnl_pct > 0 THEN 1.0 ELSE 0.0 END) * 100 AS winrate
+                FROM historical_outcomes o
+                LEFT JOIN signals s
+                  ON s.symbol = o.symbol
+                 AND s.timestamp = o.signal_timestamp
+                GROUP BY COALESCE(NULLIF(NULLIF(s.regime_name, ''), 'UNKNOWN'), 'HISTORICAL_DERIVED')
+                ORDER BY avg_pnl DESC
+                LIMIT ?
+                """,
+                connection,
+                params=(limit,),
+            )
+    except Exception:
+        return _empty_df()
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_feature_profitability_from_history() -> pd.DataFrame:
+    try:
+        with _connect() as connection:
+            df = pd.read_sql_query(
+                """
+                SELECT
+                    o.pnl_pct,
+                    s.score,
+                    s.volume_spike,
+                    s.breakout,
+                    s.liquidity_sweep,
+                    f.funding_zscore,
+                    f.oi_expansion_rate,
+                    f.taker_delta,
+                    f.pressure_score,
+                    f.squeeze_risk,
+                    f.whale_activity
+                FROM historical_outcomes o
+                LEFT JOIN signals s
+                  ON s.symbol = o.symbol
+                 AND s.timestamp = o.signal_timestamp
+                LEFT JOIN flow_logs f
+                  ON f.symbol = o.symbol
+                 AND f.timestamp = o.signal_timestamp
+                """,
+                connection,
+            )
+    except Exception:
+        return _empty_df()
+    if df.empty or "pnl_pct" not in df.columns:
+        return _empty_df()
+
+    for column in ["pnl_pct", "score", "volume_spike", "funding_zscore", "oi_expansion_rate", "taker_delta", "pressure_score"]:
+        if column in df.columns:
+            df[column] = _safe_numeric(df[column])
+    for column in ["breakout", "liquidity_sweep"]:
+        if column in df.columns:
+            df[column] = df[column].astype(str).str.lower().isin(["true", "1", "yes"])
+
+    checks = [
+        ("score >= 75", df["score"] >= 75),
+        ("score >= 85", df["score"] >= 85),
+        ("volume_spike >= 2", df["volume_spike"] >= 2),
+        ("volume_spike >= 3", df["volume_spike"] >= 3),
+        ("breakout = true", df["breakout"]),
+        ("liquidity_sweep = true", df["liquidity_sweep"]),
+        ("funding_zscore abs < 1", df["funding_zscore"].abs() < 1),
+        ("oi_expansion_rate > 0", df["oi_expansion_rate"] > 0),
+        ("taker_delta > 0.10", df["taker_delta"] > 0.10),
+        ("pressure_score >= 60", df["pressure_score"] >= 60),
+        ("squeeze_risk = LOW", df["squeeze_risk"].fillna("").astype(str).str.upper() == "LOW"),
+        ("whale accumulation", df["whale_activity"].fillna("").astype(str).str.upper().str.contains("ACCUMULATION")),
+    ]
+
+    rows = []
+    for feature, mask in checks:
+        subset = df[mask.fillna(False) if hasattr(mask, "fillna") else mask]
+        if subset.empty:
+            continue
+        pnl = _safe_numeric(subset["pnl_pct"])
+        rows.append(
+            {
+                "feature": feature,
+                "trades": int(len(subset)),
+                "winrate": float((pnl > 0).mean() * 100),
+                "avg_pnl": float(pnl.mean()),
+                "total_pnl": float(pnl.sum()),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["avg_pnl", "trades"], ascending=[False, False]).head(20)
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_optimizer_setups(path: str = "optimizer_results.csv", limit: int = 20) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return _empty_df()
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return _empty_df()
+    if df.empty:
+        return _empty_df()
+    if "profit_factor" in df.columns:
+        df["profit_factor_numeric"] = pd.to_numeric(
+            df["profit_factor"].replace("inf", float("inf")),
+            errors="coerce",
+        ).fillna(0.0)
+        df = df.sort_values(["profit_factor_numeric", "expectancy", "trade_count"], ascending=[False, False, False])
+        df = df.drop(columns=["profit_factor_numeric"])
+    columns = [
+        column
+        for column in ["setup", "profit_factor", "winrate", "trade_count", "avg_pnl", "max_drawdown", "expectancy", "regime"]
+        if column in df.columns
+    ]
+    return df[columns].head(limit)
+
+
+def show_dataframe_or_info(df: pd.DataFrame, message: str) -> None:
+    if df.empty:
+        st.info(message)
+    else:
+        st.dataframe(df, use_container_width=True)
+
+
 def render_alerts(signals: pd.DataFrame, trades: pd.DataFrame, ml_results: pd.DataFrame) -> None:
     alerts = []
     try:
@@ -355,28 +542,65 @@ def main() -> None:
         st.dataframe(walkforward[["fold", "best_regime", "worst_regime"]].head(50), use_container_width=True)
 
     st.header("8. DATABASE ANALYTICS")
+    symbol_perf = read_symbol_performance()
+    worst_symbol_perf = read_worst_symbol_performance()
+    regime_perf = read_regime_performance()
+    feature_profit = read_feature_profitability_from_history()
+    optimizer_setups = read_optimizer_setups()
+
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Top Symbols")
-        if not trades.empty and "symbol" in trades.columns:
-            top_symbols = trades["symbol"].value_counts().reset_index()
-            top_symbols.columns = ["symbol", "count"]
-            st.dataframe(top_symbols.head(20), use_container_width=True)
-        else:
-            st.info("No symbol data yet.")
+        show_dataframe_or_info(
+            symbol_perf,
+            "No symbol performance yet. Run historical backfill and outcome labeling first.",
+        )
+
         st.subheader("Top Profitable Setup")
-        st.dataframe(query_helper_df(top_profitable_setup), use_container_width=True)
+        if optimizer_setups.empty and not regime_perf.empty:
+            fallback_setup = regime_perf.head(10).copy()
+            fallback_setup["setup"] = "regime=" + fallback_setup["regime_name"].astype(str)
+            optimizer_fallback_cols = ["setup", "winrate", "trades", "avg_pnl", "total_pnl"]
+            show_dataframe_or_info(fallback_setup[optimizer_fallback_cols], "No optimizer setup data yet.")
+        else:
+            show_dataframe_or_info(
+                optimizer_setups,
+                "No optimizer setup data yet. Run python main.py --optimize-filters.",
+            )
+
         st.subheader("Best Regime")
-        st.dataframe(query_helper_df(best_regime), use_container_width=True)
+        show_dataframe_or_info(
+            regime_perf.head(10),
+            "No regime performance yet. Run python main.py --fix-regime-labels after historical labeling.",
+        )
+
     with col2:
         st.subheader("Best / Worst Symbol")
-        st.dataframe(pd.concat([query_helper_df(best_symbol), query_helper_df(worst_symbol)]), use_container_width=True)
+        if symbol_perf.empty and worst_symbol_perf.empty:
+            st.info("No symbol PnL ranking yet.")
+        else:
+            best_worst = pd.concat(
+                [
+                    symbol_perf.head(5).assign(side="BEST"),
+                    worst_symbol_perf.head(5).assign(side="WORST"),
+                ],
+                ignore_index=True,
+            )
+            st.dataframe(best_worst, use_container_width=True)
+
         st.subheader("Feature Profitability")
-        st.dataframe(query_helper_df(feature_profitability), use_container_width=True)
+        if feature_profit.empty:
+            importance_fallback = load_feature_importance(ml_results).head(20)
+            show_dataframe_or_info(
+                importance_fallback,
+                "No historical feature profitability yet. Run outcome labeling and ML analysis.",
+            )
+        else:
+            st.dataframe(feature_profit, use_container_width=True)
+
         st.subheader("Regime Profitability")
-        if not trades.empty and "regime_name" in trades.columns:
-            regime_profit = trades.groupby("regime_name", dropna=False)["pnl_percent"].mean().reset_index()
-            safe_plot_bar(regime_profit, "regime_name", "pnl_percent", "Regime Profitability")
+        if not regime_perf.empty:
+            safe_plot_bar(regime_perf, "regime_name", "avg_pnl", "Regime Profitability")
         else:
             st.info("No regime profitability data yet.")
 
