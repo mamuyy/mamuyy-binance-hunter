@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List
 
+from database import insert_runtime_heartbeat
+
 
 SCHEDULER_PROFILES = {
     "FAST": {"scanner": 60, "regime": 60, "flow": 120, "ML": 3600, "walkforward": 7200, "portfolio": 300, "execution": 300, "shadow": 120},
@@ -46,6 +48,31 @@ def _append_log(row: Dict[str, Any], path: str) -> None:
                 writer.writeheader()
             writer.writerow({field: row.get(field, "") for field in LOG_FIELDS})
     except OSError:
+        return
+
+
+def _record_runtime_heartbeat(
+    db_path: str,
+    state: str,
+    message: str,
+    scheduler: str,
+    system_health_score: float | None = None,
+) -> None:
+    uptime = uptime_seconds()
+    try:
+        insert_runtime_heartbeat(
+            {
+                "timestamp": _now(),
+                "source": "orchestrator",
+                "state": state,
+                "system_health_score": system_health_score,
+                "scheduler": scheduler,
+                "uptime_seconds": uptime,
+                "message": message,
+            },
+            db_path,
+        )
+    except Exception:
         return
 
 
@@ -240,6 +267,12 @@ def run_orchestrator(
             },
             log_path,
         )
+        _record_runtime_heartbeat(
+            db_path,
+            "IDLE",
+            f"cycle={cycle + 1};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
+            scheduler,
+        )
 
     failures_high = sum(engine.failure_count for engine in engines.values()) >= 3
     scheduler = _degrade_profile(scheduler, db_seconds > 0.5, failures_high, memory_high)
@@ -260,6 +293,13 @@ def run_orchestrator(
             "message": f"system_health_score={health};scheduler={scheduler};uptime={uptime_seconds()}s",
         },
         log_path,
+    )
+    _record_runtime_heartbeat(
+        db_path,
+        "WARNING" if failed else "IDLE",
+        f"system_health_score={health};scheduler={scheduler};uptime={uptime_seconds()}s",
+        scheduler,
+        health,
     )
     return {
         "system_health_score": health,

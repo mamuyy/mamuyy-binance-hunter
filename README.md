@@ -881,7 +881,7 @@ python main.py --health
 
 Runtime stabilization:
 
-- Orchestrator menulis heartbeat setiap cycle ke `orchestrator_log.csv`.
+- Orchestrator menulis heartbeat setiap cycle ke table SQLite `runtime_heartbeats` dan tetap menulis fallback CSV ke `orchestrator_log.csv`.
 - Setiap engine dijalankan terisolasi; crash satu engine tidak mematikan orchestrator.
 - Auto retry dan restart simulation tersedia per engine.
 - Binance public request memakai retry ringan untuk gangguan sementara.
@@ -949,7 +949,9 @@ python main.py --health-guardian-once
 Yang dicek:
 
 - SQLite health.
-- Heartbeat orchestrator di `orchestrator_log.csv`.
+- Heartbeat orchestrator di table SQLite `runtime_heartbeats`.
+- Fallback heartbeat dari `orchestrator_log.csv`.
+- Fallback aktivitas dari `flow_logs` atau `regime_logs` jika heartbeat hilang tetapi engine masih update dalam 10 menit.
 - Stale runtime jika heartbeat lebih lama dari `HEALTH_GUARDIAN_STALE_MINUTES`.
 - Session `tmux` `hunter`.
 - Session `tmux` `dashboard`.
@@ -961,6 +963,7 @@ Perilaku:
 - Jika `dashboard` hilang, guardian hanya log warning secara default.
 - Dashboard restart hanya aktif jika `HEALTH_GUARDIAN_RESTART_DASHBOARD=true`.
 - Semua event warning/stale dicatat ke table `risk_events`.
+- Output menampilkan `Heartbeat Source`, misalnya `heartbeat_table`, `fallback_flow_logs`, atau `fallback_regime_logs`.
 
 Contoh konfigurasi aman:
 
@@ -1002,6 +1005,7 @@ Tables:
 - `historical_open_interest`
 - `historical_outcomes`
 - `risk_events`
+- `runtime_heartbeats`
 
 Yang dilakukan `--db-check`:
 

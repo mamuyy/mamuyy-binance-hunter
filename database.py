@@ -220,6 +220,18 @@ SCHEMAS = {
             consecutive_losses INTEGER
         )
     """,
+    "runtime_heartbeats": """
+        CREATE TABLE IF NOT EXISTS runtime_heartbeats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            source TEXT,
+            state TEXT,
+            system_health_score REAL,
+            scheduler TEXT,
+            uptime_seconds REAL,
+            message TEXT
+        )
+    """,
 }
 
 
@@ -249,6 +261,8 @@ INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_historical_outcomes_unique ON historical_outcomes(symbol, signal_timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_risk_events_timestamp ON risk_events(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_risk_events_status ON risk_events(status)",
+    "CREATE INDEX IF NOT EXISTS idx_runtime_heartbeats_timestamp ON runtime_heartbeats(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_runtime_heartbeats_source ON runtime_heartbeats(source)",
 ]
 
 
@@ -381,6 +395,10 @@ def insert_walkforward_rows(rows: Iterable[Dict[str, Any]], database_url: str = 
         insert_row("walkforward_results", {"timestamp": _now(), **row}, database_url)
         count += 1
     return count
+
+
+def insert_runtime_heartbeat(heartbeat: Dict[str, Any], database_url: str = "") -> None:
+    insert_row("runtime_heartbeats", heartbeat, database_url)
 
 
 def query(table: str, limit: int = 50, database_url: str = "") -> List[Dict[str, Any]]:

@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 if "--health" in sys.argv:
     from config import config as _health_config
     from database import db_health_check as _db_health_check
+    from health_guardian import resolve_runtime_heartbeat as _resolve_runtime_heartbeat
 
     _health = _db_health_check(
         database_url=_health_config.database_url or _health_config.database_path,
@@ -18,21 +19,30 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
                     _counts[_table] = 0
     except sqlite3.Error:
         pass
-    _latest_heartbeat = "-"
+    _heartbeat = _resolve_runtime_heartbeat(
+        _health_config.database_path,
+        "orchestrator_log.csv",
+        _health_config.health_guardian_stale_minutes,
+    )
+    _latest_heartbeat = _heartbeat.get("timestamp") or "-"
+    _heartbeat_source = _heartbeat.get("source") or "-"
     _latest_uptime = "0"
-    if os.path.exists("orchestrator_log.csv"):
+    if _heartbeat.get("message"):
+        for _part in str(_heartbeat.get("message", "")).split(";"):
+            if _part.startswith("uptime="):
+                _latest_uptime = _part.replace("uptime=", "").replace("s", "")
+    elif os.path.exists("orchestrator_log.csv"):
         try:
             with open("orchestrator_log.csv", newline="", encoding="utf-8") as _log_file:
                 _rows = [row for row in csv.DictReader(_log_file) if row.get("engine") == "heartbeat"]
                 if _rows:
-                    _latest_heartbeat = _rows[-1].get("timestamp", "-")
                     _message = _rows[-1].get("message", "")
                     for _part in _message.split(";"):
                         if _part.startswith("uptime="):
@@ -43,6 +53,7 @@ if "--health" in sys.argv:
     print(f"OK: {bool(_health.get('ok'))}")
     print(f"Database: {_health_config.database_path}")
     print(f"Latest Heartbeat: {_latest_heartbeat}")
+    print(f"Heartbeat Source: {_heartbeat_source}")
     print(f"Latest Uptime Seconds: {_latest_uptime}")
     print(f"Table Counts: {_counts}")
     sys.exit(0)
@@ -167,7 +178,7 @@ from database import (
 )
 from execution_engine import run_execution_simulation
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
-from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result
+from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result, resolve_runtime_heartbeat
 from logger import log_signal
 from market_regime import (
     MarketRegimeEngine,
@@ -370,7 +381,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -378,27 +389,48 @@ def run_health() -> Dict[str, Any]:
     except sqlite3.Error:
         pass
 
-    latest_heartbeat = "-"
-    if os.path.exists("orchestrator_log.csv"):
+    heartbeat = resolve_runtime_heartbeat(
+        config.database_path,
+        "orchestrator_log.csv",
+        config.health_guardian_stale_minutes,
+    )
+    latest_heartbeat = heartbeat.get("timestamp") or "-"
+    heartbeat_source = heartbeat.get("source") or "-"
+    latest_uptime = "0"
+    if heartbeat.get("message"):
+        for part in str(heartbeat.get("message", "")).split(";"):
+            if part.startswith("uptime="):
+                latest_uptime = part.replace("uptime=", "").replace("s", "")
+                break
+    elif os.path.exists("orchestrator_log.csv"):
         try:
             with open("orchestrator_log.csv", newline="", encoding="utf-8") as log_file:
                 rows = [row for row in csv.DictReader(log_file) if row.get("engine") == "heartbeat"]
                 if rows:
-                    latest_heartbeat = rows[-1].get("timestamp", "-")
+                    latest_uptime = "0"
+                    message = rows[-1].get("message", "")
+                    for part in message.split(";"):
+                        if part.startswith("uptime="):
+                            latest_uptime = part.replace("uptime=", "").replace("s", "")
         except OSError:
             latest_heartbeat = "-"
+            latest_uptime = "0"
+    else:
+        latest_uptime = "0"
 
     status = {
         "ok": bool(health.get("ok")),
         "database": config.database_path,
         "table_counts": table_counts,
         "latest_heartbeat": latest_heartbeat,
-        "uptime_seconds": uptime_seconds(),
+        "heartbeat_source": heartbeat_source,
+        "uptime_seconds": latest_uptime,
     }
     print("RUNTIME HEALTH")
     print(f"OK: {status['ok']}")
     print(f"Database: {status['database']}")
     print(f"Latest Heartbeat: {status['latest_heartbeat']}")
+    print(f"Heartbeat Source: {status['heartbeat_source']}")
     print(f"Uptime Seconds: {status['uptime_seconds']}")
     print(f"Table Counts: {status['table_counts']}")
     return status

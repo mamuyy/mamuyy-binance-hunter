@@ -43,7 +43,7 @@ def _parse_timestamp(value: Any) -> datetime | None:
 
 
 def _latest_heartbeat(log_path: str) -> Dict[str, Any]:
-    latest: Dict[str, Any] = {"timestamp": "", "age_minutes": 9999.0, "message": ""}
+    latest: Dict[str, Any] = {"timestamp": "", "age_minutes": 9999.0, "message": "", "source": "orchestrator_log"}
     if not os.path.exists(log_path):
         return latest
 
@@ -60,6 +60,83 @@ def _latest_heartbeat(log_path: str) -> Dict[str, Any]:
     if timestamp:
         latest["age_minutes"] = round((datetime.now(timezone.utc) - timestamp).total_seconds() / 60, 2)
     return latest
+
+
+def _age_minutes(timestamp_text: str) -> float:
+    timestamp = _parse_timestamp(timestamp_text)
+    if not timestamp:
+        return 9999.0
+    return round((datetime.now(timezone.utc) - timestamp).total_seconds() / 60, 2)
+
+
+def _latest_db_heartbeat(database_path: str) -> Dict[str, Any]:
+    latest: Dict[str, Any] = {"timestamp": "", "age_minutes": 9999.0, "message": "", "source": "heartbeat_table"}
+    try:
+        init_db(database_path)
+        with sqlite3.connect(database_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                """
+                SELECT timestamp, message
+                FROM runtime_heartbeats
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if not row:
+        return latest
+    latest["timestamp"] = row["timestamp"] or ""
+    latest["message"] = row["message"] or ""
+    latest["age_minutes"] = _age_minutes(latest["timestamp"])
+    return latest
+
+
+def _latest_activity(database_path: str, table: str, source: str) -> Dict[str, Any]:
+    latest: Dict[str, Any] = {"timestamp": "", "age_minutes": 9999.0, "message": "", "source": source}
+    try:
+        init_db(database_path)
+        with sqlite3.connect(database_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                f"SELECT timestamp FROM {table} ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+    except sqlite3.Error:
+        row = None
+    if not row:
+        return latest
+    latest["timestamp"] = row["timestamp"] or ""
+    latest["message"] = f"fallback activity from {table}"
+    latest["age_minutes"] = _age_minutes(latest["timestamp"])
+    return latest
+
+
+def resolve_runtime_heartbeat(
+    database_path: str,
+    log_path: str,
+    stale_minutes: int = 10,
+) -> Dict[str, Any]:
+    candidates = [
+        _latest_db_heartbeat(database_path),
+        _latest_heartbeat(log_path),
+    ]
+    primary = next((item for item in candidates if item["timestamp"]), candidates[0])
+    primary_missing = not primary["timestamp"]
+    primary_stale = primary["age_minutes"] > stale_minutes
+
+    if primary_missing or primary_stale:
+        fallback_candidates = [
+            _latest_activity(database_path, "flow_logs", "fallback_flow_logs"),
+            _latest_activity(database_path, "regime_logs", "fallback_regime_logs"),
+        ]
+        recent_fallbacks = [
+            item for item in fallback_candidates if item["timestamp"] and item["age_minutes"] <= stale_minutes
+        ]
+        if recent_fallbacks:
+            return min(recent_fallbacks, key=lambda item: item["age_minutes"])
+
+    return primary
 
 
 def _tmux_available() -> bool:
@@ -169,12 +246,18 @@ def check_health_guardian_once(config: HealthGuardianConfig | None = None) -> Di
     if not db_health.get("ok"):
         reasons.append("SQLite health check failed")
 
-    heartbeat = _latest_heartbeat(guardian_config.orchestrator_log_path)
+    heartbeat = resolve_runtime_heartbeat(
+        guardian_config.database_path,
+        guardian_config.orchestrator_log_path,
+        guardian_config.stale_minutes,
+    )
     heartbeat_stale = heartbeat["age_minutes"] > guardian_config.stale_minutes
     if heartbeat_stale:
         reasons.append(
             f"Runtime heartbeat stale for {heartbeat['age_minutes']:.1f} minutes"
         )
+    elif str(heartbeat.get("source", "")).startswith("fallback_"):
+        reasons.append(f"Heartbeat table missing/stale; using {heartbeat['source']}")
 
     hunter_exists = _tmux_session_exists(guardian_config.hunter_session)
     dashboard_exists = _tmux_session_exists(guardian_config.dashboard_session)
@@ -223,6 +306,7 @@ def check_health_guardian_once(config: HealthGuardianConfig | None = None) -> Di
         "db_ok": bool(db_health.get("ok")),
         "heartbeat_timestamp": heartbeat["timestamp"] or "-",
         "heartbeat_age_minutes": heartbeat["age_minutes"],
+        "heartbeat_source": heartbeat.get("source", "-"),
         "tmux_available": tmux_available,
         "hunter_session": "RUNNING" if hunter_exists else "MISSING",
         "dashboard_session": "RUNNING" if dashboard_exists else "MISSING",
@@ -248,6 +332,7 @@ def format_health_guardian_result(result: Dict[str, Any]) -> str:
             f"Dry Run: {result.get('dry_run')}",
             f"DB OK: {result.get('db_ok')}",
             f"Heartbeat: {result.get('heartbeat_timestamp')} ({result.get('heartbeat_age_minutes')}m)",
+            f"Heartbeat Source: {result.get('heartbeat_source')}",
             f"tmux Available: {result.get('tmux_available')}",
             f"Hunter Session: {result.get('hunter_session')}",
             f"Dashboard Session: {result.get('dashboard_session')}",
