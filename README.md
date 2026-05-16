@@ -897,6 +897,7 @@ Operasional cepat:
 python main.py --health
 python main.py --risk-check
 python main.py --health-guardian-once
+python main.py --heartbeat-test
 tail -f orchestrator_log.csv
 python main.py --db-check
 ```
@@ -944,6 +945,12 @@ Jalankan sekali:
 
 ```bash
 python main.py --health-guardian-once
+```
+
+Test tulis/baca heartbeat SQLite:
+
+```bash
+python main.py --heartbeat-test
 ```
 
 Yang dicek:

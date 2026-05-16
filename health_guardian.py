@@ -117,11 +117,15 @@ def resolve_runtime_heartbeat(
     log_path: str,
     stale_minutes: int = 10,
 ) -> Dict[str, Any]:
-    candidates = [
-        _latest_db_heartbeat(database_path),
-        _latest_heartbeat(log_path),
-    ]
-    primary = next((item for item in candidates if item["timestamp"]), candidates[0])
+    db_heartbeat = _latest_db_heartbeat(database_path)
+    if db_heartbeat["timestamp"] and db_heartbeat["age_minutes"] <= stale_minutes:
+        return db_heartbeat
+
+    log_heartbeat = _latest_heartbeat(log_path)
+    if log_heartbeat["timestamp"] and log_heartbeat["age_minutes"] <= stale_minutes:
+        return log_heartbeat
+
+    primary = db_heartbeat if db_heartbeat["timestamp"] else log_heartbeat
     primary_missing = not primary["timestamp"]
     primary_stale = primary["age_minutes"] > stale_minutes
 

@@ -57,7 +57,8 @@ def _record_runtime_heartbeat(
     message: str,
     scheduler: str,
     system_health_score: float | None = None,
-) -> None:
+    log_path: str = "orchestrator_log.csv",
+) -> bool:
     uptime = uptime_seconds()
     try:
         insert_runtime_heartbeat(
@@ -72,8 +73,37 @@ def _record_runtime_heartbeat(
             },
             db_path,
         )
-    except Exception:
-        return
+        _append_log(
+            {
+                "timestamp": _now(),
+                "engine": "heartbeat_db",
+                "state": "IDLE",
+                "execution_time": 0,
+                "failure_count": 0,
+                "restart_count": 0,
+                "avg_runtime": 0,
+                "last_success_timestamp": _now(),
+                "message": "runtime_heartbeats write success",
+            },
+            log_path,
+        )
+        return True
+    except Exception as exc:
+        _append_log(
+            {
+                "timestamp": _now(),
+                "engine": "heartbeat_db",
+                "state": "FAILED",
+                "execution_time": 0,
+                "failure_count": 1,
+                "restart_count": 0,
+                "avg_runtime": 0,
+                "last_success_timestamp": "",
+                "message": f"runtime_heartbeats write failed: {exc}",
+            },
+            log_path,
+        )
+        return False
 
 
 def rotate_log_if_needed(path: str, max_bytes: int = 5_000_000) -> str:
@@ -233,10 +263,17 @@ def run_orchestrator(
     db_retention_days: int = 90,
     max_log_bytes: int = 5_000_000,
 ) -> Dict[str, Any]:
+    scheduler = profile if profile in SCHEDULER_PROFILES else "NORMAL"
+    _record_runtime_heartbeat(
+        db_path,
+        "STARTING",
+        f"orchestrator_startup;uptime={uptime_seconds()}s",
+        scheduler,
+        log_path=log_path,
+    )
     rotated_log = rotate_log_if_needed(log_path, max_log_bytes)
     cleanup_count = cleanup_old_files(["charts", "db_backups"], retention_days)
     db_deleted = cleanup_old_db_records(db_path, db_retention_days)
-    scheduler = profile if profile in SCHEDULER_PROFILES else "NORMAL"
     engines = {name: EngineRuntime(name=name, callback=callback) for name, callback in callbacks.items()}
     db_seconds = _db_latency(db_path)
     memory_high = _memory_warning()
@@ -245,6 +282,13 @@ def run_orchestrator(
     recovery_actions = []
 
     for cycle in range(max(1, cycles)):
+        _record_runtime_heartbeat(
+            db_path,
+            "RUNNING",
+            f"cycle={cycle + 1};phase=before;uptime={uptime_seconds()}s",
+            scheduler,
+            log_path=log_path,
+        )
         for name, engine in engines.items():
             if name not in intervals:
                 engine.state = "WARNING"
@@ -272,6 +316,7 @@ def run_orchestrator(
             "IDLE",
             f"cycle={cycle + 1};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
             scheduler,
+            log_path=log_path,
         )
 
     failures_high = sum(engine.failure_count for engine in engines.values()) >= 3
@@ -300,6 +345,7 @@ def run_orchestrator(
         f"system_health_score={health};scheduler={scheduler};uptime={uptime_seconds()}s",
         scheduler,
         health,
+        log_path=log_path,
     )
     return {
         "system_health_score": health,

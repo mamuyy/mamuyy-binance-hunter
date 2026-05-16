@@ -110,6 +110,39 @@ if "--health-guardian-once" in sys.argv:
     print(_format_health_guardian_result(_guardian_result))
     sys.exit(0)
 
+if "--heartbeat-test" in sys.argv:
+    from datetime import datetime as _datetime
+    from datetime import timezone as _timezone
+    from config import config as _heartbeat_config
+    from database import insert_runtime_heartbeat as _insert_runtime_heartbeat
+    from health_guardian import resolve_runtime_heartbeat as _resolve_runtime_heartbeat
+
+    _timestamp = _datetime.now(_timezone.utc).isoformat()
+    _insert_runtime_heartbeat(
+        {
+            "timestamp": _timestamp,
+            "source": "heartbeat_test",
+            "state": "IDLE",
+            "system_health_score": 100,
+            "scheduler": "TEST",
+            "uptime_seconds": 0,
+            "message": "heartbeat_test;uptime=0s",
+        },
+        _heartbeat_config.database_path,
+    )
+    _heartbeat = _resolve_runtime_heartbeat(
+        _heartbeat_config.database_path,
+        "orchestrator_log.csv",
+        _heartbeat_config.health_guardian_stale_minutes,
+    )
+    print("HEARTBEAT TEST")
+    print(f"Written Timestamp: {_timestamp}")
+    print(f"Read Timestamp: {_heartbeat.get('timestamp') or '-'}")
+    print(f"Heartbeat Source: {_heartbeat.get('source') or '-'}")
+    print(f"Heartbeat Age Minutes: {_heartbeat.get('age_minutes')}")
+    print(f"OK: {_heartbeat.get('source') == 'heartbeat_table' and _heartbeat.get('timestamp') == _timestamp}")
+    sys.exit(0)
+
 if "--label-outcomes" in sys.argv:
     from config import config as _label_config
     from outcome_labeler import label_historical_outcomes as _label_historical_outcomes
@@ -173,6 +206,7 @@ from database import (
     insert_ml_result,
     insert_paper_trade,
     insert_regime_log,
+    insert_runtime_heartbeat,
     insert_signal,
     insert_walkforward_rows,
 )
@@ -487,6 +521,43 @@ def run_health_guardian_once() -> Dict[str, Any]:
     return result
 
 
+def run_heartbeat_test() -> Dict[str, Any]:
+    from datetime import datetime, timezone
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    insert_runtime_heartbeat(
+        {
+            "timestamp": timestamp,
+            "source": "heartbeat_test",
+            "state": "IDLE",
+            "system_health_score": 100,
+            "scheduler": "TEST",
+            "uptime_seconds": 0,
+            "message": "heartbeat_test;uptime=0s",
+        },
+        config.database_path,
+    )
+    heartbeat = resolve_runtime_heartbeat(
+        config.database_path,
+        "orchestrator_log.csv",
+        config.health_guardian_stale_minutes,
+    )
+    result = {
+        "written_timestamp": timestamp,
+        "read_timestamp": heartbeat.get("timestamp") or "-",
+        "heartbeat_source": heartbeat.get("source") or "-",
+        "heartbeat_age_minutes": heartbeat.get("age_minutes"),
+        "ok": heartbeat.get("source") == "heartbeat_table" and heartbeat.get("timestamp") == timestamp,
+    }
+    print("HEARTBEAT TEST")
+    print(f"Written Timestamp: {result['written_timestamp']}")
+    print(f"Read Timestamp: {result['read_timestamp']}")
+    print(f"Heartbeat Source: {result['heartbeat_source']}")
+    print(f"Heartbeat Age Minutes: {result['heartbeat_age_minutes']}")
+    print(f"OK: {result['ok']}")
+    return result
+
+
 def run_backfill(days: int) -> Dict[str, Any]:
     from backfill import run_historical_backfill
 
@@ -721,6 +792,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan tmux-compatible health guardian sekali dalam mode aman.",
     )
     parser.add_argument(
+        "--heartbeat-test",
+        action="store_true",
+        help="Tulis dan verifikasi satu row runtime heartbeat SQLite.",
+    )
+    parser.add_argument(
         "--backfill",
         action="store_true",
         help="Isi SQLite dengan historical Binance Futures data.",
@@ -765,6 +841,8 @@ if __name__ == "__main__":
         run_risk_check()
     elif args.health_guardian_once:
         run_health_guardian_once()
+    elif args.heartbeat_test:
+        run_heartbeat_test()
     elif args.orchestrator:
         run_orchestrator_command()
     elif args.shadow:

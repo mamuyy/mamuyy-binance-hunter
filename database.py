@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import sqlite3
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
@@ -398,7 +399,29 @@ def insert_walkforward_rows(rows: Iterable[Dict[str, Any]], database_url: str = 
 
 
 def insert_runtime_heartbeat(heartbeat: Dict[str, Any], database_url: str = "") -> None:
-    insert_row("runtime_heartbeats", heartbeat, database_url)
+    init_db(database_url)
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with get_connection(database_url) as connection:
+                connection.execute("PRAGMA busy_timeout = 5000")
+                columns = [column for column in _columns(connection, "runtime_heartbeats") if column != "id"]
+                row = {column: _to_number(heartbeat.get(column)) for column in columns}
+                if not row.get("timestamp"):
+                    row["timestamp"] = _now()
+                placeholders = ", ".join(["?"] * len(row))
+                column_sql = ", ".join(row.keys())
+                connection.execute(
+                    f"INSERT INTO runtime_heartbeats ({column_sql}) VALUES ({placeholders})",
+                    list(row.values()),
+                )
+                connection.commit()
+                return
+        except sqlite3.Error as exc:
+            last_error = exc
+            time.sleep(0.2 * (attempt + 1))
+    if last_error:
+        raise last_error
 
 
 def query(table: str, limit: int = 50, database_url: str = "") -> List[Dict[str, Any]]:
