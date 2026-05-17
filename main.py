@@ -229,7 +229,6 @@ from database import (
     insert_signal,
     insert_walkforward_rows,
 )
-from execution_engine import run_execution_simulation
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
 from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result, resolve_runtime_heartbeat
 from logger import log_signal
@@ -241,6 +240,7 @@ from market_regime import (
 from ml_engine import run_ml_research
 from orchestrator import run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
+from portfolio_observer import format_portfolio_observer, observe_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
@@ -378,7 +378,15 @@ def run_portfolio() -> Dict[str, Any]:
     return result
 
 
+def run_portfolio_observer() -> Dict[str, Any]:
+    result = observe_portfolio(db_path=config.database_path)
+    print(format_portfolio_observer(result))
+    return result
+
+
 def run_execution() -> Dict[str, Any]:
+    from execution_engine import run_execution_simulation
+
     result = run_execution_simulation(
         db_path=config.database_path,
         output_path="execution_log.csv",
@@ -809,6 +817,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan simulated portfolio construction engine.",
     )
     parser.add_argument(
+        "--portfolio-observer",
+        action="store_true",
+        help="Tampilkan portfolio observability analytics read-only.",
+    )
+    parser.add_argument(
         "--execution",
         action="store_true",
         help="Jalankan simulated execution engine.",
@@ -903,6 +916,8 @@ if __name__ == "__main__":
         run_shadow()
     elif args.execution:
         run_execution()
+    elif args.portfolio_observer:
+        run_portfolio_observer()
     elif args.portfolio:
         run_portfolio()
     elif args.regime_models:

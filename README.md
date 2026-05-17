@@ -663,6 +663,36 @@ Recommended Allocation:
 
 Engine ini simulated portfolio only, tidak auto trade, dan fallback graceful jika DB/data masih sedikit.
 
+## Portfolio Observability Layer
+
+Jalankan observability read-only:
+
+```bash
+python main.py --portfolio-observer
+```
+
+File utama:
+
+- `portfolio_observer.py`
+
+Data source:
+
+- `signals`
+- `shadow_trades`
+- `historical_outcomes`
+- `risk_events`
+
+Output:
+
+- exposure by symbol
+- exposure by regime
+- exposure by market type
+- concentration risk
+- top correlated symbols jika historical outcomes cukup
+- portfolio heat score `LOW` / `MEDIUM` / `HIGH`
+
+Dashboard menampilkan section `Portfolio Observability` berisi top exposure symbols, regime exposure, market type exposure, top correlated symbols, dan warning concentration risk. Layer ini analytics-only, tidak mengirim order dan tidak mengubah scanner/execution logic.
+
 ## Execution Simulation Engine
 
 Jalankan simulasi execution:
@@ -1204,6 +1234,7 @@ regime_models.py
 regime_shadow.py
 shadow_analysis.py
 portfolio_engine.py
+portfolio_observer.py
 execution_engine.py
 shadow_engine.py
 orchestrator.py

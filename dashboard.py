@@ -13,6 +13,7 @@ from database import (
     db_health_check,
     init_db,
 )
+from portfolio_observer import observe_portfolio
 from risk_manager import RiskConfig, check_execution_safety
 
 
@@ -111,6 +112,25 @@ def read_risk_status() -> dict[str, Any]:
         }
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_portfolio_observability() -> dict[str, Any]:
+    try:
+        return observe_portfolio(DB_PATH)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "source": "unavailable",
+            "portfolio_heat": "HIGH",
+            "portfolio_heat_score": 100,
+            "concentration_risk": 0,
+            "symbol_exposure": [],
+            "regime_exposure": [],
+            "market_type_exposure": [],
+            "top_correlated_symbols": [],
+            "warnings": [f"Portfolio observer unavailable: {exc}"],
+        }
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -192,6 +212,42 @@ def render_risk_engine_status(risk_status: dict[str, Any]) -> None:
         use_container_width=True,
         hide_index=True,
     )
+
+
+def render_portfolio_observability(result: dict[str, Any]) -> None:
+    st.header("Portfolio Observability")
+    heat = str(result.get("portfolio_heat") or "UNKNOWN")
+    heat_color = "GREEN" if heat == "LOW" else "YELLOW" if heat == "MEDIUM" else "RED"
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        status_badge("Portfolio Heat", heat_color, heat)
+    col2.metric("Heat Score", f"{float(result.get('portfolio_heat_score', 0)):.2f}/100")
+    col3.metric("Concentration Risk", f"{float(result.get('concentration_risk', 0)):.2f}")
+    col4.metric("Exposure Source", result.get("source", "-"))
+
+    warnings = result.get("warnings", [])
+    for warning in warnings[:3]:
+        if heat == "HIGH":
+            st.warning(warning)
+        else:
+            st.info(warning)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Top Exposure Symbols")
+        show_dataframe_or_info(pd.DataFrame(result.get("symbol_exposure", [])), "No symbol exposure data yet.")
+
+        st.subheader("Market Type Exposure")
+        show_dataframe_or_info(pd.DataFrame(result.get("market_type_exposure", [])), "No market type exposure data yet.")
+    with col2:
+        st.subheader("Regime Exposure")
+        show_dataframe_or_info(pd.DataFrame(result.get("regime_exposure", [])), "No regime exposure data yet.")
+
+        st.subheader("Top Correlated Symbols")
+        show_dataframe_or_info(
+            pd.DataFrame(result.get("top_correlated_symbols", [])),
+            "Not enough historical outcome data for correlation.",
+        )
 
 
 def render_shadow_penalty_insight(signals: pd.DataFrame) -> None:
@@ -754,6 +810,7 @@ def main() -> None:
     walkforward = read_table("walkforward_results")
     counts = table_counts()
     risk_status = read_risk_status()
+    portfolio_observability = read_portfolio_observability()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -781,6 +838,7 @@ def main() -> None:
         st.dataframe(pd.DataFrame([counts]), use_container_width=True)
 
     render_risk_engine_status(risk_status)
+    render_portfolio_observability(portfolio_observability)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
