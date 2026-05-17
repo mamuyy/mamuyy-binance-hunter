@@ -133,12 +133,19 @@ def read_portfolio_observability() -> dict[str, Any]:
 
 @st.cache_data(ttl=REFRESH_SECONDS)
 def read_opportunity_allocation(path: str = "logs/opportunity_allocation.csv") -> pd.DataFrame:
+    exists = os.path.exists(path)
     try:
-        if os.path.exists(path):
-            return pd.read_csv(path)
+        if exists:
+            df = pd.read_csv(path)
+            df.attrs["file_exists"] = True
+            return df
     except Exception:
-        return _empty_df()
-    return _empty_df()
+        df = _empty_df()
+        df.attrs["file_exists"] = exists
+        return df
+    df = _empty_df()
+    df.attrs["file_exists"] = False
+    return df
 
 
 def status_badge(label: str, status: str, detail: str = "") -> None:
@@ -263,14 +270,32 @@ def render_portfolio_observability(result: dict[str, Any]) -> None:
 
 def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
     st.header("Opportunity Allocation Engine")
-    if allocation.empty:
-        st.info("No opportunity allocation data yet. Run python main.py --allocate.")
+    if not allocation.attrs.get("file_exists", False):
+        st.info("Opportunity allocation file not found. Run python main.py --allocate first.")
         return
 
     df = allocation.copy()
     for column in ["opportunity_score", "risk_score", "suggested_max_weight_pct"]:
         if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    if df.empty:
+        st.info("Opportunity allocation file is empty. Run python main.py --allocate again after fresh data.")
+        return
+
+    priority_columns = [
+        "symbol",
+        "opportunity_score",
+        "risk_score",
+        "reason",
+        "suggested_max_weight_pct",
+    ]
+    avoid_columns = [
+        "symbol",
+        "opportunity_score",
+        "risk_score",
+        "reason",
+    ]
     tier_counts = df.get("allocation_tier", pd.Series(dtype=str)).value_counts().reset_index()
     if not tier_counts.empty:
         tier_counts.columns = ["allocation_tier", "count"]
@@ -280,19 +305,19 @@ def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
         st.subheader("Top Priority Symbols")
         priority = df[df.get("allocation_tier", pd.Series(dtype=str)) == "PRIORITY"].head(15)
         if priority.empty:
-            priority = df[df.get("allocation_tier", pd.Series(dtype=str)).isin(["SMALL", "WATCH"])].head(15)
-        show_dataframe_or_info(priority, "No priority or small allocation candidates.")
+            st.info("No PRIORITY symbols right now. Market may be under macro stress / risk-off conditions.")
+        else:
+            st.dataframe(priority[[column for column in priority_columns if column in priority.columns]], use_container_width=True, hide_index=True)
 
         st.subheader("Allocation Tier Summary")
         show_dataframe_or_info(tier_counts, "No allocation tier summary.")
     with col2:
         st.subheader("Avoid List")
         avoid = df[df.get("allocation_tier", pd.Series(dtype=str)) == "AVOID"].head(15)
-        show_dataframe_or_info(avoid, "No avoid candidates.")
-
-        st.subheader("Risk Reasons")
-        reason_cols = [column for column in ["symbol", "risk_score", "allocation_tier", "reason"] if column in df.columns]
-        show_dataframe_or_info(df[reason_cols].sort_values("risk_score", ascending=False).head(20), "No risk reasons available.")
+        if avoid.empty:
+            st.info("No AVOID symbols right now.")
+        else:
+            st.dataframe(avoid[[column for column in avoid_columns if column in avoid.columns]], use_container_width=True, hide_index=True)
 
 
 def render_shadow_penalty_insight(signals: pd.DataFrame) -> None:
@@ -885,7 +910,6 @@ def main() -> None:
 
     render_risk_engine_status(risk_status)
     render_portfolio_observability(portfolio_observability)
-    render_opportunity_allocation(opportunity_allocation)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
@@ -1029,6 +1053,8 @@ def main() -> None:
             safe_plot_bar(regime_perf, "regime_name", "avg_pnl", "Regime Profitability")
         else:
             st.info("No regime profitability data yet.")
+
+    render_opportunity_allocation(opportunity_allocation)
 
 
 if __name__ == "__main__":
