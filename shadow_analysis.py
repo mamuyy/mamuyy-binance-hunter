@@ -8,6 +8,8 @@ import pandas as pd
 from database import init_db
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 
+DEFAULT_THRESHOLDS = [55, 60, 65, 70, 75]
+
 
 def _safe_number(value: Any, default: float = 0.0) -> float:
     try:
@@ -170,19 +172,105 @@ def _comparison_rows(
     return rows
 
 
+def _derived_metrics(
+    original: Dict[str, float],
+    shadow: Dict[str, float],
+    total_rows: int,
+    skipped_rows: int,
+) -> Dict[str, float]:
+    original_dd = abs(float(original.get("max_drawdown", 0.0)))
+    shadow_dd = abs(float(shadow.get("max_drawdown", 0.0)))
+    original_pnl = float(original.get("total_pnl", 0.0))
+    shadow_pnl = float(shadow.get("total_pnl", 0.0))
+    return {
+        "drawdown_reduction_pct": round(((original_dd - shadow_dd) / original_dd * 100) if original_dd else 0.0, 6),
+        "pnl_difference_pct": round(((shadow_pnl - original_pnl) / abs(original_pnl) * 100) if original_pnl else 0.0, 6),
+        "trade_reduction_pct": round((skipped_rows / max(total_rows, 1) * 100), 6),
+    }
+
+
+def _simulate_shadow_filter(df: pd.DataFrame, threshold: float, original: Dict[str, float]) -> Dict[str, Any]:
+    included = df["shadow_score"] >= threshold
+    pnl_shadow = df["pnl_pct"].where(included, 0.0)
+    skipped = df[~included]
+    shadow = _curve_metrics(pnl_shadow)
+    derived = _derived_metrics(original, shadow, len(df), len(skipped))
+    return {
+        "threshold": threshold,
+        "shadow": shadow,
+        "pnl_shadow": pnl_shadow,
+        "included": included,
+        "skipped": skipped,
+        "avoided_losses": int((skipped["pnl_pct"] < 0).sum()),
+        "skipped_winners": int((skipped["pnl_pct"] > 0).sum()),
+        **derived,
+    }
+
+
+def _build_threshold_tuning(
+    df: pd.DataFrame,
+    thresholds: List[float],
+    original: Dict[str, float],
+) -> pd.DataFrame:
+    rows = []
+    original_count = int(original.get("trade_count", 0) or 0)
+    min_trade_count = max(int(original_count * 0.05), 1) if original_count else 1
+    for threshold in thresholds:
+        if df.empty:
+            simulation = {
+                "shadow": _curve_metrics(pd.Series(dtype=float)),
+                "avoided_losses": 0,
+                "skipped_winners": 0,
+                "drawdown_reduction_pct": 0.0,
+                "pnl_difference_pct": 0.0,
+                "trade_reduction_pct": 0.0,
+            }
+        else:
+            simulation = _simulate_shadow_filter(df, threshold, original)
+        shadow = simulation["shadow"]
+        useful = (
+            float(shadow.get("profit_factor", 0.0) or 0.0) > 1.05
+            and float(simulation.get("drawdown_reduction_pct", 0.0) or 0.0) > 10
+            and int(shadow.get("trade_count", 0) or 0) >= min_trade_count
+        )
+        rows.append(
+            {
+                "threshold": threshold,
+                "total_pnl": shadow.get("total_pnl"),
+                "max_drawdown": shadow.get("max_drawdown"),
+                "winrate": shadow.get("winrate"),
+                "profit_factor": shadow.get("profit_factor"),
+                "trade_count": shadow.get("trade_count"),
+                "avoided_losses": simulation.get("avoided_losses"),
+                "skipped_winners": simulation.get("skipped_winners"),
+                "dd_reduction_pct": simulation.get("drawdown_reduction_pct"),
+                "pnl_difference_pct": simulation.get("pnl_difference_pct"),
+                "trade_reduction_pct": simulation.get("trade_reduction_pct"),
+                "useful_candidate": useful,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def run_shadow_equity_analysis(
     database_path: str = "mamuyy_hunter.db",
     threshold: float = 75.0,
     equity_output_path: str = "shadow_equity_curve.csv",
     comparison_output_path: str = "shadow_comparison.csv",
+    tuning_output_path: str = "logs/shadow_threshold_tuning.csv",
+    thresholds: List[float] | None = None,
 ) -> Dict[str, Any]:
+    thresholds = thresholds or DEFAULT_THRESHOLDS
     df = _ensure_shadow_scores(_load_dataset(database_path))
+    os.makedirs(os.path.dirname(tuning_output_path) or ".", exist_ok=True)
     if df.empty:
         pd.DataFrame().to_csv(equity_output_path, index=False)
         pd.DataFrame(_comparison_rows(_curve_metrics(pd.Series(dtype=float)), _curve_metrics(pd.Series(dtype=float)), 0, 0)).to_csv(
             comparison_output_path,
             index=False,
         )
+        tuning = _build_threshold_tuning(df, thresholds, _curve_metrics(pd.Series(dtype=float)))
+        tuning.to_csv(tuning_output_path, index=False)
         return {
             "rows": 0,
             "threshold": threshold,
@@ -195,20 +283,23 @@ def run_shadow_equity_analysis(
             "trade_reduction_pct": 0.0,
             "equity_output_path": equity_output_path,
             "comparison_output_path": comparison_output_path,
+            "tuning_output_path": tuning_output_path,
+            "threshold_tuning": tuning.to_dict("records"),
         }
 
-    df["included_shadow"] = df["shadow_score"] >= threshold
+    original = _curve_metrics(df["pnl_pct"])
+    simulation = _simulate_shadow_filter(df, threshold, original)
+    df["included_shadow"] = simulation["included"]
     df["pnl_original"] = df["pnl_pct"]
-    df["pnl_shadow"] = df["pnl_pct"].where(df["included_shadow"], 0.0)
+    df["pnl_shadow"] = simulation["pnl_shadow"]
     df["equity_original"] = df["pnl_original"].cumsum()
     df["equity_shadow"] = df["pnl_shadow"].cumsum()
     df["trade_index"] = range(1, len(df) + 1)
-    skipped = df[~df["included_shadow"]]
-    avoided_losses = int((skipped["pnl_pct"] < 0).sum())
-    skipped_winners = int((skipped["pnl_pct"] > 0).sum())
+    skipped = simulation["skipped"]
+    avoided_losses = simulation["avoided_losses"]
+    skipped_winners = simulation["skipped_winners"]
 
-    original = _curve_metrics(df["pnl_original"])
-    shadow = _curve_metrics(df["pnl_shadow"])
+    shadow = simulation["shadow"]
     comparison = _comparison_rows(original, shadow, avoided_losses, skipped_winners)
 
     if "regime_name" in df.columns:
@@ -263,14 +354,8 @@ def run_shadow_equity_analysis(
     ]
     df[[column for column in curve_columns if column in df.columns]].to_csv(equity_output_path, index=False)
     pd.DataFrame(comparison).to_csv(comparison_output_path, index=False)
-
-    original_dd = abs(float(original.get("max_drawdown", 0.0)))
-    shadow_dd = abs(float(shadow.get("max_drawdown", 0.0)))
-    original_pnl = float(original.get("total_pnl", 0.0))
-    shadow_pnl = float(shadow.get("total_pnl", 0.0))
-    drawdown_reduction = ((original_dd - shadow_dd) / original_dd * 100) if original_dd else 0.0
-    pnl_difference = ((shadow_pnl - original_pnl) / abs(original_pnl) * 100) if original_pnl else 0.0
-    trade_reduction = (len(skipped) / max(len(df), 1) * 100)
+    tuning = _build_threshold_tuning(df, thresholds, original)
+    tuning.to_csv(tuning_output_path, index=False)
 
     return {
         "rows": int(len(df)),
@@ -279,11 +364,13 @@ def run_shadow_equity_analysis(
         "shadow": shadow,
         "avoided_losses": avoided_losses,
         "skipped_winners": skipped_winners,
-        "drawdown_reduction_pct": round(drawdown_reduction, 6),
-        "pnl_difference_pct": round(pnl_difference, 6),
-        "trade_reduction_pct": round(trade_reduction, 6),
+        "drawdown_reduction_pct": simulation["drawdown_reduction_pct"],
+        "pnl_difference_pct": simulation["pnl_difference_pct"],
+        "trade_reduction_pct": simulation["trade_reduction_pct"],
         "equity_output_path": equity_output_path,
         "comparison_output_path": comparison_output_path,
+        "tuning_output_path": tuning_output_path,
+        "threshold_tuning": tuning.to_dict("records"),
     }
 
 
@@ -302,5 +389,11 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             f"Trade Reduction: {result.get('trade_reduction_pct', 0)}%",
             f"Equity CSV: {result.get('equity_output_path')}",
             f"Comparison CSV: {result.get('comparison_output_path')}",
+            f"Tuning CSV: {result.get('tuning_output_path')}",
+            "",
+            "Threshold Tuning:",
+            pd.DataFrame(result.get("threshold_tuning", [])).to_string(index=False)
+            if result.get("threshold_tuning")
+            else "No threshold tuning rows.",
         ]
     )

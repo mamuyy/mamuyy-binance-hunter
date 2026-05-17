@@ -501,9 +501,11 @@ def read_optimizer_setups(path: str = "optimizer_results.csv", limit: int = 20) 
 def read_shadow_simulation(
     equity_path: str = "shadow_equity_curve.csv",
     comparison_path: str = "shadow_comparison.csv",
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    tuning_path: str = "logs/shadow_threshold_tuning.csv",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     equity = _empty_df()
     comparison = _empty_df()
+    tuning = _empty_df()
     try:
         if os.path.exists(equity_path):
             equity = pd.read_csv(equity_path)
@@ -514,7 +516,12 @@ def read_shadow_simulation(
             comparison = pd.read_csv(comparison_path)
     except Exception:
         comparison = _empty_df()
-    return equity, comparison
+    try:
+        if os.path.exists(tuning_path):
+            tuning = pd.read_csv(tuning_path)
+    except Exception:
+        tuning = _empty_df()
+    return equity, comparison, tuning
 
 
 def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "value", default: float = 0.0) -> float:
@@ -529,35 +536,59 @@ def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "valu
 
 def render_shadow_simulation() -> None:
     st.header("Shadow Penalty Simulation")
-    equity, comparison = read_shadow_simulation()
+    equity, comparison, tuning = read_shadow_simulation()
     if equity.empty or comparison.empty:
         st.info("No shadow simulation data yet. Run python main.py --shadow-analysis.")
-        return
-
-    dd_reduction = _comparison_value(comparison, "drawdown_reduction_pct")
-    trade_reduction = _comparison_value(comparison, "trade_reduction_pct")
-    avoided_losses = _comparison_value(comparison, "avoided_losses")
-    skipped_winners = _comparison_value(comparison, "skipped_winners")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("DD Reduction", f"{dd_reduction:.2f}%")
-    col2.metric("Trade Reduction", f"{trade_reduction:.2f}%")
-    col3.metric("Avoided Losses", f"{avoided_losses:.0f}")
-    col4.metric("Skipped Winners", f"{skipped_winners:.0f}")
-
-    curve_columns = [column for column in ["trade_index", "equity_original", "equity_shadow"] if column in equity.columns]
-    if len(curve_columns) == 3:
-        curve = equity[curve_columns].copy()
-        curve = curve.melt(id_vars="trade_index", var_name="curve", value_name="equity")
-        fig = px.line(curve, x="trade_index", y="equity", color="curve", title="Original vs Shadow Equity Curve")
-        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Shadow equity curve columns are incomplete.")
+        dd_reduction = _comparison_value(comparison, "drawdown_reduction_pct")
+        trade_reduction = _comparison_value(comparison, "trade_reduction_pct")
+        avoided_losses = _comparison_value(comparison, "avoided_losses")
+        skipped_winners = _comparison_value(comparison, "skipped_winners")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("DD Reduction", f"{dd_reduction:.2f}%")
+        col2.metric("Trade Reduction", f"{trade_reduction:.2f}%")
+        col3.metric("Avoided Losses", f"{avoided_losses:.0f}")
+        col4.metric("Skipped Winners", f"{skipped_winners:.0f}")
 
-    section = comparison.get("section", pd.Series(dtype=str))
-    regime = comparison[section == "regime"].copy()
-    if not regime.empty:
-        st.subheader("Regime Impact Summary")
-        st.dataframe(regime.head(50), use_container_width=True)
+        curve_columns = [column for column in ["trade_index", "equity_original", "equity_shadow"] if column in equity.columns]
+        if len(curve_columns) == 3:
+            curve = equity[curve_columns].copy()
+            curve = curve.melt(id_vars="trade_index", var_name="curve", value_name="equity")
+            fig = px.line(curve, x="trade_index", y="equity", color="curve", title="Original vs Shadow Equity Curve")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Shadow equity curve columns are incomplete.")
+
+        section = comparison.get("section", pd.Series(dtype=str))
+        regime = comparison[section == "regime"].copy()
+        if not regime.empty:
+            st.subheader("Regime Impact Summary")
+            st.dataframe(regime.head(50), use_container_width=True)
+
+    st.subheader("Threshold Tuning")
+    if tuning.empty:
+        st.info("No threshold tuning data yet. Run python main.py --shadow-analysis.")
+        return
+    for column in ["profit_factor", "max_drawdown", "trade_count", "dd_reduction_pct"]:
+        if column in tuning.columns:
+            tuning[column] = pd.to_numeric(tuning[column], errors="coerce")
+    thresholds = tuning["threshold"].dropna().tolist() if "threshold" in tuning.columns else []
+    if thresholds:
+        selected = st.selectbox("Threshold", thresholds, index=len(thresholds) - 1)
+        selected_row = tuning[tuning["threshold"] == selected]
+        if not selected_row.empty:
+            st.dataframe(selected_row, use_container_width=True, hide_index=True)
+    if {"profit_factor", "dd_reduction_pct", "trade_count"}.issubset(tuning.columns):
+        min_trades = max(int(pd.to_numeric(tuning["trade_count"], errors="coerce").max() * 0.05), 1)
+        useful = tuning[
+            (tuning["profit_factor"] > 1.05)
+            & (tuning["dd_reduction_pct"] > 10)
+            & (tuning["trade_count"] >= min_trades)
+        ]
+        if not useful.empty:
+            st.success("Useful threshold candidates found.")
+            st.dataframe(useful, use_container_width=True, hide_index=True)
+    st.dataframe(tuning, use_container_width=True, hide_index=True)
 
 
 def show_dataframe_or_info(df: pd.DataFrame, message: str) -> None:

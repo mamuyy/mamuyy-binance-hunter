@@ -8,5 +8,8 @@ performance_report.html
 .matplotlib/
 model_output.json
 walkforward_results.csv
+shadow_equity_curve.csv
+shadow_comparison.csv
+logs/
 mamuyy_hunter.db
 db_backups/
