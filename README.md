@@ -972,8 +972,9 @@ Output:
 - `shadow_equity_curve.csv`
 - `shadow_comparison.csv`
 - `logs/shadow_threshold_tuning.csv`
+- `logs/shadow_threshold_walkforward.csv`
 
-Dashboard menampilkan `Shadow Penalty Simulation` dengan original vs shadow equity curve, drawdown reduction, trade reduction, avoided losses, skipped winners, regime impact summary, dan threshold tuning untuk `55`, `60`, `65`, `70`, dan `75`.
+Dashboard menampilkan `Shadow Penalty Simulation` dengan original vs shadow equity curve, drawdown reduction, trade reduction, avoided losses, skipped winners, regime impact summary, granular threshold tuning untuk `60` sampai `70`, serta 70/30 walkforward threshold validation.
 
 ## Health Guardian Watchdog
 

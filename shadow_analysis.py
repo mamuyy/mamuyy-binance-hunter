@@ -8,7 +8,7 @@ import pandas as pd
 from database import init_db
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 
-DEFAULT_THRESHOLDS = [55, 60, 65, 70, 75]
+DEFAULT_THRESHOLDS = list(range(60, 71))
 
 
 def _safe_number(value: Any, default: float = 0.0) -> float:
@@ -252,17 +252,88 @@ def _build_threshold_tuning(
     return pd.DataFrame(rows)
 
 
+def _stability_score(calibration: Dict[str, float], forward: Dict[str, float]) -> float:
+    calibration_pf = _safe_number(calibration.get("profit_factor"))
+    forward_pf = _safe_number(forward.get("profit_factor"))
+    calibration_dd = abs(_safe_number(calibration.get("max_drawdown")))
+    forward_dd = abs(_safe_number(forward.get("max_drawdown")))
+    pf_gap = abs(calibration_pf - forward_pf)
+    dd_gap = abs(calibration_dd - forward_dd)
+    score = 100 - min(60, pf_gap * 30) - min(40, dd_gap)
+    return round(max(0.0, min(100.0, score)), 6)
+
+
+def _build_threshold_walkforward(
+    df: pd.DataFrame,
+    thresholds: List[float],
+) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(
+            [
+                {
+                    "threshold": threshold,
+                    "calibration_profit_factor": 0.0,
+                    "calibration_max_drawdown": 0.0,
+                    "calibration_trade_count": 0,
+                    "forward_profit_factor": 0.0,
+                    "forward_max_drawdown": 0.0,
+                    "forward_trade_count": 0,
+                    "stability_score": 0.0,
+                    "recommended_candidate": False,
+                }
+                for threshold in thresholds
+            ]
+        )
+
+    split_index = max(1, int(len(df) * 0.70))
+    calibration_df = df.iloc[:split_index].copy()
+    forward_df = df.iloc[split_index:].copy()
+    if forward_df.empty:
+        forward_df = calibration_df.iloc[0:0].copy()
+
+    rows = []
+    min_forward_trades = max(int(len(forward_df) * 0.03), 1) if not forward_df.empty else 1
+    forward_original = _curve_metrics(forward_df["pnl_pct"]) if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+    for threshold in thresholds:
+        calibration_original = _curve_metrics(calibration_df["pnl_pct"])
+        calibration = _simulate_shadow_filter(calibration_df, threshold, calibration_original)["shadow"]
+        forward = _simulate_shadow_filter(forward_df, threshold, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+        stability = _stability_score(calibration, forward)
+        recommended = (
+            _safe_number(forward.get("profit_factor")) > 1.05
+            and abs(_safe_number(forward.get("max_drawdown"))) <= max(abs(_safe_number(forward_original.get("max_drawdown"))) * 0.75, 1)
+            and int(forward.get("trade_count", 0) or 0) >= min_forward_trades
+            and stability >= 55
+        )
+        rows.append(
+            {
+                "threshold": threshold,
+                "calibration_profit_factor": calibration.get("profit_factor"),
+                "calibration_max_drawdown": calibration.get("max_drawdown"),
+                "calibration_trade_count": calibration.get("trade_count"),
+                "forward_profit_factor": forward.get("profit_factor"),
+                "forward_max_drawdown": forward.get("max_drawdown"),
+                "forward_trade_count": forward.get("trade_count"),
+                "stability_score": stability,
+                "recommended_candidate": recommended,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def run_shadow_equity_analysis(
     database_path: str = "mamuyy_hunter.db",
     threshold: float = 75.0,
     equity_output_path: str = "shadow_equity_curve.csv",
     comparison_output_path: str = "shadow_comparison.csv",
     tuning_output_path: str = "logs/shadow_threshold_tuning.csv",
+    walkforward_output_path: str = "logs/shadow_threshold_walkforward.csv",
     thresholds: List[float] | None = None,
 ) -> Dict[str, Any]:
     thresholds = thresholds or DEFAULT_THRESHOLDS
     df = _ensure_shadow_scores(_load_dataset(database_path))
     os.makedirs(os.path.dirname(tuning_output_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(walkforward_output_path) or ".", exist_ok=True)
     if df.empty:
         pd.DataFrame().to_csv(equity_output_path, index=False)
         pd.DataFrame(_comparison_rows(_curve_metrics(pd.Series(dtype=float)), _curve_metrics(pd.Series(dtype=float)), 0, 0)).to_csv(
@@ -270,7 +341,9 @@ def run_shadow_equity_analysis(
             index=False,
         )
         tuning = _build_threshold_tuning(df, thresholds, _curve_metrics(pd.Series(dtype=float)))
+        walkforward = _build_threshold_walkforward(df, thresholds)
         tuning.to_csv(tuning_output_path, index=False)
+        walkforward.to_csv(walkforward_output_path, index=False)
         return {
             "rows": 0,
             "threshold": threshold,
@@ -284,7 +357,9 @@ def run_shadow_equity_analysis(
             "equity_output_path": equity_output_path,
             "comparison_output_path": comparison_output_path,
             "tuning_output_path": tuning_output_path,
+            "walkforward_output_path": walkforward_output_path,
             "threshold_tuning": tuning.to_dict("records"),
+            "threshold_walkforward": walkforward.to_dict("records"),
         }
 
     original = _curve_metrics(df["pnl_pct"])
@@ -355,7 +430,9 @@ def run_shadow_equity_analysis(
     df[[column for column in curve_columns if column in df.columns]].to_csv(equity_output_path, index=False)
     pd.DataFrame(comparison).to_csv(comparison_output_path, index=False)
     tuning = _build_threshold_tuning(df, thresholds, original)
+    walkforward = _build_threshold_walkforward(df, thresholds)
     tuning.to_csv(tuning_output_path, index=False)
+    walkforward.to_csv(walkforward_output_path, index=False)
 
     return {
         "rows": int(len(df)),
@@ -370,7 +447,9 @@ def run_shadow_equity_analysis(
         "equity_output_path": equity_output_path,
         "comparison_output_path": comparison_output_path,
         "tuning_output_path": tuning_output_path,
+        "walkforward_output_path": walkforward_output_path,
         "threshold_tuning": tuning.to_dict("records"),
+        "threshold_walkforward": walkforward.to_dict("records"),
     }
 
 
@@ -390,10 +469,16 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             f"Equity CSV: {result.get('equity_output_path')}",
             f"Comparison CSV: {result.get('comparison_output_path')}",
             f"Tuning CSV: {result.get('tuning_output_path')}",
+            f"Walkforward CSV: {result.get('walkforward_output_path')}",
             "",
             "Threshold Tuning:",
             pd.DataFrame(result.get("threshold_tuning", [])).to_string(index=False)
             if result.get("threshold_tuning")
             else "No threshold tuning rows.",
+            "",
+            "Threshold Walkforward:",
+            pd.DataFrame(result.get("threshold_walkforward", [])).to_string(index=False)
+            if result.get("threshold_walkforward")
+            else "No threshold walkforward rows.",
         ]
     )

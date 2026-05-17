@@ -502,10 +502,12 @@ def read_shadow_simulation(
     equity_path: str = "shadow_equity_curve.csv",
     comparison_path: str = "shadow_comparison.csv",
     tuning_path: str = "logs/shadow_threshold_tuning.csv",
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    walkforward_path: str = "logs/shadow_threshold_walkforward.csv",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     equity = _empty_df()
     comparison = _empty_df()
     tuning = _empty_df()
+    walkforward = _empty_df()
     try:
         if os.path.exists(equity_path):
             equity = pd.read_csv(equity_path)
@@ -521,7 +523,12 @@ def read_shadow_simulation(
             tuning = pd.read_csv(tuning_path)
     except Exception:
         tuning = _empty_df()
-    return equity, comparison, tuning
+    try:
+        if os.path.exists(walkforward_path):
+            walkforward = pd.read_csv(walkforward_path)
+    except Exception:
+        walkforward = _empty_df()
+    return equity, comparison, tuning, walkforward
 
 
 def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "value", default: float = 0.0) -> float:
@@ -536,7 +543,7 @@ def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "valu
 
 def render_shadow_simulation() -> None:
     st.header("Shadow Penalty Simulation")
-    equity, comparison, tuning = read_shadow_simulation()
+    equity, comparison, tuning, walkforward = read_shadow_simulation()
     if equity.empty or comparison.empty:
         st.info("No shadow simulation data yet. Run python main.py --shadow-analysis.")
     else:
@@ -589,6 +596,42 @@ def render_shadow_simulation() -> None:
             st.success("Useful threshold candidates found.")
             st.dataframe(useful, use_container_width=True, hide_index=True)
     st.dataframe(tuning, use_container_width=True, hide_index=True)
+
+    st.subheader("Threshold Walkforward Validation")
+    if walkforward.empty:
+        st.info("No shadow threshold walkforward data yet. Run python main.py --shadow-analysis.")
+        return
+    for column in [
+        "calibration_profit_factor",
+        "calibration_max_drawdown",
+        "calibration_trade_count",
+        "forward_profit_factor",
+        "forward_max_drawdown",
+        "forward_trade_count",
+        "stability_score",
+    ]:
+        if column in walkforward.columns:
+            walkforward[column] = pd.to_numeric(walkforward[column], errors="coerce")
+    if {"forward_profit_factor", "forward_max_drawdown", "forward_trade_count", "stability_score"}.issubset(walkforward.columns):
+        max_forward_dd = abs(pd.to_numeric(walkforward["forward_max_drawdown"], errors="coerce")).replace(0, pd.NA).max()
+        min_forward_trades = max(int(pd.to_numeric(walkforward["forward_trade_count"], errors="coerce").max() * 0.05), 1)
+        dd_limit = max_forward_dd * 0.75 if pd.notna(max_forward_dd) else 0
+        recommended = walkforward[
+            (walkforward["forward_profit_factor"] > 1.05)
+            & (abs(walkforward["forward_max_drawdown"]) <= dd_limit)
+            & (walkforward["forward_trade_count"] >= min_forward_trades)
+            & (walkforward["stability_score"] >= 55)
+        ].sort_values(["stability_score", "forward_profit_factor", "forward_trade_count"], ascending=[False, False, False])
+        if not recommended.empty:
+            best = recommended.iloc[0]
+            st.success(f"Recommended threshold: {best.get('threshold')}")
+            st.dataframe(recommended.head(5), use_container_width=True, hide_index=True)
+        elif "recommended_candidate" in walkforward.columns:
+            flagged = walkforward[walkforward["recommended_candidate"].astype(str).str.lower() == "true"]
+            if not flagged.empty:
+                st.success(f"Recommended threshold: {flagged.iloc[0].get('threshold')}")
+                st.dataframe(flagged, use_container_width=True, hide_index=True)
+    st.dataframe(walkforward, use_container_width=True, hide_index=True)
 
 
 def show_dataframe_or_info(df: pd.DataFrame, message: str) -> None:
