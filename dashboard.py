@@ -185,6 +185,7 @@ def render_risk_engine_status(risk_status: dict[str, Any]) -> None:
     col2.metric("Position Multiplier", f"{float(risk_status.get('position_multiplier', 0.0)):.2f}x")
     col3.metric("Drawdown", f"{float(metrics.get('drawdown', 0.0)):.2f}%")
     col4.metric("Heartbeat Age", f"{float(metrics.get('heartbeat_age_minutes', 0.0)):.1f}m")
+    col4.caption(f"Source: {metrics.get('heartbeat_source', '-')}")
 
     reasons = risk_status.get("reasons") or ["No active risk warnings."]
     if status == "HALT":

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from database import init_db
+from health_guardian import resolve_runtime_heartbeat
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,22 @@ def _heartbeat_age_minutes(log_path: str) -> float:
     if not timestamp:
         return 9999.0
     return (datetime.now(timezone.utc) - timestamp).total_seconds() / 60
+
+
+def _runtime_heartbeat(database_path: str, log_path: str, stale_minutes: int) -> Dict[str, Any]:
+    try:
+        heartbeat = resolve_runtime_heartbeat(database_path, log_path, stale_minutes)
+        return {
+            "timestamp": heartbeat.get("timestamp") or "",
+            "source": heartbeat.get("source") or "-",
+            "age_minutes": _safe_float(heartbeat.get("age_minutes"), 9999.0),
+        }
+    except Exception:
+        return {
+            "timestamp": "",
+            "source": "orchestrator_log",
+            "age_minutes": _heartbeat_age_minutes(log_path),
+        }
 
 
 def _pnl_rows(connection: sqlite3.Connection, lookback_hours: int = 24) -> List[float]:
@@ -257,7 +274,8 @@ def check_execution_safety(
         connection.row_factory = sqlite3.Row
         ml = _latest_ml(connection, model_output_path)
         regime_name = _latest_regime(connection)
-        heartbeat_age = _heartbeat_age_minutes(orchestrator_log_path)
+        heartbeat = _runtime_heartbeat(db_path, orchestrator_log_path, risk_config.stale_minutes)
+        heartbeat_age = heartbeat["age_minutes"]
         pnls = _pnl_rows(connection)
         drawdown = _max_drawdown(pnls)
         consecutive_losses = _consecutive_losses(pnls[-20:])
@@ -275,6 +293,8 @@ def check_execution_safety(
 
         if heartbeat_age > risk_config.stale_minutes:
             halt_reasons.append(f"Runtime heartbeat stale for {heartbeat_age:.1f} minutes")
+        elif str(heartbeat.get("source", "")).startswith("fallback_"):
+            watch_reasons.append(f"Heartbeat table stale; using {heartbeat['source']}")
 
         regime_upper = regime_name.upper()
         if regime_upper == "SIDEWAYS / CHOPPY":
@@ -332,6 +352,8 @@ def check_execution_safety(
                 "drawdown": round(drawdown, 4),
                 "regime_name": regime_name,
                 "heartbeat_age_minutes": round(heartbeat_age, 2),
+                "heartbeat_source": heartbeat.get("source", "-"),
+                "heartbeat_timestamp": heartbeat.get("timestamp", ""),
                 "open_trades": open_trades,
                 "consecutive_losses": consecutive_losses,
                 "flow_squeeze_probability": round(flow_volatility["squeeze_probability"], 4),
