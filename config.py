@@ -88,7 +88,8 @@ class Config:
     health_guardian_stale_minutes: int = _get_int("HEALTH_GUARDIAN_STALE_MINUTES", 10)
     health_guardian_dry_run: bool = _get_bool("HEALTH_GUARDIAN_DRY_RUN", True)
     health_guardian_restart_dashboard: bool = _get_bool("HEALTH_GUARDIAN_RESTART_DASHBOARD", False)
-    health_guardian_project_dir: str = os.getenv("HEALTH_GUARDIAN_PROJECT_DIR", "")
+    health_guardian_restart_cooldown_seconds: int = _get_int("HEALTH_GUARDIAN_RESTART_COOLDOWN_SECONDS", 300)
+    health_guardian_project_dir: str = os.getenv("HEALTH_GUARDIAN_PROJECT_DIR", "~/mamuyy-binance-hunter")
     health_guardian_hunter_session: str = os.getenv("HEALTH_GUARDIAN_HUNTER_SESSION", "hunter")
     health_guardian_dashboard_session: str = os.getenv("HEALTH_GUARDIAN_DASHBOARD_SESSION", "dashboard")
 

@@ -221,7 +221,12 @@ SCHEMAS = {
             regime_name TEXT,
             heartbeat_age_minutes REAL,
             open_trades INTEGER,
-            consecutive_losses INTEGER
+            consecutive_losses INTEGER,
+            session_name TEXT,
+            action TEXT,
+            result TEXT,
+            dry_run INTEGER,
+            reason TEXT
         )
     """,
     "runtime_heartbeats": """
@@ -339,6 +344,18 @@ def _ensure_columns(connection: sqlite3.Connection) -> None:
     for column, column_type in columns.items():
         if column not in existing:
             connection.execute(f"ALTER TABLE signals ADD COLUMN {column} {column_type}")
+
+    risk_existing = {row["name"] for row in connection.execute("PRAGMA table_info(risk_events)")}
+    risk_columns = {
+        "session_name": "TEXT",
+        "action": "TEXT",
+        "result": "TEXT",
+        "dry_run": "INTEGER",
+        "reason": "TEXT",
+    }
+    for column, column_type in risk_columns.items():
+        if column not in risk_existing:
+            connection.execute(f"ALTER TABLE risk_events ADD COLUMN {column} {column_type}")
 
 
 def _columns(connection: sqlite3.Connection, table: str) -> List[str]:

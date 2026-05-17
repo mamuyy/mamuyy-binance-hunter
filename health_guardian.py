@@ -17,13 +17,14 @@ from database import db_health_check, init_db
 class HealthGuardianConfig:
     database_path: str = "mamuyy_hunter.db"
     orchestrator_log_path: str = "orchestrator_log.csv"
-    project_dir: str = ""
+    project_dir: str = "~/mamuyy-binance-hunter"
     hunter_session: str = "hunter"
     dashboard_session: str = "dashboard"
     stale_minutes: int = 10
     interval_seconds: int = 300
     dry_run: bool = True
     restart_dashboard: bool = False
+    restart_cooldown_seconds: int = 300
 
 
 def _now_iso() -> str:
@@ -193,8 +194,117 @@ def _start_tmux_session(session_name: str, command: str, dry_run: bool) -> Dict[
 
 
 def _guardian_command(project_dir: str, app_command: str) -> str:
-    safe_project_dir = project_dir or os.getcwd()
+    safe_project_dir = os.path.expanduser(project_dir or "~/mamuyy-binance-hunter")
     return f"cd {shlex.quote(safe_project_dir)} && . .venv/bin/activate && {app_command}"
+
+
+def _recovery_cooldown_active(database_path: str, session_name: str, cooldown_seconds: int) -> bool:
+    try:
+        init_db(database_path)
+        with sqlite3.connect(database_path) as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                """
+                SELECT timestamp
+                FROM risk_events
+                WHERE session_name = ?
+                  AND action = 'start_tmux_session'
+                  AND dry_run = 0
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (session_name,),
+            ).fetchone()
+    except sqlite3.Error:
+        return False
+    if not row or not row["timestamp"]:
+        return False
+    timestamp = _parse_timestamp(row["timestamp"])
+    if not timestamp:
+        return False
+    age_seconds = (datetime.now(timezone.utc) - timestamp).total_seconds()
+    return age_seconds < cooldown_seconds
+
+
+def _log_recovery_action(
+    database_path: str,
+    session_name: str,
+    action: str,
+    result: str,
+    dry_run: bool,
+    reason: str,
+) -> None:
+    init_db(database_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO risk_events (
+                timestamp,
+                status,
+                safe,
+                risk_score,
+                position_multiplier,
+                reasons_json,
+                regime_name,
+                session_name,
+                action,
+                result,
+                dry_run,
+                reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _now_iso(),
+                "WATCH" if dry_run else ("SAFE" if result == "started" else "HALT"),
+                1 if result in {"started", "dry_run", "cooldown"} else 0,
+                50,
+                1.0,
+                json.dumps([reason, result]),
+                "HEALTH_GUARDIAN",
+                session_name,
+                action,
+                result,
+                int(dry_run),
+                reason,
+            ),
+        )
+        connection.commit()
+
+
+def _recover_tmux_session(
+    config: HealthGuardianConfig,
+    session_name: str,
+    command: str,
+    reason: str,
+) -> str:
+    if not config.dry_run and _recovery_cooldown_active(
+        config.database_path,
+        session_name,
+        config.restart_cooldown_seconds,
+    ):
+        detail = f"restart cooldown active for tmux session {session_name}"
+        _log_recovery_action(
+            config.database_path,
+            session_name,
+            "start_tmux_session",
+            "cooldown",
+            config.dry_run,
+            reason,
+        )
+        return detail
+
+    start_result = _start_tmux_session(session_name, command, config.dry_run)
+    result = "dry_run" if config.dry_run else "started" if start_result.get("started") else "failed"
+    _log_recovery_action(
+        config.database_path,
+        session_name,
+        "start_tmux_session",
+        result,
+        config.dry_run,
+        reason,
+    )
+    return start_result["detail"]
 
 
 def _log_guardian_event(
@@ -220,9 +330,10 @@ def _log_guardian_event(
                 regime_name,
                 heartbeat_age_minutes,
                 open_trades,
-                consecutive_losses
+                consecutive_losses,
+                reason
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _now_iso(),
@@ -238,6 +349,7 @@ def _log_guardian_event(
                 heartbeat_age_minutes,
                 None,
                 None,
+                "; ".join(reasons),
             ),
         )
         connection.commit()
@@ -278,28 +390,40 @@ def check_health_guardian_once(config: HealthGuardianConfig | None = None) -> Di
         reasons.append("tmux not available in current environment")
 
     if not hunter_exists:
-        reasons.append(f"tmux session missing: {guardian_config.hunter_session}")
-        start_result = _start_tmux_session(
+        reason = f"tmux session missing: {guardian_config.hunter_session}"
+        reasons.append(reason)
+        detail = _recover_tmux_session(
+            guardian_config,
             guardian_config.hunter_session,
             _guardian_command(project_dir, "python main.py --orchestrator"),
-            guardian_config.dry_run,
+            reason,
         )
-        recovery_actions.append(start_result["detail"])
+        recovery_actions.append(detail)
 
     if not dashboard_exists:
-        reasons.append(f"tmux session missing: {guardian_config.dashboard_session}")
-        if guardian_config.restart_dashboard:
-            start_result = _start_tmux_session(
+        reason = f"tmux session missing: {guardian_config.dashboard_session}"
+        reasons.append(reason)
+        if guardian_config.dry_run and not guardian_config.restart_dashboard:
+            recovery_actions.append("dashboard restart disabled; warning logged only")
+            _log_recovery_action(
+                guardian_config.database_path,
+                guardian_config.dashboard_session,
+                "start_tmux_session",
+                "disabled",
+                guardian_config.dry_run,
+                reason,
+            )
+        else:
+            detail = _recover_tmux_session(
+                guardian_config,
                 guardian_config.dashboard_session,
                 _guardian_command(
                     project_dir,
                     "streamlit run dashboard.py --server.address 127.0.0.1 --server.port 8501",
                 ),
-                guardian_config.dry_run,
+                reason,
             )
-            recovery_actions.append(start_result["detail"])
-        else:
-            recovery_actions.append("dashboard restart disabled; warning logged only")
+            recovery_actions.append(detail)
 
     status = "HALT" if heartbeat_stale or not db_health.get("ok") else "WATCH" if reasons else "SAFE"
     if reasons:

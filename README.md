@@ -1080,9 +1080,10 @@ Perilaku:
 
 - Jika `hunter` hilang, guardian mencatat recovery action. Dengan `HEALTH_GUARDIAN_DRY_RUN=true`, guardian hanya menampilkan rencana restart.
 - Jika `HEALTH_GUARDIAN_DRY_RUN=false`, guardian bisa membuat ulang session `hunter` dengan `python main.py --orchestrator`.
-- Jika `dashboard` hilang, guardian hanya log warning secara default.
-- Dashboard restart hanya aktif jika `HEALTH_GUARDIAN_RESTART_DASHBOARD=true`.
-- Semua event warning/stale dicatat ke table `risk_events`.
+- Jika `dashboard` hilang dan `HEALTH_GUARDIAN_DRY_RUN=false`, guardian bisa membuat ulang session `dashboard` dengan Streamlit bind ke `127.0.0.1:8501`.
+- Saat `HEALTH_GUARDIAN_DRY_RUN=true`, dashboard restart tetap warning/log saja kecuali `HEALTH_GUARDIAN_RESTART_DASHBOARD=true`.
+- Restart session yang sama punya cooldown default 5 menit agar tidak restart loop.
+- Semua event warning/stale/recovery dicatat ke table `risk_events`.
 - Output menampilkan `Heartbeat Source`, misalnya `heartbeat_table`, `fallback_flow_logs`, atau `fallback_regime_logs`.
 
 Contoh konfigurasi aman:
@@ -1093,6 +1094,20 @@ HEALTH_GUARDIAN_STALE_MINUTES=10
 HEALTH_GUARDIAN_HUNTER_SESSION=hunter
 HEALTH_GUARDIAN_DASHBOARD_SESSION=dashboard
 HEALTH_GUARDIAN_RESTART_DASHBOARD=false
+HEALTH_GUARDIAN_RESTART_COOLDOWN_SECONDS=300
+HEALTH_GUARDIAN_PROJECT_DIR=~/mamuyy-binance-hunter
+```
+
+Enable guarded recovery di VPS:
+
+```env
+HEALTH_GUARDIAN_DRY_RUN=false
+```
+
+Kembalikan ke mode inspeksi aman:
+
+```env
+HEALTH_GUARDIAN_DRY_RUN=true
 ```
 
 Untuk menjalankan berkala di VPS tanpa PM2, pakai cron/systemd timer atau loop shell sederhana yang memanggil command ini tiap 5 menit. Tetap gunakan `tmux`, bukan PM2.
@@ -1242,7 +1257,8 @@ HEALTH_GUARDIAN_INTERVAL_SECONDS=300
 HEALTH_GUARDIAN_STALE_MINUTES=10
 HEALTH_GUARDIAN_DRY_RUN=true
 HEALTH_GUARDIAN_RESTART_DASHBOARD=false
-HEALTH_GUARDIAN_PROJECT_DIR=
+HEALTH_GUARDIAN_RESTART_COOLDOWN_SECONDS=300
+HEALTH_GUARDIAN_PROJECT_DIR=~/mamuyy-binance-hunter
 HEALTH_GUARDIAN_HUNTER_SESSION=hunter
 HEALTH_GUARDIAN_DASHBOARD_SESSION=dashboard
 ```

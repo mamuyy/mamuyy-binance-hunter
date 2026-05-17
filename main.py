@@ -98,13 +98,14 @@ if "--health-guardian-once" in sys.argv:
         _HealthGuardianConfig(
             database_path=_guardian_config.database_path,
             orchestrator_log_path="orchestrator_log.csv",
-            project_dir=_guardian_config.health_guardian_project_dir or os.getcwd(),
+            project_dir=_guardian_config.health_guardian_project_dir,
             hunter_session=_guardian_config.health_guardian_hunter_session,
             dashboard_session=_guardian_config.health_guardian_dashboard_session,
             stale_minutes=_guardian_config.health_guardian_stale_minutes,
             interval_seconds=_guardian_config.health_guardian_interval_seconds,
             dry_run=_guardian_config.health_guardian_dry_run,
             restart_dashboard=_guardian_config.health_guardian_restart_dashboard,
+            restart_cooldown_seconds=_guardian_config.health_guardian_restart_cooldown_seconds,
         )
     )
     print(_format_health_guardian_result(_guardian_result))
@@ -545,13 +546,14 @@ def health_guardian_config_from_env() -> HealthGuardianConfig:
     return HealthGuardianConfig(
         database_path=config.database_path,
         orchestrator_log_path="orchestrator_log.csv",
-        project_dir=config.health_guardian_project_dir or os.getcwd(),
+        project_dir=config.health_guardian_project_dir,
         hunter_session=config.health_guardian_hunter_session,
         dashboard_session=config.health_guardian_dashboard_session,
         stale_minutes=config.health_guardian_stale_minutes,
         interval_seconds=config.health_guardian_interval_seconds,
         dry_run=config.health_guardian_dry_run,
         restart_dashboard=config.health_guardian_restart_dashboard,
+        restart_cooldown_seconds=config.health_guardian_restart_cooldown_seconds,
     )
 
 
