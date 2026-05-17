@@ -503,11 +503,15 @@ def read_shadow_simulation(
     comparison_path: str = "shadow_comparison.csv",
     tuning_path: str = "logs/shadow_threshold_tuning.csv",
     walkforward_path: str = "logs/shadow_threshold_walkforward.csv",
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    adaptive_comparison_path: str = "logs/adaptive_threshold_comparison.csv",
+    adaptive_walkforward_path: str = "logs/adaptive_walkforward.csv",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     equity = _empty_df()
     comparison = _empty_df()
     tuning = _empty_df()
     walkforward = _empty_df()
+    adaptive_comparison = _empty_df()
+    adaptive_walkforward = _empty_df()
     try:
         if os.path.exists(equity_path):
             equity = pd.read_csv(equity_path)
@@ -528,7 +532,17 @@ def read_shadow_simulation(
             walkforward = pd.read_csv(walkforward_path)
     except Exception:
         walkforward = _empty_df()
-    return equity, comparison, tuning, walkforward
+    try:
+        if os.path.exists(adaptive_comparison_path):
+            adaptive_comparison = pd.read_csv(adaptive_comparison_path)
+    except Exception:
+        adaptive_comparison = _empty_df()
+    try:
+        if os.path.exists(adaptive_walkforward_path):
+            adaptive_walkforward = pd.read_csv(adaptive_walkforward_path)
+    except Exception:
+        adaptive_walkforward = _empty_df()
+    return equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward
 
 
 def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "value", default: float = 0.0) -> float:
@@ -543,7 +557,7 @@ def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "valu
 
 def render_shadow_simulation() -> None:
     st.header("Shadow Penalty Simulation")
-    equity, comparison, tuning, walkforward = read_shadow_simulation()
+    equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward = read_shadow_simulation()
     if equity.empty or comparison.empty:
         st.info("No shadow simulation data yet. Run python main.py --shadow-analysis.")
     else:
@@ -568,7 +582,7 @@ def render_shadow_simulation() -> None:
 
         section = comparison.get("section", pd.Series(dtype=str))
         regime = comparison[section == "regime"].copy()
-        if not regime.empty:
+    if not regime.empty:
             st.subheader("Regime Impact Summary")
             st.dataframe(regime.head(50), use_container_width=True)
 
@@ -632,6 +646,32 @@ def render_shadow_simulation() -> None:
                 st.success(f"Recommended threshold: {flagged.iloc[0].get('threshold')}")
                 st.dataframe(flagged, use_container_width=True, hide_index=True)
     st.dataframe(walkforward, use_container_width=True, hide_index=True)
+
+    st.subheader("Adaptive Threshold Strategy")
+    if adaptive_comparison.empty:
+        st.info("No adaptive threshold comparison yet. Run python main.py --shadow-analysis.")
+    else:
+        for column in ["profit_factor", "max_drawdown", "trade_count"]:
+            if column in adaptive_comparison.columns:
+                adaptive_comparison[column] = pd.to_numeric(adaptive_comparison[column], errors="coerce")
+        col1, col2, col3 = st.columns(3)
+        if "profit_factor" in adaptive_comparison.columns and not adaptive_comparison.empty:
+            best_pf = adaptive_comparison.sort_values("profit_factor", ascending=False).iloc[0]
+            col1.metric("Best PF", f"{best_pf.get('strategy')}: {best_pf.get('profit_factor'):.2f}")
+        if "max_drawdown" in adaptive_comparison.columns and not adaptive_comparison.empty:
+            dd_frame = adaptive_comparison.copy()
+            dd_frame["dd_abs"] = abs(dd_frame["max_drawdown"])
+            best_dd = dd_frame.sort_values("dd_abs", ascending=True).iloc[0]
+            col2.metric("Best DD Protection", f"{best_dd.get('strategy')}: {best_dd.get('max_drawdown'):.2f}")
+        if not adaptive_walkforward.empty and "stability_score" in adaptive_walkforward.columns:
+            adaptive_walkforward["stability_score"] = pd.to_numeric(adaptive_walkforward["stability_score"], errors="coerce")
+            best_stability = adaptive_walkforward.sort_values("stability_score", ascending=False).iloc[0]
+            col3.metric("Best Forward Stability", f"{best_stability.get('strategy')}: {best_stability.get('stability_score'):.2f}")
+        st.dataframe(adaptive_comparison, use_container_width=True, hide_index=True)
+
+    if not adaptive_walkforward.empty:
+        st.subheader("Adaptive Walkforward")
+        st.dataframe(adaptive_walkforward, use_container_width=True, hide_index=True)
 
 
 def show_dataframe_or_info(df: pd.DataFrame, message: str) -> None:

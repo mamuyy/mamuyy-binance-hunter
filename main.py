@@ -155,6 +155,8 @@ if "--shadow-analysis" in sys.argv:
         comparison_output_path="shadow_comparison.csv",
         tuning_output_path="logs/shadow_threshold_tuning.csv",
         walkforward_output_path="logs/shadow_threshold_walkforward.csv",
+        adaptive_comparison_output_path="logs/adaptive_threshold_comparison.csv",
+        adaptive_walkforward_output_path="logs/adaptive_walkforward.csv",
     )
     print(_format_shadow_analysis_summary(_shadow_result))
     sys.exit(0)
@@ -584,6 +586,8 @@ def run_shadow_analysis() -> Dict[str, Any]:
         comparison_output_path="shadow_comparison.csv",
         tuning_output_path="logs/shadow_threshold_tuning.csv",
         walkforward_output_path="logs/shadow_threshold_walkforward.csv",
+        adaptive_comparison_output_path="logs/adaptive_threshold_comparison.csv",
+        adaptive_walkforward_output_path="logs/adaptive_walkforward.csv",
     )
     print(format_shadow_analysis_summary(result))
     return result

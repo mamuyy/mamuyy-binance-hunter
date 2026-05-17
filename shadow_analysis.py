@@ -9,6 +9,22 @@ from database import init_db
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 
 DEFAULT_THRESHOLDS = list(range(60, 71))
+STATIC_STRATEGY_THRESHOLD = 65
+
+
+def adaptive_threshold_for_regime(regime_name: Any) -> int:
+    regime = str(regime_name or "UNKNOWN").upper()
+    if regime == "TRENDING BULL":
+        return 60
+    if "BREAKOUT" in regime:
+        return 60
+    if regime == "SIDEWAYS / CHOPPY":
+        return 65
+    if regime == "HIGH VOLATILITY":
+        return 65
+    if regime == "RISK OFF":
+        return 70
+    return 65
 
 
 def _safe_number(value: Any, default: float = 0.0) -> float:
@@ -207,6 +223,138 @@ def _simulate_shadow_filter(df: pd.DataFrame, threshold: float, original: Dict[s
     }
 
 
+def _simulate_adaptive_filter(df: pd.DataFrame, original: Dict[str, float]) -> Dict[str, Any]:
+    thresholds = df["regime_name"].apply(adaptive_threshold_for_regime)
+    included = df["shadow_score"] >= thresholds
+    pnl_shadow = df["pnl_pct"].where(included, 0.0)
+    skipped = df[~included]
+    shadow = _curve_metrics(pnl_shadow)
+    derived = _derived_metrics(original, shadow, len(df), len(skipped))
+    return {
+        "strategy": "adaptive",
+        "shadow": shadow,
+        "pnl_shadow": pnl_shadow,
+        "included": included,
+        "thresholds": thresholds,
+        "skipped": skipped,
+        "avoided_losses": int((skipped["pnl_pct"] < 0).sum()),
+        "skipped_winners": int((skipped["pnl_pct"] > 0).sum()),
+        **derived,
+    }
+
+
+def _strategy_row(
+    strategy: str,
+    metrics: Dict[str, float],
+    avoided_losses: int,
+    skipped_winners: int,
+    derived: Dict[str, float],
+) -> Dict[str, Any]:
+    return {
+        "strategy": strategy,
+        "total_pnl": metrics.get("total_pnl"),
+        "max_drawdown": metrics.get("max_drawdown"),
+        "winrate": metrics.get("winrate"),
+        "profit_factor": metrics.get("profit_factor"),
+        "trade_count": metrics.get("trade_count"),
+        "avoided_losses": avoided_losses,
+        "skipped_winners": skipped_winners,
+        "dd_reduction_pct": derived.get("drawdown_reduction_pct"),
+        "pnl_difference_pct": derived.get("pnl_difference_pct"),
+    }
+
+
+def _build_adaptive_comparison(df: pd.DataFrame) -> pd.DataFrame:
+    original = _curve_metrics(df["pnl_pct"]) if not df.empty else _curve_metrics(pd.Series(dtype=float))
+    original_row = _strategy_row(
+        "original",
+        original,
+        0,
+        0,
+        {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0},
+    )
+    if df.empty:
+        static_metrics = _curve_metrics(pd.Series(dtype=float))
+        adaptive_metrics = _curve_metrics(pd.Series(dtype=float))
+        return pd.DataFrame(
+            [
+                original_row,
+                _strategy_row("static_65", static_metrics, 0, 0, {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0}),
+                _strategy_row("adaptive", adaptive_metrics, 0, 0, {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0}),
+            ]
+        )
+
+    static = _simulate_shadow_filter(df, STATIC_STRATEGY_THRESHOLD, original)
+    adaptive = _simulate_adaptive_filter(df, original)
+    return pd.DataFrame(
+        [
+            original_row,
+            _strategy_row(
+                "static_65",
+                static["shadow"],
+                static["avoided_losses"],
+                static["skipped_winners"],
+                static,
+            ),
+            _strategy_row(
+                "adaptive",
+                adaptive["shadow"],
+                adaptive["avoided_losses"],
+                adaptive["skipped_winners"],
+                adaptive,
+            ),
+        ]
+    )
+
+
+def _build_adaptive_walkforward(df: pd.DataFrame) -> pd.DataFrame:
+    strategies = ["static_65", "adaptive"]
+    if df.empty:
+        return pd.DataFrame(
+            [
+                {
+                    "strategy": strategy,
+                    "calibration_profit_factor": 0.0,
+                    "calibration_max_drawdown": 0.0,
+                    "calibration_trade_count": 0,
+                    "forward_profit_factor": 0.0,
+                    "forward_max_drawdown": 0.0,
+                    "forward_trade_count": 0,
+                    "stability_score": 0.0,
+                }
+                for strategy in strategies
+            ]
+        )
+
+    split_index = max(1, int(len(df) * 0.70))
+    calibration_df = df.iloc[:split_index].copy()
+    forward_df = df.iloc[split_index:].copy()
+
+    rows = []
+    for strategy in strategies:
+        calibration_original = _curve_metrics(calibration_df["pnl_pct"])
+        forward_original = _curve_metrics(forward_df["pnl_pct"]) if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+        if strategy == "static_65":
+            calibration = _simulate_shadow_filter(calibration_df, STATIC_STRATEGY_THRESHOLD, calibration_original)["shadow"]
+            forward = _simulate_shadow_filter(forward_df, STATIC_STRATEGY_THRESHOLD, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+        else:
+            calibration = _simulate_adaptive_filter(calibration_df, calibration_original)["shadow"]
+            forward = _simulate_adaptive_filter(forward_df, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+        rows.append(
+            {
+                "strategy": strategy,
+                "calibration_profit_factor": calibration.get("profit_factor"),
+                "calibration_max_drawdown": calibration.get("max_drawdown"),
+                "calibration_trade_count": calibration.get("trade_count"),
+                "forward_profit_factor": forward.get("profit_factor"),
+                "forward_max_drawdown": forward.get("max_drawdown"),
+                "forward_trade_count": forward.get("trade_count"),
+                "stability_score": _stability_score(calibration, forward),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _build_threshold_tuning(
     df: pd.DataFrame,
     thresholds: List[float],
@@ -328,12 +476,16 @@ def run_shadow_equity_analysis(
     comparison_output_path: str = "shadow_comparison.csv",
     tuning_output_path: str = "logs/shadow_threshold_tuning.csv",
     walkforward_output_path: str = "logs/shadow_threshold_walkforward.csv",
+    adaptive_comparison_output_path: str = "logs/adaptive_threshold_comparison.csv",
+    adaptive_walkforward_output_path: str = "logs/adaptive_walkforward.csv",
     thresholds: List[float] | None = None,
 ) -> Dict[str, Any]:
     thresholds = thresholds or DEFAULT_THRESHOLDS
     df = _ensure_shadow_scores(_load_dataset(database_path))
     os.makedirs(os.path.dirname(tuning_output_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(walkforward_output_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(adaptive_comparison_output_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(adaptive_walkforward_output_path) or ".", exist_ok=True)
     if df.empty:
         pd.DataFrame().to_csv(equity_output_path, index=False)
         pd.DataFrame(_comparison_rows(_curve_metrics(pd.Series(dtype=float)), _curve_metrics(pd.Series(dtype=float)), 0, 0)).to_csv(
@@ -342,8 +494,12 @@ def run_shadow_equity_analysis(
         )
         tuning = _build_threshold_tuning(df, thresholds, _curve_metrics(pd.Series(dtype=float)))
         walkforward = _build_threshold_walkforward(df, thresholds)
+        adaptive_comparison = _build_adaptive_comparison(df)
+        adaptive_walkforward = _build_adaptive_walkforward(df)
         tuning.to_csv(tuning_output_path, index=False)
         walkforward.to_csv(walkforward_output_path, index=False)
+        adaptive_comparison.to_csv(adaptive_comparison_output_path, index=False)
+        adaptive_walkforward.to_csv(adaptive_walkforward_output_path, index=False)
         return {
             "rows": 0,
             "threshold": threshold,
@@ -358,8 +514,12 @@ def run_shadow_equity_analysis(
             "comparison_output_path": comparison_output_path,
             "tuning_output_path": tuning_output_path,
             "walkforward_output_path": walkforward_output_path,
+            "adaptive_comparison_output_path": adaptive_comparison_output_path,
+            "adaptive_walkforward_output_path": adaptive_walkforward_output_path,
             "threshold_tuning": tuning.to_dict("records"),
             "threshold_walkforward": walkforward.to_dict("records"),
+            "adaptive_comparison": adaptive_comparison.to_dict("records"),
+            "adaptive_walkforward": adaptive_walkforward.to_dict("records"),
         }
 
     original = _curve_metrics(df["pnl_pct"])
@@ -431,8 +591,12 @@ def run_shadow_equity_analysis(
     pd.DataFrame(comparison).to_csv(comparison_output_path, index=False)
     tuning = _build_threshold_tuning(df, thresholds, original)
     walkforward = _build_threshold_walkforward(df, thresholds)
+    adaptive_comparison = _build_adaptive_comparison(df)
+    adaptive_walkforward = _build_adaptive_walkforward(df)
     tuning.to_csv(tuning_output_path, index=False)
     walkforward.to_csv(walkforward_output_path, index=False)
+    adaptive_comparison.to_csv(adaptive_comparison_output_path, index=False)
+    adaptive_walkforward.to_csv(adaptive_walkforward_output_path, index=False)
 
     return {
         "rows": int(len(df)),
@@ -448,8 +612,12 @@ def run_shadow_equity_analysis(
         "comparison_output_path": comparison_output_path,
         "tuning_output_path": tuning_output_path,
         "walkforward_output_path": walkforward_output_path,
+        "adaptive_comparison_output_path": adaptive_comparison_output_path,
+        "adaptive_walkforward_output_path": adaptive_walkforward_output_path,
         "threshold_tuning": tuning.to_dict("records"),
         "threshold_walkforward": walkforward.to_dict("records"),
+        "adaptive_comparison": adaptive_comparison.to_dict("records"),
+        "adaptive_walkforward": adaptive_walkforward.to_dict("records"),
     }
 
 
@@ -470,6 +638,8 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             f"Comparison CSV: {result.get('comparison_output_path')}",
             f"Tuning CSV: {result.get('tuning_output_path')}",
             f"Walkforward CSV: {result.get('walkforward_output_path')}",
+            f"Adaptive Comparison CSV: {result.get('adaptive_comparison_output_path')}",
+            f"Adaptive Walkforward CSV: {result.get('adaptive_walkforward_output_path')}",
             "",
             "Threshold Tuning:",
             pd.DataFrame(result.get("threshold_tuning", [])).to_string(index=False)
@@ -480,5 +650,15 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             pd.DataFrame(result.get("threshold_walkforward", [])).to_string(index=False)
             if result.get("threshold_walkforward")
             else "No threshold walkforward rows.",
+            "",
+            "Adaptive Strategy Comparison:",
+            pd.DataFrame(result.get("adaptive_comparison", [])).to_string(index=False)
+            if result.get("adaptive_comparison")
+            else "No adaptive comparison rows.",
+            "",
+            "Adaptive Walkforward:",
+            pd.DataFrame(result.get("adaptive_walkforward", [])).to_string(index=False)
+            if result.get("adaptive_walkforward")
+            else "No adaptive walkforward rows.",
         ]
     )
