@@ -131,6 +131,16 @@ def read_portfolio_observability() -> dict[str, Any]:
         }
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_opportunity_allocation(path: str = "logs/opportunity_allocation.csv") -> pd.DataFrame:
+    try:
+        if os.path.exists(path):
+            return pd.read_csv(path)
+    except Exception:
+        return _empty_df()
+    return _empty_df()
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -249,6 +259,40 @@ def render_portfolio_observability(result: dict[str, Any]) -> None:
             pd.DataFrame(result.get("top_correlated_symbols", [])),
             "Not enough historical outcome data for correlation.",
         )
+
+
+def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
+    st.header("Opportunity Allocation Engine")
+    if allocation.empty:
+        st.info("No opportunity allocation data yet. Run python main.py --allocate.")
+        return
+
+    df = allocation.copy()
+    for column in ["opportunity_score", "risk_score", "suggested_max_weight_pct"]:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+    tier_counts = df.get("allocation_tier", pd.Series(dtype=str)).value_counts().reset_index()
+    if not tier_counts.empty:
+        tier_counts.columns = ["allocation_tier", "count"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Top Priority Symbols")
+        priority = df[df.get("allocation_tier", pd.Series(dtype=str)) == "PRIORITY"].head(15)
+        if priority.empty:
+            priority = df[df.get("allocation_tier", pd.Series(dtype=str)).isin(["SMALL", "WATCH"])].head(15)
+        show_dataframe_or_info(priority, "No priority or small allocation candidates.")
+
+        st.subheader("Allocation Tier Summary")
+        show_dataframe_or_info(tier_counts, "No allocation tier summary.")
+    with col2:
+        st.subheader("Avoid List")
+        avoid = df[df.get("allocation_tier", pd.Series(dtype=str)) == "AVOID"].head(15)
+        show_dataframe_or_info(avoid, "No avoid candidates.")
+
+        st.subheader("Risk Reasons")
+        reason_cols = [column for column in ["symbol", "risk_score", "allocation_tier", "reason"] if column in df.columns]
+        show_dataframe_or_info(df[reason_cols].sort_values("risk_score", ascending=False).head(20), "No risk reasons available.")
 
 
 def render_shadow_penalty_insight(signals: pd.DataFrame) -> None:
@@ -812,6 +856,7 @@ def main() -> None:
     counts = table_counts()
     risk_status = read_risk_status()
     portfolio_observability = read_portfolio_observability()
+    opportunity_allocation = read_opportunity_allocation()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -840,6 +885,7 @@ def main() -> None:
 
     render_risk_engine_status(risk_status)
     render_portfolio_observability(portfolio_observability)
+    render_opportunity_allocation(opportunity_allocation)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])

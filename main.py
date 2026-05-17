@@ -238,6 +238,7 @@ from market_regime import (
     log_regime_history,
 )
 from ml_engine import run_ml_research
+from opportunity_allocator import allocate_opportunities, format_allocation_summary
 from orchestrator import run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
@@ -381,6 +382,16 @@ def run_portfolio() -> Dict[str, Any]:
 def run_portfolio_observer() -> Dict[str, Any]:
     result = observe_portfolio(db_path=config.database_path)
     print(format_portfolio_observer(result))
+    return result
+
+
+def run_allocate() -> Dict[str, Any]:
+    result = allocate_opportunities(
+        db_path=config.database_path,
+        output_path="logs/opportunity_allocation.csv",
+        logs_dir="logs",
+    )
+    print(format_allocation_summary(result))
     return result
 
 
@@ -822,6 +833,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan portfolio observability analytics read-only.",
     )
     parser.add_argument(
+        "--allocate",
+        action="store_true",
+        help="Jalankan Opportunity Allocation Engine analytics-only.",
+    )
+    parser.add_argument(
         "--execution",
         action="store_true",
         help="Jalankan simulated execution engine.",
@@ -916,6 +932,8 @@ if __name__ == "__main__":
         run_shadow()
     elif args.execution:
         run_execution()
+    elif args.allocate:
+        run_allocate()
     elif args.portfolio_observer:
         run_portfolio_observer()
     elif args.portfolio:

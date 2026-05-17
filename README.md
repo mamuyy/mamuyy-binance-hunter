@@ -693,6 +693,44 @@ Output:
 
 Dashboard menampilkan section `Portfolio Observability` berisi top exposure symbols, regime exposure, market type exposure, top correlated symbols, dan warning concentration risk. Layer ini analytics-only, tidak mengirim order dan tidak mengubah scanner/execution logic.
 
+## Opportunity Allocation Engine V1
+
+Jalankan allocation research:
+
+```bash
+python main.py --allocate
+```
+
+File utama:
+
+- `opportunity_allocator.py`
+
+Data source:
+
+- `signals`
+- `shadow_trades`
+- `historical_outcomes`
+- `flow_logs`
+- `regime_logs`
+- `ml_results`
+- `risk_events`
+- `logs/adaptive_threshold_comparison.csv` jika tersedia
+
+Output:
+
+- `logs/opportunity_allocation.csv`
+
+Kolom utama:
+
+- `symbol`
+- `opportunity_score`
+- `risk_score`
+- `allocation_tier`: `AVOID` / `WATCH` / `SMALL` / `PRIORITY`
+- `reason`
+- `suggested_max_weight_pct`
+
+Engine ini analytics-only. Ia hanya memberi ranking dan suggested max weight untuk riset, tanpa auto trade, tanpa broker integration, dan tanpa mengubah scanner/execution logic.
+
 ## Execution Simulation Engine
 
 Jalankan simulasi execution:
@@ -1235,6 +1273,7 @@ regime_shadow.py
 shadow_analysis.py
 portfolio_engine.py
 portfolio_observer.py
+opportunity_allocator.py
 execution_engine.py
 shadow_engine.py
 orchestrator.py
