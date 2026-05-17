@@ -966,6 +966,9 @@ Command ini membandingkan:
 
 - Original historical outcomes equity curve.
 - Hypothetical shadow curve jika trade dengan `shadow_score < ALERT_SCORE_THRESHOLD` dilewati.
+- Static threshold `65`, adaptive regime threshold, dan macro-adaptive emergency defense.
+
+Macro-adaptive adalah simulasi analytics-only. Ia membuat deterministic synthetic `macro_stress_score` dari rolling PnL volatility, drawdown pressure, dan cluster loss historical outcomes. Jika `macro_stress_level = HIGH`, threshold simulasi dinaikkan ke `75` untuk menguji emergency defense mode tanpa mengambil data macro live dan tanpa mengubah runtime scanner.
 
 Output:
 
@@ -975,8 +978,9 @@ Output:
 - `logs/shadow_threshold_walkforward.csv`
 - `logs/adaptive_threshold_comparison.csv`
 - `logs/adaptive_walkforward.csv`
+- `logs/macro_stress_summary.csv`
 
-Dashboard menampilkan `Shadow Penalty Simulation` dengan original vs shadow equity curve, drawdown reduction, trade reduction, avoided losses, skipped winners, regime impact summary, granular threshold tuning untuk `60` sampai `70`, 70/30 walkforward threshold validation, serta perbandingan original vs static `65` vs adaptive regime threshold.
+Dashboard menampilkan `Shadow Penalty Simulation` dengan original vs shadow equity curve, drawdown reduction, trade reduction, avoided losses, skipped winners, regime impact summary, granular threshold tuning untuk `60` sampai `70`, 70/30 walkforward threshold validation, perbandingan original vs static `65` vs adaptive regime threshold vs macro-adaptive, adaptive walkforward, dan macro stress summary.
 
 ## Health Guardian Watchdog
 

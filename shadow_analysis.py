@@ -137,6 +137,46 @@ def _ensure_shadow_scores(df: pd.DataFrame) -> pd.DataFrame:
     return enriched
 
 
+def _safe_quantile(series: pd.Series, quantile: float, default: float = 1.0) -> float:
+    value = pd.to_numeric(series, errors="coerce").replace([math.inf, -math.inf], pd.NA).dropna()
+    if value.empty:
+        return default
+    result = float(value.quantile(quantile))
+    return result if result > 0 else default
+
+
+def _add_macro_stress(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        enriched = df.copy()
+        enriched["macro_stress_score"] = pd.Series(dtype=float)
+        enriched["macro_stress_level"] = pd.Series(dtype=str)
+        return enriched
+
+    enriched = df.copy()
+    pnl = pd.to_numeric(enriched.get("pnl_pct"), errors="coerce").fillna(0.0)
+    abs_pnl = pnl.abs()
+    rolling_vol = abs_pnl.rolling(20, min_periods=5).mean()
+    rolling_vol = rolling_vol.fillna(abs_pnl.expanding(min_periods=1).mean()).fillna(0.0)
+
+    equity = pnl.cumsum()
+    drawdown = (equity - equity.cummax()).abs()
+    drawdown_pressure = drawdown.rolling(20, min_periods=1).max().fillna(0.0)
+    loss_cluster = (pnl < 0).astype(int).rolling(8, min_periods=1).sum().fillna(0.0)
+
+    vol_base = _safe_quantile(rolling_vol, 0.75)
+    dd_base = _safe_quantile(drawdown_pressure, 0.75)
+    vol_component = (rolling_vol / vol_base).clip(lower=0, upper=2.0)
+    dd_component = (drawdown_pressure / dd_base).clip(lower=0, upper=2.0)
+    loss_component = (loss_cluster / 8.0).clip(lower=0, upper=1.0)
+
+    stress_score = ((vol_component * 25.0) + (dd_component * 35.0) + (loss_component * 40.0)).clip(0, 100)
+    enriched["macro_stress_score"] = stress_score.round(6)
+    enriched["macro_stress_level"] = "LOW"
+    enriched.loc[stress_score >= 35, "macro_stress_level"] = "NORMAL"
+    enriched.loc[(stress_score >= 70) | (loss_cluster >= 5), "macro_stress_level"] = "HIGH"
+    return enriched
+
+
 def _comparison_rows(
     original: Dict[str, float],
     shadow: Dict[str, float],
@@ -243,6 +283,40 @@ def _simulate_adaptive_filter(df: pd.DataFrame, original: Dict[str, float]) -> D
     }
 
 
+def _macro_adaptive_thresholds(df: pd.DataFrame) -> pd.Series:
+    thresholds = df["regime_name"].apply(adaptive_threshold_for_regime)
+    if "macro_stress_level" not in df.columns:
+        return thresholds
+    return thresholds.where(df["macro_stress_level"].astype(str).str.upper() != "HIGH", 75)
+
+
+def _simulate_macro_adaptive_filter(df: pd.DataFrame, original: Dict[str, float]) -> Dict[str, Any]:
+    base_thresholds = df["regime_name"].apply(adaptive_threshold_for_regime)
+    thresholds = _macro_adaptive_thresholds(df)
+    included = df["shadow_score"] >= thresholds
+    pnl_shadow = df["pnl_pct"].where(included, 0.0)
+    skipped = df[~included]
+    shadow = _curve_metrics(pnl_shadow)
+    derived = _derived_metrics(original, shadow, len(df), len(skipped))
+    macro_filtered = (
+        (thresholds > base_thresholds)
+        & (df["shadow_score"] >= base_thresholds)
+        & (df["shadow_score"] < thresholds)
+    )
+    return {
+        "strategy": "macro_adaptive",
+        "shadow": shadow,
+        "pnl_shadow": pnl_shadow,
+        "included": included,
+        "thresholds": thresholds,
+        "skipped": skipped,
+        "macro_filtered_trades": int(macro_filtered.sum()),
+        "avoided_losses": int((skipped["pnl_pct"] < 0).sum()),
+        "skipped_winners": int((skipped["pnl_pct"] > 0).sum()),
+        **derived,
+    }
+
+
 def _strategy_row(
     strategy: str,
     metrics: Dict[str, float],
@@ -276,16 +350,19 @@ def _build_adaptive_comparison(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         static_metrics = _curve_metrics(pd.Series(dtype=float))
         adaptive_metrics = _curve_metrics(pd.Series(dtype=float))
+        macro_metrics = _curve_metrics(pd.Series(dtype=float))
         return pd.DataFrame(
             [
                 original_row,
                 _strategy_row("static_65", static_metrics, 0, 0, {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0}),
                 _strategy_row("adaptive", adaptive_metrics, 0, 0, {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0}),
+                _strategy_row("macro_adaptive", macro_metrics, 0, 0, {"drawdown_reduction_pct": 0.0, "pnl_difference_pct": 0.0}),
             ]
         )
 
     static = _simulate_shadow_filter(df, STATIC_STRATEGY_THRESHOLD, original)
     adaptive = _simulate_adaptive_filter(df, original)
+    macro_adaptive = _simulate_macro_adaptive_filter(df, original)
     return pd.DataFrame(
         [
             original_row,
@@ -303,12 +380,19 @@ def _build_adaptive_comparison(df: pd.DataFrame) -> pd.DataFrame:
                 adaptive["skipped_winners"],
                 adaptive,
             ),
+            _strategy_row(
+                "macro_adaptive",
+                macro_adaptive["shadow"],
+                macro_adaptive["avoided_losses"],
+                macro_adaptive["skipped_winners"],
+                macro_adaptive,
+            ),
         ]
     )
 
 
 def _build_adaptive_walkforward(df: pd.DataFrame) -> pd.DataFrame:
-    strategies = ["static_65", "adaptive"]
+    strategies = ["static_65", "adaptive", "macro_adaptive"]
     if df.empty:
         return pd.DataFrame(
             [
@@ -337,9 +421,12 @@ def _build_adaptive_walkforward(df: pd.DataFrame) -> pd.DataFrame:
         if strategy == "static_65":
             calibration = _simulate_shadow_filter(calibration_df, STATIC_STRATEGY_THRESHOLD, calibration_original)["shadow"]
             forward = _simulate_shadow_filter(forward_df, STATIC_STRATEGY_THRESHOLD, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
-        else:
+        elif strategy == "adaptive":
             calibration = _simulate_adaptive_filter(calibration_df, calibration_original)["shadow"]
             forward = _simulate_adaptive_filter(forward_df, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
+        else:
+            calibration = _simulate_macro_adaptive_filter(calibration_df, calibration_original)["shadow"]
+            forward = _simulate_macro_adaptive_filter(forward_df, forward_original)["shadow"] if not forward_df.empty else _curve_metrics(pd.Series(dtype=float))
         rows.append(
             {
                 "strategy": strategy,
@@ -353,6 +440,50 @@ def _build_adaptive_walkforward(df: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _build_macro_stress_summary(df: pd.DataFrame, adaptive_comparison: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "high_stress_rows",
+        "high_stress_pct",
+        "trades_filtered_by_macro_override",
+        "adaptive_max_drawdown",
+        "macro_adaptive_max_drawdown",
+        "max_dd_impact",
+        "adaptive_profit_factor",
+        "macro_adaptive_profit_factor",
+        "profit_factor_impact",
+    ]
+    if df.empty:
+        return pd.DataFrame([{column: 0 for column in columns}])
+
+    base_thresholds = df["regime_name"].apply(adaptive_threshold_for_regime)
+    macro_thresholds = _macro_adaptive_thresholds(df)
+    high_stress = df.get("macro_stress_level", pd.Series(index=df.index, dtype=str)).astype(str).str.upper() == "HIGH"
+    macro_filtered = (macro_thresholds > base_thresholds) & (df["shadow_score"] >= base_thresholds) & (df["shadow_score"] < macro_thresholds)
+
+    adaptive_row = adaptive_comparison[adaptive_comparison["strategy"] == "adaptive"]
+    macro_row = adaptive_comparison[adaptive_comparison["strategy"] == "macro_adaptive"]
+    adaptive_dd = _safe_number(adaptive_row.iloc[0].get("max_drawdown")) if not adaptive_row.empty else 0.0
+    macro_dd = _safe_number(macro_row.iloc[0].get("max_drawdown")) if not macro_row.empty else 0.0
+    adaptive_pf = _safe_number(adaptive_row.iloc[0].get("profit_factor")) if not adaptive_row.empty else 0.0
+    macro_pf = _safe_number(macro_row.iloc[0].get("profit_factor")) if not macro_row.empty else 0.0
+
+    return pd.DataFrame(
+        [
+            {
+                "high_stress_rows": int(high_stress.sum()),
+                "high_stress_pct": round(float(high_stress.mean() * 100), 6) if len(df) else 0.0,
+                "trades_filtered_by_macro_override": int(macro_filtered.sum()),
+                "adaptive_max_drawdown": adaptive_dd,
+                "macro_adaptive_max_drawdown": macro_dd,
+                "max_dd_impact": round(abs(adaptive_dd) - abs(macro_dd), 6),
+                "adaptive_profit_factor": adaptive_pf,
+                "macro_adaptive_profit_factor": macro_pf,
+                "profit_factor_impact": round(macro_pf - adaptive_pf, 6),
+            }
+        ]
+    )
 
 
 def _build_threshold_tuning(
@@ -478,14 +609,16 @@ def run_shadow_equity_analysis(
     walkforward_output_path: str = "logs/shadow_threshold_walkforward.csv",
     adaptive_comparison_output_path: str = "logs/adaptive_threshold_comparison.csv",
     adaptive_walkforward_output_path: str = "logs/adaptive_walkforward.csv",
+    macro_stress_output_path: str = "logs/macro_stress_summary.csv",
     thresholds: List[float] | None = None,
 ) -> Dict[str, Any]:
     thresholds = thresholds or DEFAULT_THRESHOLDS
-    df = _ensure_shadow_scores(_load_dataset(database_path))
+    df = _add_macro_stress(_ensure_shadow_scores(_load_dataset(database_path)))
     os.makedirs(os.path.dirname(tuning_output_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(walkforward_output_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(adaptive_comparison_output_path) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(adaptive_walkforward_output_path) or ".", exist_ok=True)
+    os.makedirs(os.path.dirname(macro_stress_output_path) or ".", exist_ok=True)
     if df.empty:
         pd.DataFrame().to_csv(equity_output_path, index=False)
         pd.DataFrame(_comparison_rows(_curve_metrics(pd.Series(dtype=float)), _curve_metrics(pd.Series(dtype=float)), 0, 0)).to_csv(
@@ -496,10 +629,12 @@ def run_shadow_equity_analysis(
         walkforward = _build_threshold_walkforward(df, thresholds)
         adaptive_comparison = _build_adaptive_comparison(df)
         adaptive_walkforward = _build_adaptive_walkforward(df)
+        macro_stress_summary = _build_macro_stress_summary(df, adaptive_comparison)
         tuning.to_csv(tuning_output_path, index=False)
         walkforward.to_csv(walkforward_output_path, index=False)
         adaptive_comparison.to_csv(adaptive_comparison_output_path, index=False)
         adaptive_walkforward.to_csv(adaptive_walkforward_output_path, index=False)
+        macro_stress_summary.to_csv(macro_stress_output_path, index=False)
         return {
             "rows": 0,
             "threshold": threshold,
@@ -516,10 +651,12 @@ def run_shadow_equity_analysis(
             "walkforward_output_path": walkforward_output_path,
             "adaptive_comparison_output_path": adaptive_comparison_output_path,
             "adaptive_walkforward_output_path": adaptive_walkforward_output_path,
+            "macro_stress_output_path": macro_stress_output_path,
             "threshold_tuning": tuning.to_dict("records"),
             "threshold_walkforward": walkforward.to_dict("records"),
             "adaptive_comparison": adaptive_comparison.to_dict("records"),
             "adaptive_walkforward": adaptive_walkforward.to_dict("records"),
+            "macro_stress_summary": macro_stress_summary.to_dict("records"),
         }
 
     original = _curve_metrics(df["pnl_pct"])
@@ -581,6 +718,8 @@ def run_shadow_equity_analysis(
         "regime_name",
         "calculated_score",
         "shadow_score",
+        "macro_stress_score",
+        "macro_stress_level",
         "included_shadow",
         "pnl_original",
         "pnl_shadow",
@@ -593,10 +732,12 @@ def run_shadow_equity_analysis(
     walkforward = _build_threshold_walkforward(df, thresholds)
     adaptive_comparison = _build_adaptive_comparison(df)
     adaptive_walkforward = _build_adaptive_walkforward(df)
+    macro_stress_summary = _build_macro_stress_summary(df, adaptive_comparison)
     tuning.to_csv(tuning_output_path, index=False)
     walkforward.to_csv(walkforward_output_path, index=False)
     adaptive_comparison.to_csv(adaptive_comparison_output_path, index=False)
     adaptive_walkforward.to_csv(adaptive_walkforward_output_path, index=False)
+    macro_stress_summary.to_csv(macro_stress_output_path, index=False)
 
     return {
         "rows": int(len(df)),
@@ -614,10 +755,12 @@ def run_shadow_equity_analysis(
         "walkforward_output_path": walkforward_output_path,
         "adaptive_comparison_output_path": adaptive_comparison_output_path,
         "adaptive_walkforward_output_path": adaptive_walkforward_output_path,
+        "macro_stress_output_path": macro_stress_output_path,
         "threshold_tuning": tuning.to_dict("records"),
         "threshold_walkforward": walkforward.to_dict("records"),
         "adaptive_comparison": adaptive_comparison.to_dict("records"),
         "adaptive_walkforward": adaptive_walkforward.to_dict("records"),
+        "macro_stress_summary": macro_stress_summary.to_dict("records"),
     }
 
 
@@ -640,6 +783,7 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             f"Walkforward CSV: {result.get('walkforward_output_path')}",
             f"Adaptive Comparison CSV: {result.get('adaptive_comparison_output_path')}",
             f"Adaptive Walkforward CSV: {result.get('adaptive_walkforward_output_path')}",
+            f"Macro Stress CSV: {result.get('macro_stress_output_path')}",
             "",
             "Threshold Tuning:",
             pd.DataFrame(result.get("threshold_tuning", [])).to_string(index=False)
@@ -660,5 +804,10 @@ def format_shadow_analysis_summary(result: Dict[str, Any]) -> str:
             pd.DataFrame(result.get("adaptive_walkforward", [])).to_string(index=False)
             if result.get("adaptive_walkforward")
             else "No adaptive walkforward rows.",
+            "",
+            "Macro Stress Summary:",
+            pd.DataFrame(result.get("macro_stress_summary", [])).to_string(index=False)
+            if result.get("macro_stress_summary")
+            else "No macro stress summary rows.",
         ]
     )

@@ -157,6 +157,7 @@ if "--shadow-analysis" in sys.argv:
         walkforward_output_path="logs/shadow_threshold_walkforward.csv",
         adaptive_comparison_output_path="logs/adaptive_threshold_comparison.csv",
         adaptive_walkforward_output_path="logs/adaptive_walkforward.csv",
+        macro_stress_output_path="logs/macro_stress_summary.csv",
     )
     print(_format_shadow_analysis_summary(_shadow_result))
     sys.exit(0)
@@ -588,6 +589,7 @@ def run_shadow_analysis() -> Dict[str, Any]:
         walkforward_output_path="logs/shadow_threshold_walkforward.csv",
         adaptive_comparison_output_path="logs/adaptive_threshold_comparison.csv",
         adaptive_walkforward_output_path="logs/adaptive_walkforward.csv",
+        macro_stress_output_path="logs/macro_stress_summary.csv",
     )
     print(format_shadow_analysis_summary(result))
     return result

@@ -505,13 +505,15 @@ def read_shadow_simulation(
     walkforward_path: str = "logs/shadow_threshold_walkforward.csv",
     adaptive_comparison_path: str = "logs/adaptive_threshold_comparison.csv",
     adaptive_walkforward_path: str = "logs/adaptive_walkforward.csv",
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    macro_stress_path: str = "logs/macro_stress_summary.csv",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     equity = _empty_df()
     comparison = _empty_df()
     tuning = _empty_df()
     walkforward = _empty_df()
     adaptive_comparison = _empty_df()
     adaptive_walkforward = _empty_df()
+    macro_stress = _empty_df()
     try:
         if os.path.exists(equity_path):
             equity = pd.read_csv(equity_path)
@@ -542,7 +544,12 @@ def read_shadow_simulation(
             adaptive_walkforward = pd.read_csv(adaptive_walkforward_path)
     except Exception:
         adaptive_walkforward = _empty_df()
-    return equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward
+    try:
+        if os.path.exists(macro_stress_path):
+            macro_stress = pd.read_csv(macro_stress_path)
+    except Exception:
+        macro_stress = _empty_df()
+    return equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward, macro_stress
 
 
 def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "value", default: float = 0.0) -> float:
@@ -557,7 +564,7 @@ def _comparison_value(comparison: pd.DataFrame, metric: str, column: str = "valu
 
 def render_shadow_simulation() -> None:
     st.header("Shadow Penalty Simulation")
-    equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward = read_shadow_simulation()
+    equity, comparison, tuning, walkforward, adaptive_comparison, adaptive_walkforward, macro_stress = read_shadow_simulation()
     if equity.empty or comparison.empty:
         st.info("No shadow simulation data yet. Run python main.py --shadow-analysis.")
     else:
@@ -582,7 +589,7 @@ def render_shadow_simulation() -> None:
 
         section = comparison.get("section", pd.Series(dtype=str))
         regime = comparison[section == "regime"].copy()
-    if not regime.empty:
+        if not regime.empty:
             st.subheader("Regime Impact Summary")
             st.dataframe(regime.head(50), use_container_width=True)
 
@@ -614,38 +621,38 @@ def render_shadow_simulation() -> None:
     st.subheader("Threshold Walkforward Validation")
     if walkforward.empty:
         st.info("No shadow threshold walkforward data yet. Run python main.py --shadow-analysis.")
-        return
-    for column in [
-        "calibration_profit_factor",
-        "calibration_max_drawdown",
-        "calibration_trade_count",
-        "forward_profit_factor",
-        "forward_max_drawdown",
-        "forward_trade_count",
-        "stability_score",
-    ]:
-        if column in walkforward.columns:
-            walkforward[column] = pd.to_numeric(walkforward[column], errors="coerce")
-    if {"forward_profit_factor", "forward_max_drawdown", "forward_trade_count", "stability_score"}.issubset(walkforward.columns):
-        max_forward_dd = abs(pd.to_numeric(walkforward["forward_max_drawdown"], errors="coerce")).replace(0, pd.NA).max()
-        min_forward_trades = max(int(pd.to_numeric(walkforward["forward_trade_count"], errors="coerce").max() * 0.05), 1)
-        dd_limit = max_forward_dd * 0.75 if pd.notna(max_forward_dd) else 0
-        recommended = walkforward[
-            (walkforward["forward_profit_factor"] > 1.05)
-            & (abs(walkforward["forward_max_drawdown"]) <= dd_limit)
-            & (walkforward["forward_trade_count"] >= min_forward_trades)
-            & (walkforward["stability_score"] >= 55)
-        ].sort_values(["stability_score", "forward_profit_factor", "forward_trade_count"], ascending=[False, False, False])
-        if not recommended.empty:
-            best = recommended.iloc[0]
-            st.success(f"Recommended threshold: {best.get('threshold')}")
-            st.dataframe(recommended.head(5), use_container_width=True, hide_index=True)
-        elif "recommended_candidate" in walkforward.columns:
-            flagged = walkforward[walkforward["recommended_candidate"].astype(str).str.lower() == "true"]
-            if not flagged.empty:
-                st.success(f"Recommended threshold: {flagged.iloc[0].get('threshold')}")
-                st.dataframe(flagged, use_container_width=True, hide_index=True)
-    st.dataframe(walkforward, use_container_width=True, hide_index=True)
+    else:
+        for column in [
+            "calibration_profit_factor",
+            "calibration_max_drawdown",
+            "calibration_trade_count",
+            "forward_profit_factor",
+            "forward_max_drawdown",
+            "forward_trade_count",
+            "stability_score",
+        ]:
+            if column in walkforward.columns:
+                walkforward[column] = pd.to_numeric(walkforward[column], errors="coerce")
+        if {"forward_profit_factor", "forward_max_drawdown", "forward_trade_count", "stability_score"}.issubset(walkforward.columns):
+            max_forward_dd = abs(pd.to_numeric(walkforward["forward_max_drawdown"], errors="coerce")).replace(0, pd.NA).max()
+            min_forward_trades = max(int(pd.to_numeric(walkforward["forward_trade_count"], errors="coerce").max() * 0.05), 1)
+            dd_limit = max_forward_dd * 0.75 if pd.notna(max_forward_dd) else 0
+            recommended = walkforward[
+                (walkforward["forward_profit_factor"] > 1.05)
+                & (abs(walkforward["forward_max_drawdown"]) <= dd_limit)
+                & (walkforward["forward_trade_count"] >= min_forward_trades)
+                & (walkforward["stability_score"] >= 55)
+            ].sort_values(["stability_score", "forward_profit_factor", "forward_trade_count"], ascending=[False, False, False])
+            if not recommended.empty:
+                best = recommended.iloc[0]
+                st.success(f"Recommended threshold: {best.get('threshold')}")
+                st.dataframe(recommended.head(5), use_container_width=True, hide_index=True)
+            elif "recommended_candidate" in walkforward.columns:
+                flagged = walkforward[walkforward["recommended_candidate"].astype(str).str.lower() == "true"]
+                if not flagged.empty:
+                    st.success(f"Recommended threshold: {flagged.iloc[0].get('threshold')}")
+                    st.dataframe(flagged, use_container_width=True, hide_index=True)
+        st.dataframe(walkforward, use_container_width=True, hide_index=True)
 
     st.subheader("Adaptive Threshold Strategy")
     if adaptive_comparison.empty:
@@ -672,6 +679,27 @@ def render_shadow_simulation() -> None:
     if not adaptive_walkforward.empty:
         st.subheader("Adaptive Walkforward")
         st.dataframe(adaptive_walkforward, use_container_width=True, hide_index=True)
+
+    st.subheader("Macro Stress Summary")
+    if macro_stress.empty:
+        st.info("No macro stress summary yet. Run python main.py --shadow-analysis.")
+    else:
+        for column in [
+            "high_stress_rows",
+            "high_stress_pct",
+            "trades_filtered_by_macro_override",
+            "max_dd_impact",
+            "profit_factor_impact",
+        ]:
+            if column in macro_stress.columns:
+                macro_stress[column] = pd.to_numeric(macro_stress[column], errors="coerce")
+        row = macro_stress.iloc[0]
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("High Stress Rows", f"{row.get('high_stress_rows', 0):.0f}")
+        col2.metric("Macro Filtered Trades", f"{row.get('trades_filtered_by_macro_override', 0):.0f}")
+        col3.metric("DD Impact", f"{row.get('max_dd_impact', 0):.2f}")
+        col4.metric("PF Impact", f"{row.get('profit_factor_impact', 0):.2f}")
+        st.dataframe(macro_stress, use_container_width=True, hide_index=True)
 
 
 def show_dataframe_or_info(df: pd.DataFrame, message: str) -> None:
