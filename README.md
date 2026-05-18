@@ -850,6 +850,59 @@ Safety:
 - Webhook bridge saat ini hanya payload generator untuk localhost/testing.
 - Architecture disiapkan untuk future market type: crypto, forex, stocks, ETF, dan gold.
 
+## Real Macro Observer Engine
+
+Jalankan macro observer:
+
+```bash
+python main.py --macro-observer
+```
+
+File utama:
+
+- `macro_observer.py`
+
+Output:
+
+- `logs/macro_observer.csv`
+
+Macro inputs:
+
+- BTC Dominance
+- Funding Rate Stress
+- Open Interest anomalies
+- Fear & Greed Index
+- Stablecoin flow proxy
+- DXY proxy
+- Volatility proxy
+
+Source behavior:
+
+- Live read-only source dipakai jika tersedia, misalnya CoinGecko global market data dan Alternative.me Fear & Greed.
+- Jika API tidak tersedia, engine memakai deterministic fallback dari SQLite `flow_logs`, `regime_logs`, atau neutral fallback.
+- Setiap component memiliki label source: `live`, `internal`, atau `synthetic`.
+
+Risk state:
+
+- `LOW_RISK`
+- `RISK_ON`
+- `CAUTION`
+- `HIGH_STRESS`
+- `PANIC`
+
+Integrasi analytics:
+
+- Opportunity Allocation Engine membaca `macro_state` dari `logs/macro_observer.csv` dan menambah risk penalty saat `HIGH_STRESS` / `PANIC`.
+- Internal Paper Engine mengurangi confidence simulasi saat `CAUTION`, `HIGH_STRESS`, atau `PANIC`.
+- Dashboard menampilkan section `Real Macro Observer` berisi macro state, risk score, source labels, stress contributors, dan component table.
+
+Safety:
+
+- Read-only ingestion.
+- Tidak ada broker API.
+- Tidak ada real execution.
+- Tidak ada destructive DB change.
+
 ## Execution Simulation Engine
 
 Jalankan simulasi execution:
@@ -1401,6 +1454,7 @@ ml_engine.py
 retrain_model.py
 bridge_tradingview.py
 internal_paper_engine.py
+macro_observer.py
 walkforward.py
 backfill.py
 outcome_labeler.py

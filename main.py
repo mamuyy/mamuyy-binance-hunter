@@ -240,6 +240,7 @@ from market_regime import (
     apply_regime_to_signal,
     log_regime_history,
 )
+from macro_observer import format_macro_observer, observe_macro
 from ml_engine import run_ml_research
 from opportunity_allocator import allocate_opportunities, format_allocation_summary
 from orchestrator import run_orchestrator, uptime_seconds
@@ -373,6 +374,15 @@ def run_paper_engine() -> Dict[str, Any]:
 def run_webhook_test() -> Dict[str, Any]:
     result = webhook_test_payload("logs/webhook_test_payload.json")
     print(format_webhook_test(result))
+    return result
+
+
+def run_macro_observer() -> Dict[str, Any]:
+    result = observe_macro(
+        db_path=config.database_path,
+        output_path="logs/macro_observer.csv",
+    )
+    print(format_macro_observer(result))
     return result
 
 
@@ -871,6 +881,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate TradingView-compatible webhook payload localhost test.",
     )
     parser.add_argument(
+        "--macro-observer",
+        action="store_true",
+        help="Jalankan real macro observer analytics read-only.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -1015,6 +1030,8 @@ if __name__ == "__main__":
         run_paper_engine()
     elif args.webhook_test:
         run_webhook_test()
+    elif args.macro_observer:
+        run_macro_observer()
     elif args.ml:
         run_ml()
     elif args.report:

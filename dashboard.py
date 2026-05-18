@@ -171,6 +171,24 @@ def read_webhook_payload(path: str = "logs/webhook_test_payload.json") -> dict[s
     return {}
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_macro_observer(path: str = "logs/macro_observer.csv") -> tuple[pd.DataFrame, pd.DataFrame]:
+    if not os.path.exists(path):
+        return _empty_df(), _empty_df()
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return _empty_df(), _empty_df()
+    if df.empty:
+        return df, _empty_df()
+    components = _empty_df()
+    try:
+        components = pd.DataFrame(json.loads(str(df.iloc[-1].get("components_json") or "[]")))
+    except Exception:
+        components = _empty_df()
+    return df, components
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -384,6 +402,25 @@ def render_webhook_paper_engine(trades: pd.DataFrame, payload: dict[str, Any]) -
             st.info("Latest paper trade payload is not valid JSON.")
     else:
         st.info("No webhook payload preview yet. Run python main.py --webhook-test.")
+
+
+def render_macro_observer(macro: pd.DataFrame, components: pd.DataFrame) -> None:
+    st.header("Real Macro Observer")
+    if macro.empty:
+        st.info("No macro observer data yet. Run python main.py --macro-observer.")
+        return
+    latest = macro.iloc[-1]
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Macro State", latest.get("macro_state", "-"))
+    col2.metric("Macro Risk Score", f"{pd.to_numeric(pd.Series([latest.get('macro_risk_score')]), errors='coerce').fillna(0).iloc[0]:.2f}/100")
+    col3.metric("Sources", latest.get("source_labels", "-"))
+    st.subheader("Stress Contributors")
+    st.info(str(latest.get("stress_contributors", "-")))
+    st.subheader("Macro Components")
+    if components.empty:
+        st.info("No macro component detail available.")
+    else:
+        st.dataframe(components, use_container_width=True, hide_index=True)
 
 
 def _registry_age_days(production: dict[str, Any] | None) -> str:
@@ -1018,6 +1055,7 @@ def main() -> None:
     model_registry = read_model_registry()
     internal_paper_trades = read_table("internal_paper_trades", limit=200)
     webhook_payload = read_webhook_payload()
+    macro_observer, macro_components = read_macro_observer()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1045,6 +1083,7 @@ def main() -> None:
         st.dataframe(pd.DataFrame([counts]), use_container_width=True)
 
     render_risk_engine_status(risk_status)
+    render_macro_observer(macro_observer, macro_components)
     render_portfolio_observability(portfolio_observability)
 
     st.header("2. MARKET REGIME")

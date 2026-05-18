@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from database import init_db
+from macro_observer import latest_macro_state
 from portfolio_observer import observe_portfolio
 
 
@@ -203,10 +204,14 @@ def allocate_opportunities(
     correlation_penalties = _correlation_penalties(outcomes)
     portfolio = observe_portfolio(db_path)
     macro_bonus = _macro_adaptive_bonus(logs_dir)
+    real_macro = latest_macro_state(os.path.join(logs_dir, "macro_observer.csv"))
+    real_macro_state = str(real_macro.get("macro_state") or "UNKNOWN")
+    real_macro_risk = _number(real_macro.get("macro_risk_score"))
     global_model_confidence = _latest_ml_confidence(ml_results)
 
     portfolio_heat = str(portfolio.get("portfolio_heat") or "LOW")
     heat_penalty = {"LOW": 0.0, "MEDIUM": 8.0, "HIGH": 18.0}.get(portfolio_heat, 8.0)
+    macro_state_penalty = {"HIGH_STRESS": 12.0, "PANIC": 24.0, "CAUTION": 6.0}.get(real_macro_state, 0.0)
     concentration_rows = {row.get("symbol"): _number(row.get("exposure_pct")) for row in portfolio.get("symbol_exposure", [])}
 
     latest_flow = _latest_signal_rows(flow_logs.rename(columns={"final_score": "score"})) if not flow_logs.empty else pd.DataFrame()
@@ -256,12 +261,15 @@ def allocate_opportunities(
             + pressure_quality * 0.10
             + macro_bonus
             - heat_penalty * 0.35
+            - macro_state_penalty * 0.55
             - concentration_penalty * 0.45
             - correlation_penalty * 0.35
         )
         risk_score = min(
             100.0,
             heat_penalty * 2.0
+            + macro_state_penalty * 2.0
+            + real_macro_risk * 0.20
             + concentration_penalty * 1.7
             + correlation_penalty * 1.4
             + max(0.0, 30.0 - freshness_score) * 0.5
@@ -275,6 +283,7 @@ def allocate_opportunities(
             f"shadow={shadow_score:.1f}",
             f"regime={regime_name}",
             f"heat={portfolio_heat}",
+            f"macro={real_macro_state}",
         ]
         if concentration_penalty:
             reasons.append(f"concentration_penalty={concentration_penalty:.1f}")

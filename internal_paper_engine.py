@@ -8,6 +8,7 @@ import pandas as pd
 
 from bridge_tradingview import build_webhook_payload
 from database import init_db
+from macro_observer import latest_macro_state
 
 
 def _now() -> str:
@@ -101,6 +102,16 @@ def _simulated_exit(entry: float, confidence: float, regime: str, tier: str) -> 
     return entry * (1 + pnl_pct / 100.0), "CLOSED"
 
 
+def _macro_adjusted_confidence(confidence: float, macro_state: str) -> float:
+    if macro_state == "PANIC":
+        return confidence * 0.45
+    if macro_state == "HIGH_STRESS":
+        return confidence * 0.65
+    if macro_state == "CAUTION":
+        return confidence * 0.85
+    return confidence
+
+
 def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
     init_db(db_path)
     with sqlite3.connect(db_path) as connection:
@@ -150,6 +161,8 @@ def run_internal_paper_engine(
 ) -> Dict[str, Any]:
     signals = _read_table(db_path, "signals", limit=500)
     allocations = _read_allocations(allocation_path)
+    real_macro = latest_macro_state("logs/macro_observer.csv")
+    real_macro_state = str(real_macro.get("macro_state") or "UNKNOWN")
     candidates = _latest_signal_candidates(signals, allocations).head(max_new_trades)
     inserted = 0
     generated: List[Dict[str, Any]] = []
@@ -160,6 +173,8 @@ def run_internal_paper_engine(
         price = _num(signal.get("price"))
         confidence = _num(signal.get("model_confidence") or signal.get("adaptive_confidence_score") or signal.get("shadow_score") or signal.get("score"))
         regime = str(signal.get("regime_name") or "UNKNOWN")
+        macro_state = real_macro_state if real_macro_state != "UNKNOWN" else _macro_state(regime)
+        confidence = _macro_adjusted_confidence(confidence, macro_state)
         allocation_tier = str(signal.get("allocation_tier") or "WATCH").upper()
         exit_price, status = _simulated_exit(price, confidence, regime, allocation_tier)
         pnl = ((exit_price - price) / price * 100.0) if price > 0 and exit_price > 0 else 0.0
@@ -169,7 +184,7 @@ def run_internal_paper_engine(
             price=price,
             confidence=confidence,
             regime=regime,
-            macro_state=_macro_state(regime),
+            macro_state=macro_state,
             allocation_tier=allocation_tier,
             market=_market_type(symbol),
         )
@@ -184,7 +199,7 @@ def run_internal_paper_engine(
             "pnl": round(pnl, 6),
             "confidence": round(confidence, 4),
             "regime": regime,
-            "macro_state": _macro_state(regime),
+            "macro_state": macro_state,
             "allocation_tier": allocation_tier,
             "status": status,
             "payload_json": json.dumps(payload, default=str),
