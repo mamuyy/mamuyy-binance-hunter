@@ -300,3 +300,41 @@ def format_retrain_summary(result: Dict[str, Any]) -> str:
             f"Reasons: {' | '.join(reasons)}",
         ]
     )
+
+
+def model_status(registry_path: str = "model_registry.json") -> Dict[str, Any]:
+    registry = _load_registry(registry_path)
+    production = registry.get("production") or {}
+    return {
+        "production_version": production.get("version", "-"),
+        "train_timestamp": production.get("train_timestamp", "-"),
+        "dataset_rows": production.get("dataset_rows", 0),
+        "accuracy": production.get("accuracy", 0.0),
+        "profit_factor": production.get("profit_factor", 0.0),
+        "max_drawdown": production.get("max_drawdown", 0.0),
+        "walkforward_profit_factor": production.get("walkforward_profit_factor", 0.0),
+        "walkforward_score": production.get("walkforward_score", 0.0),
+        "rollback_available": bool(registry.get("rollback_available")),
+        "warnings": registry.get("warnings") or ["none"],
+        "candidate": registry.get("candidate") or {},
+        "registry_path": registry_path,
+    }
+
+
+def format_model_status(status: Dict[str, Any]) -> str:
+    warnings = status.get("warnings", []) or ["none"]
+    return "\n".join(
+        [
+            "MODEL STATUS",
+            f"Production Version: {status.get('production_version', '-')}",
+            f"Train Timestamp: {status.get('train_timestamp', '-')}",
+            f"Dataset Rows: {status.get('dataset_rows', 0)}",
+            f"Accuracy: {_safe_float(status.get('accuracy')):.4f}",
+            f"Profit Factor: {_safe_float(status.get('profit_factor')):.4f}",
+            f"Max Drawdown: {_safe_float(status.get('max_drawdown')):.4f}",
+            f"Walkforward PF: {_safe_float(status.get('walkforward_profit_factor')):.4f}",
+            f"Walkforward Score: {_safe_float(status.get('walkforward_score')):.2f}",
+            f"Rollback Available: {status.get('rollback_available')}",
+            f"Warnings: {' | '.join(map(str, warnings))}",
+        ]
+    )

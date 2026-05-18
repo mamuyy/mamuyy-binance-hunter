@@ -336,10 +336,17 @@ Jalankan guarded retraining:
 python main.py --retrain-model
 ```
 
+Lihat status model:
+
+```bash
+python main.py --model-status
+```
+
 File utama:
 
 - `retrain_model.py`
 - `model_registry.json`
+- `scripts/monthly_retrain.sh`
 
 Output runtime:
 
@@ -363,6 +370,34 @@ Drift warning:
 - `RETRAIN RECOMMENDED`: kualitas walkforward lemah atau accuracy terus turun.
 
 Dashboard menampilkan section `ML Lifecycle & Drift Monitor` secara read-only. Engine ini analytics-only dan aman untuk cron bulanan VPS; tidak mengubah scanner, execution, broker integration, atau auto trading.
+
+## Monthly Retraining
+
+Script cron-ready:
+
+```bash
+bash scripts/monthly_retrain.sh
+```
+
+Script ini:
+
+- masuk ke project directory
+- activate `.venv`
+- menjalankan `python main.py --retrain-model`
+- menjalankan `python main.py --model-status`
+- append output ke `logs/monthly_retrain.log`
+
+Default project path adalah `~/mamuyy-binance-hunter`. Override jika perlu:
+
+```bash
+MAMUYY_HUNTER_DIR=/path/to/mamuyy-binance-hunter bash scripts/monthly_retrain.sh
+```
+
+Contoh crontab bulanan, tidak auto-install:
+
+```cron
+0 3 1 * * MAMUYY_HUNTER_DIR=$HOME/mamuyy-binance-hunter bash $HOME/mamuyy-binance-hunter/scripts/monthly_retrain.sh
+```
 
 Telegram summary:
 

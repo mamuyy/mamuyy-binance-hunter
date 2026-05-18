@@ -246,7 +246,7 @@ from portfolio_observer import format_portfolio_observer, observe_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
-from retrain_model import format_retrain_summary, retrain_model
+from retrain_model import format_model_status, format_retrain_summary, model_status, retrain_model
 from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
 from shadow_analysis import format_shadow_analysis_summary, run_shadow_equity_analysis
@@ -350,6 +350,12 @@ def run_retrain_model() -> Dict[str, Any]:
         chart_dir=config.chart_output_dir,
     )
     print(format_retrain_summary(result))
+    return result
+
+
+def run_model_status() -> Dict[str, Any]:
+    result = model_status("model_registry.json")
+    print(format_model_status(result))
     return result
 
 
@@ -833,6 +839,11 @@ def parse_args() -> argparse.Namespace:
         help="Retrain ML model dengan guarded candidate replacement.",
     )
     parser.add_argument(
+        "--model-status",
+        action="store_true",
+        help="Tampilkan status production/candidate ML model lifecycle.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -971,6 +982,8 @@ if __name__ == "__main__":
         run_walkforward()
     elif args.retrain_model:
         run_retrain_model()
+    elif args.model_status:
+        run_model_status()
     elif args.ml:
         run_ml()
     elif args.report:

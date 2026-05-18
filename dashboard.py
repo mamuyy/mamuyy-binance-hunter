@@ -349,18 +349,39 @@ def render_ml_lifecycle(registry: dict[str, Any]) -> None:
     production = registry.get("production") or {}
     candidate = registry.get("candidate") or {}
     warnings = registry.get("warnings") or ["none"]
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Current Model Age", _registry_age_days(production))
-    col2.metric("Latest Retrain", candidate.get("train_timestamp", "-"))
-    col3.metric("Production PF/DD", f"{production.get('profit_factor', 0):.2f}/{production.get('max_drawdown', 0):.2f}" if production else "-")
-    col4.metric("Candidate PF/DD", f"{candidate.get('profit_factor', 0):.2f}/{candidate.get('max_drawdown', 0):.2f}" if candidate else "-")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Production Model")
+        st.metric("Version", production.get("version", "-") if production else "-")
+        st.metric("Age", _registry_age_days(production))
+        st.metric("PF / DD", f"{production.get('profit_factor', 0):.2f} / {production.get('max_drawdown', 0):.2f}" if production else "-")
+        st.metric("Walkforward PF", f"{production.get('walkforward_profit_factor', 0):.2f}" if production else "-")
+    with col2:
+        st.subheader("Latest Candidate")
+        st.metric("Version", candidate.get("version", "-") if candidate else "-")
+        st.metric("Status", candidate.get("status", "-") if candidate else "-")
+        st.metric("Accuracy", f"{candidate.get('accuracy', 0):.2%}" if candidate else "-")
+        st.metric("PF / DD", f"{candidate.get('profit_factor', 0):.2f} / {candidate.get('max_drawdown', 0):.2f}" if candidate else "-")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Warnings")
+        if warnings == ["none"]:
+            st.success("No active model lifecycle warnings.")
+        else:
+            for warning in warnings:
+                st.warning(str(warning))
+    with col2:
+        st.subheader("Rollback")
+        status_badge("Rollback Available", "GREEN" if registry.get("rollback_available") else "YELLOW", " YES" if registry.get("rollback_available") else " NO")
+        st.metric("Latest Retrain", candidate.get("train_timestamp", "-") if candidate else "-")
+
     if any(str(item).startswith("DRIFT WARNING") for item in warnings):
         st.warning("DRIFT WARNING")
     if any(str(item).startswith("MODEL AGING") for item in warnings):
         st.warning("MODEL AGING")
     if any(str(item).startswith("RETRAIN RECOMMENDED") for item in warnings):
         st.warning("RETRAIN RECOMMENDED")
-    st.metric("Rollback Availability", "YES" if registry.get("rollback_available") else "NO")
     st.dataframe(
         pd.DataFrame(
             [
