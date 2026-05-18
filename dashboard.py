@@ -66,6 +66,7 @@ def table_counts() -> dict[str, int]:
         "walkforward_results",
         "historical_outcomes",
         "internal_paper_trades",
+        "broadcast_events",
     ]
     counts = {}
     try:
@@ -402,6 +403,98 @@ def render_webhook_paper_engine(trades: pd.DataFrame, payload: dict[str, Any]) -
             st.info("Latest paper trade payload is not valid JSON.")
     else:
         st.info("No webhook payload preview yet. Run python main.py --webhook-test.")
+
+
+def render_broadcast_control_center(broadcasts: pd.DataFrame, paper_trades: pd.DataFrame) -> None:
+    st.header("Broadcast Control Center")
+    if broadcasts.empty:
+        st.info("No broadcast events yet. Run python main.py --broadcast-test.")
+        return
+
+    df = broadcasts.copy()
+    if "timestamp" in df.columns:
+        df = df.sort_values("timestamp", ascending=False)
+    if "confidence" in df.columns:
+        df["confidence"] = pd.to_numeric(df["confidence"], errors="coerce")
+
+    latest_columns = [
+        "timestamp",
+        "symbol",
+        "side",
+        "confidence",
+        "macro_state",
+        "allocation_tier",
+        "target_name",
+        "target_type",
+        "target_profile",
+        "route_status",
+        "route_reason",
+    ]
+    st.subheader("Latest Broadcasts")
+    st.dataframe(
+        df[[column for column in latest_columns if column in df.columns]].head(50),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Targets")
+        target_columns = ["target_name", "target_type", "target_profile", "route_status"]
+        if set(target_columns).issubset(df.columns):
+            targets = (
+                df.groupby(target_columns, dropna=False)
+                .size()
+                .reset_index(name="count")
+                .sort_values("count", ascending=False)
+            )
+            st.dataframe(targets, use_container_width=True, hide_index=True)
+        else:
+            st.info("Broadcast target metadata is incomplete.")
+
+        st.subheader("Route Success / Failure")
+        if "route_status" in df.columns:
+            route_summary = df["route_status"].fillna("UNKNOWN").value_counts().reset_index()
+            route_summary.columns = ["route_status", "count"]
+            st.dataframe(route_summary, use_container_width=True, hide_index=True)
+        else:
+            st.info("No route status data available.")
+
+    with col2:
+        st.subheader("Signal Distribution")
+        distribution_columns = ["symbol", "route_status"]
+        if set(distribution_columns).issubset(df.columns):
+            distribution = (
+                df.groupby(distribution_columns, dropna=False)
+                .size()
+                .reset_index(name="count")
+                .sort_values("count", ascending=False)
+                .head(30)
+            )
+            st.dataframe(distribution, use_container_width=True, hide_index=True)
+        else:
+            st.info("No signal distribution data available.")
+
+        st.subheader("Per-Target Paper Performance")
+        if paper_trades.empty:
+            st.info("No internal paper performance yet. Run python main.py --paper-engine.")
+        else:
+            trades = paper_trades.copy()
+            trades["pnl"] = pd.to_numeric(trades.get("pnl", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+            equity = trades.sort_values("id")["pnl"].cumsum().reset_index(drop=True)
+            drawdown = equity - equity.cummax() if not equity.empty else pd.Series(dtype=float)
+            performance = pd.DataFrame(
+                [
+                    {
+                        "target_name": "internal_paper",
+                        "trade_count": len(trades),
+                        "winrate": float((trades["pnl"] > 0).mean() * 100) if len(trades) else 0.0,
+                        "total_pnl": float(trades["pnl"].sum()),
+                        "max_drawdown": float(drawdown.min()) if not drawdown.empty else 0.0,
+                    }
+                ]
+            )
+            st.dataframe(performance, use_container_width=True, hide_index=True)
 
 
 def render_macro_observer(macro: pd.DataFrame, components: pd.DataFrame) -> None:
@@ -1054,6 +1147,7 @@ def main() -> None:
     opportunity_allocation = read_opportunity_allocation()
     model_registry = read_model_registry()
     internal_paper_trades = read_table("internal_paper_trades", limit=200)
+    broadcast_events = read_table("broadcast_events", limit=300)
     webhook_payload = read_webhook_payload()
     macro_observer, macro_components = read_macro_observer()
 
@@ -1232,6 +1326,7 @@ def main() -> None:
 
     render_opportunity_allocation(opportunity_allocation)
     render_webhook_paper_engine(internal_paper_trades, webhook_payload)
+    render_broadcast_control_center(broadcast_events, internal_paper_trades)
 
 
 if __name__ == "__main__":

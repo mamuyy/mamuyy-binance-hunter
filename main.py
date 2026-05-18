@@ -19,7 +19,7 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
@@ -219,7 +219,9 @@ if "--fix-regime-labels" in sys.argv:
 from config import config
 from outcome_labeler import label_historical_outcomes
 from regime_labeler import fix_historical_regime_labels
+from broadcast_router import broadcast_test, format_broadcast_result
 from bridge_tradingview import format_webhook_test, webhook_test_payload
+from competition_control import competition_status, format_competition_status
 from database import (
     backup_database,
     db_health_check,
@@ -386,6 +388,21 @@ def run_macro_observer() -> Dict[str, Any]:
     return result
 
 
+def run_broadcast_test() -> Dict[str, Any]:
+    result = broadcast_test(
+        db_path=config.database_path,
+        allocation_path="logs/opportunity_allocation.csv",
+    )
+    print(format_broadcast_result(result))
+    return result
+
+
+def run_competition_status() -> Dict[str, Any]:
+    result = competition_status()
+    print(format_competition_status(result))
+    return result
+
+
 def run_walkforward() -> Dict[str, Any]:
     result = run_walkforward_validation(
         paper_trades_path=config.paper_trades_path,
@@ -507,7 +524,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -886,6 +903,16 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan real macro observer analytics read-only.",
     )
     parser.add_argument(
+        "--broadcast-test",
+        action="store_true",
+        help="Uji multi-target broadcast router dalam mode paper/simulation only.",
+    )
+    parser.add_argument(
+        "--competition-status",
+        action="store_true",
+        help="Tampilkan competition profile routing control.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -1032,6 +1059,10 @@ if __name__ == "__main__":
         run_webhook_test()
     elif args.macro_observer:
         run_macro_observer()
+    elif args.broadcast_test:
+        run_broadcast_test()
+    elif args.competition_status:
+        run_competition_status()
     elif args.ml:
         run_ml()
     elif args.report:

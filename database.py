@@ -260,6 +260,23 @@ SCHEMAS = {
             payload_json TEXT
         )
     """,
+    "broadcast_events": """
+        CREATE TABLE IF NOT EXISTS broadcast_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            side TEXT,
+            confidence REAL,
+            macro_state TEXT,
+            allocation_tier TEXT,
+            target_name TEXT,
+            target_type TEXT,
+            target_profile TEXT,
+            route_status TEXT,
+            route_reason TEXT,
+            payload_hash TEXT
+        )
+    """,
 }
 
 
@@ -294,6 +311,10 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_internal_paper_trades_timestamp ON internal_paper_trades(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_internal_paper_trades_symbol ON internal_paper_trades(symbol)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_internal_paper_unique ON internal_paper_trades(symbol, source_signal_timestamp, side)",
+    "CREATE INDEX IF NOT EXISTS idx_broadcast_events_timestamp ON broadcast_events(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_broadcast_events_symbol ON broadcast_events(symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_broadcast_events_target ON broadcast_events(target_name)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_broadcast_payload_target_unique ON broadcast_events(payload_hash, target_name)",
 ]
 
 

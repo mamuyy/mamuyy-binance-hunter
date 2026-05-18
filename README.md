@@ -848,6 +848,56 @@ Safety:
 - Tidak ada exchange order placement.
 - Tidak ada public webhook endpoint.
 - Webhook bridge saat ini hanya payload generator untuk localhost/testing.
+
+## Multi-Account Broadcast & Competition Control
+
+Jalankan broadcast test paper/simulation-only:
+
+```bash
+python main.py --broadcast-test
+```
+
+Lihat competition profile yang aktif:
+
+```bash
+python main.py --competition-status
+```
+
+File utama:
+
+- `broadcast_router.py`
+- `competition_control.py`
+
+Arsitektur broadcast:
+
+- Satu Hunter signal dirutekan ke beberapa target simulasi.
+- Target V1: `tradingview_paper`, `internal_paper`, `telegram_alert`, `csv_archive`, dan placeholder `future_broker_bridge`.
+- Semua route dicatat ke SQLite table `broadcast_events`.
+- Duplicate prevention memakai `payload_hash + target_name`.
+- Cooldown mencegah symbol yang sama dikirim berulang terlalu cepat ke target yang sama.
+- Route failure/rejection tetap dilog agar observability lengkap.
+
+Competition profile:
+
+- `aggressive`: threshold confidence lebih rendah, tetap paper-only.
+- `balanced`: default routing profile.
+- `defensive`: lebih ketat dan menolak `HIGH_STRESS` / `PANIC`.
+- `ETF only`: hanya menerima market type ETF untuk future multi-market research.
+- `crypto only`: hanya menerima symbol crypto.
+
+Paper routing safety:
+
+- Tidak ada real broker execution.
+- Tidak ada exchange order API.
+- Tidak ada API key broker.
+- `future_broker_bridge` hanya placeholder observability dan tetap bisa direject oleh profile.
+- Bridge bersifat localhost-safe dan hanya menghasilkan/log payload simulasi.
+
+Future broker bridge notes:
+
+- Jika nanti supervised/semi-auto execution ditambahkan, layer ini menjadi routing policy gate sebelum bridge broker.
+- Broker bridge harus tetap berada di modul terpisah, memakai explicit approval, dan tidak boleh mengubah scanner core logic.
+- `broadcast_events` bisa dipakai untuk audit trail sebelum ada integrasi live.
 - Architecture disiapkan untuk future market type: crypto, forex, stocks, ETF, dan gold.
 
 ## Real Macro Observer Engine
@@ -1454,6 +1504,8 @@ ml_engine.py
 retrain_model.py
 bridge_tradingview.py
 internal_paper_engine.py
+broadcast_router.py
+competition_control.py
 macro_observer.py
 walkforward.py
 backfill.py
