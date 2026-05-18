@@ -764,6 +764,58 @@ Output:
 
 Dashboard menampilkan section `Portfolio Observability` berisi top exposure symbols, regime exposure, market type exposure, top correlated symbols, dan warning concentration risk. Layer ini analytics-only, tidak mengirim order dan tidak mengubah scanner/execution logic.
 
+## Portfolio & Equity Analytics Layer
+
+Dashboard section `PORTFOLIO & EQUITY ANALYTICS` membaca data secara read-only dari SQLite:
+
+- `internal_paper_trades`
+- `paper_trades`
+
+File utama:
+
+- `portfolio_analytics.py`
+
+Equity Curve:
+
+- Menghitung cumulative PnL dari trade paper/simulasi.
+- Jika timestamp tersedia, chart mengikuti waktu trade.
+- Jika timestamp tidak lengkap, chart memakai `trade_index`.
+
+Drawdown:
+
+- Menghitung rolling drawdown dari equity curve.
+- `Max Drawdown` adalah penurunan terdalam dari running equity high.
+- Nilai ini dipakai untuk melihat survivability portfolio paper-only.
+
+Metrics dashboard:
+
+- Total PnL.
+- Winrate.
+- Profit Factor.
+- Max Drawdown.
+- Trade Count.
+- Average trade PnL.
+
+Macro survival:
+
+- Performance dikelompokkan berdasarkan `macro_state`.
+- Fokus survival rows: `HIGH_STRESS`, `PANIC`, dan `RISK_ON`.
+- Jika kolom `macro_state` tidak tersedia, engine memakai `UNKNOWN`.
+
+Competition profile analytics:
+
+- Performance dikelompokkan berdasarkan `competition_profile`.
+- Jika kolom belum tersedia, engine memakai `DEFAULT`.
+
+Safety:
+
+- Analytics/visualization only.
+- Tidak ada broker API.
+- Tidak ada exchange execution.
+- Tidak ada live trading.
+- Tidak ada schema migration atau destructive DB write.
+- SQLite dibuka read-only oleh `portfolio_analytics.py`.
+
 ## Opportunity Allocation Engine V1
 
 Jalankan allocation research:
@@ -1571,6 +1623,7 @@ regime_shadow.py
 shadow_analysis.py
 portfolio_engine.py
 portfolio_observer.py
+portfolio_analytics.py
 opportunity_allocator.py
 execution_engine.py
 shadow_engine.py

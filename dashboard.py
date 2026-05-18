@@ -13,6 +13,7 @@ from database import (
     db_health_check,
     init_db,
 )
+from portfolio_analytics import calculate_portfolio_analytics
 from portfolio_observer import observe_portfolio
 from risk_manager import RiskConfig, check_execution_safety
 
@@ -131,6 +132,30 @@ def read_portfolio_observability() -> dict[str, Any]:
             "market_type_exposure": [],
             "top_correlated_symbols": [],
             "warnings": [f"Portfolio observer unavailable: {exc}"],
+        }
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_portfolio_analytics() -> dict[str, Any]:
+    try:
+        return calculate_portfolio_analytics(config.database_path)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "warnings": [f"Portfolio analytics unavailable: {exc}"],
+            "metrics": {
+                "trade_count": 0,
+                "total_pnl": 0.0,
+                "winrate": 0.0,
+                "profit_factor": 0.0,
+                "max_drawdown": 0.0,
+                "average_trade_pnl": 0.0,
+            },
+            "trades": _empty_df(),
+            "equity_curve": _empty_df(),
+            "macro_performance": _empty_df(),
+            "competition_performance": _empty_df(),
+            "macro_survival": _empty_df(),
         }
 
 
@@ -309,6 +334,116 @@ def render_portfolio_observability(result: dict[str, Any]) -> None:
             pd.DataFrame(result.get("top_correlated_symbols", [])),
             "Not enough historical outcome data for correlation.",
         )
+
+
+def _metric_text(value: Any, suffix: str = "") -> str:
+    if value == float("inf"):
+        return "∞"
+    try:
+        return f"{float(value):.2f}{suffix}"
+    except (TypeError, ValueError):
+        return f"0.00{suffix}"
+
+
+def render_portfolio_equity_analytics(result: dict[str, Any]) -> None:
+    st.header("PORTFOLIO & EQUITY ANALYTICS")
+    warnings = result.get("warnings") or []
+    for warning in warnings[:3]:
+        st.warning(str(warning))
+
+    metrics = result.get("metrics", {}) or {}
+    equity = result.get("equity_curve")
+    macro_performance = result.get("macro_performance")
+    competition_performance = result.get("competition_performance")
+    macro_survival = result.get("macro_survival")
+    trades = result.get("trades")
+    equity = equity if isinstance(equity, pd.DataFrame) else _empty_df()
+    macro_performance = macro_performance if isinstance(macro_performance, pd.DataFrame) else _empty_df()
+    competition_performance = competition_performance if isinstance(competition_performance, pd.DataFrame) else _empty_df()
+    macro_survival = macro_survival if isinstance(macro_survival, pd.DataFrame) else _empty_df()
+    trades = trades if isinstance(trades, pd.DataFrame) else _empty_df()
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Total PnL", _metric_text(metrics.get("total_pnl"), "%"))
+    col2.metric("Winrate", _metric_text(metrics.get("winrate"), "%"))
+    col3.metric("Profit Factor", "∞" if metrics.get("profit_factor") == float("inf") else _metric_text(metrics.get("profit_factor")))
+    col4.metric("Max Drawdown", _metric_text(metrics.get("max_drawdown"), "%"))
+    col5.metric("Trade Count", int(metrics.get("trade_count", 0) or 0))
+
+    if equity.empty:
+        st.info("No paper trades found yet. Run python main.py --paper-engine or collect paper_trades data first.")
+        return
+
+    plot_x = "timestamp" if "timestamp" in equity.columns and equity["timestamp"].notna().any() else "trade_index"
+    if {"equity", plot_x}.issubset(equity.columns):
+        st.plotly_chart(
+            px.line(equity, x=plot_x, y="equity", color="source" if "source" in equity.columns else None, title="Equity Curve"),
+            use_container_width=True,
+        )
+    else:
+        st.info("Equity curve columns are incomplete.")
+
+    if {"drawdown", plot_x}.issubset(equity.columns):
+        st.plotly_chart(
+            px.area(equity, x=plot_x, y="drawdown", title="Rolling Drawdown"),
+            use_container_width=True,
+        )
+    else:
+        st.info("Drawdown columns are incomplete.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Performance by Macro State")
+        show_dataframe_or_info(macro_performance, "No macro_state performance data yet.")
+        if not macro_performance.empty and {"macro_state", "total_pnl"}.issubset(macro_performance.columns):
+            safe_plot_bar(macro_performance, "macro_state", "total_pnl", "Macro State Total PnL")
+
+        st.subheader("Macro Survival")
+        show_dataframe_or_info(
+            macro_survival,
+            "No HIGH_STRESS / PANIC / RISK_ON rows yet. Missing macro_state values are shown as UNKNOWN.",
+        )
+
+    with col2:
+        st.subheader("Performance by Competition Profile")
+        show_dataframe_or_info(
+            competition_performance,
+            "No competition_profile data yet. Missing values use DEFAULT.",
+        )
+        if not competition_performance.empty and {"competition_profile", "total_pnl"}.issubset(competition_performance.columns):
+            safe_plot_bar(competition_performance, "competition_profile", "total_pnl", "Competition Profile Total PnL")
+
+        st.subheader("Rolling Analytics")
+        rolling_columns = [
+            column
+            for column in ["trade_index", "timestamp", "rolling_pnl_10", "rolling_winrate_10"]
+            if column in equity.columns
+        ]
+        if {"rolling_pnl_10", "rolling_winrate_10"}.issubset(equity.columns):
+            rolling = equity[rolling_columns].copy()
+            rolling_x = "timestamp" if "timestamp" in rolling.columns and rolling["timestamp"].notna().any() else "trade_index"
+            long = rolling.melt(id_vars=[rolling_x], value_vars=["rolling_pnl_10", "rolling_winrate_10"], var_name="metric", value_name="value")
+            st.plotly_chart(px.line(long, x=rolling_x, y="value", color="metric", title="Rolling PnL / Winrate"), use_container_width=True)
+        else:
+            st.info("Not enough rows for rolling analytics.")
+
+    st.subheader("Latest Portfolio Trades")
+    latest_columns = [
+        "timestamp",
+        "symbol",
+        "side",
+        "source",
+        "pnl",
+        "equity",
+        "drawdown",
+        "macro_state",
+        "competition_profile",
+        "status",
+    ]
+    show_dataframe_or_info(
+        trades[[column for column in latest_columns if column in trades.columns]].tail(50).sort_index(ascending=False),
+        "No normalized portfolio trades available.",
+    )
 
 
 def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
@@ -1177,6 +1312,7 @@ def main() -> None:
     counts = table_counts()
     risk_status = read_risk_status()
     portfolio_observability = read_portfolio_observability()
+    portfolio_analytics = read_portfolio_analytics()
     opportunity_allocation = read_opportunity_allocation()
     model_registry = read_model_registry()
     internal_paper_trades = read_table("internal_paper_trades", limit=200)
@@ -1253,8 +1389,12 @@ def main() -> None:
         best = trades.loc[pd.to_numeric(trades["pnl_percent"], errors="coerce").idxmax()]
         worst = trades.loc[pd.to_numeric(trades["pnl_percent"], errors="coerce").idxmin()]
         col4.metric("Best/Worst", f"{best.get('symbol', '-')}/{worst.get('symbol', '-')}")
+    else:
+        col4.metric("Best/Worst", "-")
     safe_plot_line(curve, "trade", "equity", "Paper Trading PnL Curve")
     st.dataframe(open_trades.head(50), use_container_width=True)
+
+    render_portfolio_equity_analytics(portfolio_analytics)
 
     st.header("5. FLOW ANALYTICS")
     col1, col2 = st.columns(2)
