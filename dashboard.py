@@ -67,6 +67,7 @@ def table_counts() -> dict[str, int]:
         "historical_outcomes",
         "internal_paper_trades",
         "broadcast_events",
+        "telegram_events",
     ]
     counts = {}
     try:
@@ -495,6 +496,38 @@ def render_broadcast_control_center(broadcasts: pd.DataFrame, paper_trades: pd.D
                 ]
             )
             st.dataframe(performance, use_container_width=True, hide_index=True)
+
+
+def render_telegram_notification_center(events: pd.DataFrame) -> None:
+    st.header("Telegram Notification Center")
+    enabled = bool(config.telegram_enabled)
+    status_badge("Telegram", "GREEN" if enabled else "YELLOW", " ENABLED" if enabled else " DISABLED / PREVIEW ONLY")
+
+    if events.empty:
+        st.info("No Telegram notification events yet. Run python main.py --telegram-test or python main.py --notify-summary.")
+        return
+
+    df = events.copy()
+    if "timestamp" in df.columns:
+        df = df.sort_values("timestamp", ascending=False)
+
+    latest = df.iloc[0]
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Last Send Status", latest.get("send_status", "-"))
+    col2.metric("Last Event Type", latest.get("event_type", "-"))
+    col3.metric("Total Logged Events", len(df))
+
+    st.subheader("Event Counts")
+    if "event_type" in df.columns:
+        counts = df["event_type"].fillna("UNKNOWN").value_counts().reset_index()
+        counts.columns = ["event_type", "count"]
+        st.dataframe(counts, use_container_width=True, hide_index=True)
+    else:
+        st.info("No event type counts available.")
+
+    st.subheader("Latest Telegram Events")
+    columns = ["timestamp", "event_type", "send_status", "error_message", "message"]
+    st.dataframe(df[[column for column in columns if column in df.columns]].head(30), use_container_width=True, hide_index=True)
 
 
 def render_macro_observer(macro: pd.DataFrame, components: pd.DataFrame) -> None:
@@ -1148,6 +1181,7 @@ def main() -> None:
     model_registry = read_model_registry()
     internal_paper_trades = read_table("internal_paper_trades", limit=200)
     broadcast_events = read_table("broadcast_events", limit=300)
+    telegram_events = read_table("telegram_events", limit=200)
     webhook_payload = read_webhook_payload()
     macro_observer, macro_components = read_macro_observer()
 
@@ -1327,6 +1361,7 @@ def main() -> None:
     render_opportunity_allocation(opportunity_allocation)
     render_webhook_paper_engine(internal_paper_trades, webhook_payload)
     render_broadcast_control_center(broadcast_events, internal_paper_trades)
+    render_telegram_notification_center(telegram_events)
 
 
 if __name__ == "__main__":

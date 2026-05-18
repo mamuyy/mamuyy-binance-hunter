@@ -19,7 +19,7 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "telegram_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
@@ -256,6 +256,7 @@ from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
 from shadow_analysis import format_shadow_analysis_summary, run_shadow_equity_analysis
 from shadow_engine import run_shadow_live
+from telegram_notifier import format_notification_result, notify_summary, telegram_test
 from telegram import (
     format_execution_message,
     format_market_regime_message,
@@ -403,6 +404,18 @@ def run_competition_status() -> Dict[str, Any]:
     return result
 
 
+def run_telegram_test() -> Dict[str, Any]:
+    result = telegram_test(config.database_path)
+    print(format_notification_result(result))
+    return result
+
+
+def run_notify_summary() -> Dict[str, Any]:
+    result = notify_summary(config.database_path)
+    print(format_notification_result(result))
+    return result
+
+
 def run_walkforward() -> Dict[str, Any]:
     result = run_walkforward_validation(
         paper_trades_path=config.paper_trades_path,
@@ -524,7 +537,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "broadcast_events", "telegram_events", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -913,6 +926,16 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan competition profile routing control.",
     )
     parser.add_argument(
+        "--telegram-test",
+        action="store_true",
+        help="Preview/kirim test Telegram notification sesuai TELEGRAM_ENABLED.",
+    )
+    parser.add_argument(
+        "--notify-summary",
+        action="store_true",
+        help="Preview/kirim ringkasan event penting Hunter ke Telegram.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -1063,6 +1086,10 @@ if __name__ == "__main__":
         run_broadcast_test()
     elif args.competition_status:
         run_competition_status()
+    elif args.telegram_test:
+        run_telegram_test()
+    elif args.notify_summary:
+        run_notify_summary()
     elif args.ml:
         run_ml()
     elif args.report:

@@ -277,6 +277,16 @@ SCHEMAS = {
             payload_hash TEXT
         )
     """,
+    "telegram_events": """
+        CREATE TABLE IF NOT EXISTS telegram_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            event_type TEXT,
+            message TEXT,
+            send_status TEXT,
+            error_message TEXT
+        )
+    """,
 }
 
 
@@ -315,6 +325,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_broadcast_events_symbol ON broadcast_events(symbol)",
     "CREATE INDEX IF NOT EXISTS idx_broadcast_events_target ON broadcast_events(target_name)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_broadcast_payload_target_unique ON broadcast_events(payload_hash, target_name)",
+    "CREATE INDEX IF NOT EXISTS idx_telegram_events_timestamp ON telegram_events(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_telegram_events_type ON telegram_events(event_type)",
 ]
 
 

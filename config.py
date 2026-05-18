@@ -43,6 +43,7 @@ class Config:
     binance_base_url: str = os.getenv("BINANCE_BASE_URL", "https://fapi.binance.com")
     telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     telegram_chat_id: str = os.getenv("TELEGRAM_CHAT_ID", "")
+    telegram_enabled_flag: bool = _get_bool("TELEGRAM_ENABLED", False)
     scan_interval_minutes: int = _get_int("SCAN_INTERVAL_MINUTES", 15)
     top_symbols_limit: int = _get_int("TOP_SYMBOLS_LIMIT", 30)
     candle_interval: str = os.getenv("CANDLE_INTERVAL", "15m")
@@ -95,7 +96,7 @@ class Config:
 
     @property
     def telegram_enabled(self) -> bool:
-        return bool(self.telegram_bot_token and self.telegram_chat_id)
+        return bool(self.telegram_enabled_flag and self.telegram_bot_token and self.telegram_chat_id)
 
 
 config = Config()

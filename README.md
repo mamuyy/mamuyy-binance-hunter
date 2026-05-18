@@ -900,6 +900,58 @@ Future broker bridge notes:
 - `broadcast_events` bisa dipakai untuk audit trail sebelum ada integrasi live.
 - Architecture disiapkan untuk future market type: crypto, forex, stocks, ETF, dan gold.
 
+## Telegram Notification Layer
+
+Telegram notification bersifat monitoring-only. Layer ini tidak pernah mengirim order, tidak memakai broker API, dan tidak mengubah scanner/execution logic.
+
+Konfigurasi `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+TELEGRAM_ENABLED=false
+```
+
+Default aman:
+
+- Jika `TELEGRAM_ENABLED` kosong atau `false`, bot tidak mengirim pesan.
+- Command tetap mencetak preview dan mencatat status `PREVIEW_DISABLED` ke SQLite.
+- Token dan chat id tidak pernah dicetak ke terminal/dashboard.
+
+Test Telegram notification:
+
+```bash
+python main.py --telegram-test
+```
+
+Kirim atau preview ringkasan event penting:
+
+```bash
+python main.py --notify-summary
+```
+
+Event yang dipantau:
+
+- New internal paper trade.
+- Broadcast event.
+- Macro state `HIGH_STRESS` / `PANIC`.
+- Health Guardian recovery atau missing tmux session.
+- Model drift / model aging / retrain warning.
+
+SQLite table:
+
+- `telegram_events`
+
+Kolom:
+
+- `timestamp`
+- `event_type`
+- `message`
+- `send_status`
+- `error_message`
+
+Dashboard menampilkan section `Telegram Notification Center` berisi enabled/disabled status, latest Telegram events, last send status, dan event counts.
+
 ## Real Macro Observer Engine
 
 Jalankan macro observer:
@@ -1441,6 +1493,7 @@ Alert banner muncul jika:
 ```env
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+TELEGRAM_ENABLED=false
 
 BINANCE_BASE_URL=https://fapi.binance.com
 SCAN_INTERVAL_MINUTES=15
@@ -1506,6 +1559,7 @@ bridge_tradingview.py
 internal_paper_engine.py
 broadcast_router.py
 competition_control.py
+telegram_notifier.py
 macro_observer.py
 walkforward.py
 backfill.py
