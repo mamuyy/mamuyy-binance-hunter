@@ -148,6 +148,17 @@ def read_opportunity_allocation(path: str = "logs/opportunity_allocation.csv") -
     return df
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_model_registry(path: str = "model_registry.json") -> dict[str, Any]:
+    try:
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as registry_file:
+                return json.load(registry_file)
+    except Exception:
+        return {}
+    return {}
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -318,6 +329,52 @@ def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
             st.info("No AVOID symbols right now.")
         else:
             st.dataframe(avoid[[column for column in avoid_columns if column in avoid.columns]], use_container_width=True, hide_index=True)
+
+
+def _registry_age_days(production: dict[str, Any] | None) -> str:
+    if not production or not production.get("train_timestamp"):
+        return "-"
+    timestamp = pd.to_datetime(production.get("train_timestamp"), errors="coerce", utc=True)
+    if pd.isna(timestamp):
+        return "-"
+    age = (datetime.now(timezone.utc) - timestamp.to_pydatetime()).total_seconds() / 86400
+    return f"{max(age, 0):.1f}d"
+
+
+def render_ml_lifecycle(registry: dict[str, Any]) -> None:
+    st.header("ML Lifecycle & Drift Monitor")
+    if not registry:
+        st.info("No model registry yet. Run python main.py --retrain-model.")
+        return
+    production = registry.get("production") or {}
+    candidate = registry.get("candidate") or {}
+    warnings = registry.get("warnings") or ["none"]
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Current Model Age", _registry_age_days(production))
+    col2.metric("Latest Retrain", candidate.get("train_timestamp", "-"))
+    col3.metric("Production PF/DD", f"{production.get('profit_factor', 0):.2f}/{production.get('max_drawdown', 0):.2f}" if production else "-")
+    col4.metric("Candidate PF/DD", f"{candidate.get('profit_factor', 0):.2f}/{candidate.get('max_drawdown', 0):.2f}" if candidate else "-")
+    if any(str(item).startswith("DRIFT WARNING") for item in warnings):
+        st.warning("DRIFT WARNING")
+    if any(str(item).startswith("MODEL AGING") for item in warnings):
+        st.warning("MODEL AGING")
+    if any(str(item).startswith("RETRAIN RECOMMENDED") for item in warnings):
+        st.warning("RETRAIN RECOMMENDED")
+    st.metric("Rollback Availability", "YES" if registry.get("rollback_available") else "NO")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "production_version": production.get("version", "-") if production else "-",
+                    "candidate_version": candidate.get("version", "-") if candidate else "-",
+                    "candidate_status": candidate.get("status", "-") if candidate else "-",
+                    "warnings": " | ".join(map(str, warnings)),
+                }
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def render_shadow_penalty_insight(signals: pd.DataFrame) -> None:
@@ -882,6 +939,7 @@ def main() -> None:
     risk_status = read_risk_status()
     portfolio_observability = read_portfolio_observability()
     opportunity_allocation = read_opportunity_allocation()
+    model_registry = read_model_registry()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -977,6 +1035,7 @@ def main() -> None:
     prediction_path = os.path.join(config.chart_output_dir, "prediction_distribution.png")
     if os.path.exists(prediction_path):
         st.image(prediction_path, caption="Prediction Distribution")
+    render_ml_lifecycle(model_registry)
 
     st.header("7. WALKFORWARD ANALYTICS")
     col1, col2, col3 = st.columns(3)

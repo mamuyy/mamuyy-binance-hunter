@@ -328,6 +328,42 @@ Output:
 
 ML engine memakai RandomForestClassifier sederhana, bukan deep learning. Jika data belum cukup, engine tetap membuat output placeholder dan tidak crash.
 
+## Automated Model Retraining & Drift Mitigation
+
+Jalankan guarded retraining:
+
+```bash
+python main.py --retrain-model
+```
+
+File utama:
+
+- `retrain_model.py`
+- `model_registry.json`
+
+Output runtime:
+
+- `model_weights_candidate.pkl`
+- `model_weights.pkl`
+- `model_weights_previous.pkl`
+- `logs/retrain_walkforward.csv`
+
+Behavior:
+
+- Candidate model selalu disimpan dulu ke `model_weights_candidate.pkl`.
+- Production model hanya diganti jika PF stabil/improve, max drawdown tidak memburuk signifikan, dan walkforward stability acceptable.
+- Jika candidate ditolak, production model lama tetap dipakai.
+- Jika production diganti, model lama disimpan sebagai rollback di `model_weights_previous.pkl`.
+- Registry menyimpan version, train timestamp, PF, DD, walkforward score, dataset row count, warning drift, dan rollback availability.
+
+Drift warning:
+
+- `DRIFT WARNING`: accuracy/walkforward/PF memburuk.
+- `MODEL AGING`: production model terlalu lama tidak refresh.
+- `RETRAIN RECOMMENDED`: kualitas walkforward lemah atau accuracy terus turun.
+
+Dashboard menampilkan section `ML Lifecycle & Drift Monitor` secara read-only. Engine ini analytics-only dan aman untuk cron bulanan VPS; tidak mengubah scanner, execution, broker integration, atau auto trading.
+
 Telegram summary:
 
 ```text
@@ -1279,6 +1315,7 @@ flow_engine.py
 analytics.py
 report_generator.py
 ml_engine.py
+retrain_model.py
 walkforward.py
 backfill.py
 outcome_labeler.py

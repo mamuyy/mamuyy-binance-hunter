@@ -246,6 +246,7 @@ from portfolio_observer import format_portfolio_observer, observe_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
+from retrain_model import format_retrain_summary, retrain_model
 from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
 from shadow_analysis import format_shadow_analysis_summary, run_shadow_equity_analysis
@@ -332,6 +333,23 @@ def run_ml() -> Dict[str, Any]:
     print(f"Model output generated: {config.model_output_path}")
     insert_ml_result(result, database_url=database_url())
     send_message_if_enabled(message)
+    return result
+
+
+def run_retrain_model() -> Dict[str, Any]:
+    result = retrain_model(
+        database_path=config.database_path,
+        paper_trades_path=config.paper_trades_path,
+        signals_log_path=config.signals_log_path,
+        flow_log_path=config.flow_log_path,
+        registry_path="model_registry.json",
+        production_model_path="model_weights.pkl",
+        candidate_model_path="model_weights_candidate.pkl",
+        previous_model_path="model_weights_previous.pkl",
+        walkforward_output_path="logs/retrain_walkforward.csv",
+        chart_dir=config.chart_output_dir,
+    )
+    print(format_retrain_summary(result))
     return result
 
 
@@ -810,6 +828,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan ML research analysis dari CSV paper/signal/flow.",
     )
     parser.add_argument(
+        "--retrain-model",
+        action="store_true",
+        help="Retrain ML model dengan guarded candidate replacement.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -946,6 +969,8 @@ if __name__ == "__main__":
         run_db_check()
     elif args.walkforward:
         run_walkforward()
+    elif args.retrain_model:
+        run_retrain_model()
     elif args.ml:
         run_ml()
     elif args.report:

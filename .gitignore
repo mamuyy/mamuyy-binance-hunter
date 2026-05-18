@@ -7,6 +7,7 @@ charts/
 performance_report.html
 .matplotlib/
 model_output.json
+model_weights*.pkl
 walkforward_results.csv
 shadow_equity_curve.csv
 shadow_comparison.csv
