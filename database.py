@@ -241,6 +241,25 @@ SCHEMAS = {
             message TEXT
         )
     """,
+    "internal_paper_trades": """
+        CREATE TABLE IF NOT EXISTS internal_paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            source_signal_timestamp TEXT,
+            symbol TEXT,
+            market_type TEXT,
+            side TEXT,
+            entry_price REAL,
+            exit_price REAL,
+            pnl REAL,
+            confidence REAL,
+            regime TEXT,
+            macro_state TEXT,
+            allocation_tier TEXT,
+            status TEXT,
+            payload_json TEXT
+        )
+    """,
 }
 
 
@@ -272,6 +291,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_risk_events_status ON risk_events(status)",
     "CREATE INDEX IF NOT EXISTS idx_runtime_heartbeats_timestamp ON runtime_heartbeats(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_runtime_heartbeats_source ON runtime_heartbeats(source)",
+    "CREATE INDEX IF NOT EXISTS idx_internal_paper_trades_timestamp ON internal_paper_trades(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_internal_paper_trades_symbol ON internal_paper_trades(symbol)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_internal_paper_unique ON internal_paper_trades(symbol, source_signal_timestamp, side)",
 ]
 
 

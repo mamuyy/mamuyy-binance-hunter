@@ -19,7 +19,7 @@ if "--health" in sys.argv:
     _counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(_health_config.database_path) as _connection:
-            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for _table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     _counts[_table] = _connection.execute(f"SELECT COUNT(*) FROM {_table}").fetchone()[0]
                 except sqlite3.Error:
@@ -219,6 +219,7 @@ if "--fix-regime-labels" in sys.argv:
 from config import config
 from outcome_labeler import label_historical_outcomes
 from regime_labeler import fix_historical_regime_labels
+from bridge_tradingview import format_webhook_test, webhook_test_payload
 from database import (
     backup_database,
     db_health_check,
@@ -232,6 +233,7 @@ from database import (
 )
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
 from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result, resolve_runtime_heartbeat
+from internal_paper_engine import format_paper_engine_result, run_internal_paper_engine
 from logger import log_signal
 from market_regime import (
     MarketRegimeEngine,
@@ -359,6 +361,21 @@ def run_model_status() -> Dict[str, Any]:
     return result
 
 
+def run_paper_engine() -> Dict[str, Any]:
+    result = run_internal_paper_engine(
+        db_path=config.database_path,
+        allocation_path="logs/opportunity_allocation.csv",
+    )
+    print(format_paper_engine_result(result))
+    return result
+
+
+def run_webhook_test() -> Dict[str, Any]:
+    result = webhook_test_payload("logs/webhook_test_payload.json")
+    print(format_webhook_test(result))
+    return result
+
+
 def run_walkforward() -> Dict[str, Any]:
     result = run_walkforward_validation(
         paper_trades_path=config.paper_trades_path,
@@ -480,7 +497,7 @@ def run_health() -> Dict[str, Any]:
     table_counts: Dict[str, int] = {}
     try:
         with sqlite3.connect(config.database_path) as connection:
-            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
+            for table in ["signals", "paper_trades", "flow_logs", "regime_logs", "ml_results", "walkforward_results", "shadow_trades", "internal_paper_trades", "historical_klines", "historical_funding", "historical_open_interest", "historical_outcomes", "runtime_heartbeats"]:
                 try:
                     table_counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 except sqlite3.Error:
@@ -844,6 +861,16 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan status production/candidate ML model lifecycle.",
     )
     parser.add_argument(
+        "--paper-engine",
+        action="store_true",
+        help="Jalankan internal paper execution simulator tanpa broker.",
+    )
+    parser.add_argument(
+        "--webhook-test",
+        action="store_true",
+        help="Generate TradingView-compatible webhook payload localhost test.",
+    )
+    parser.add_argument(
         "--walkforward",
         action="store_true",
         help="Jalankan walk-forward validation untuk model ML.",
@@ -984,6 +1011,10 @@ if __name__ == "__main__":
         run_retrain_model()
     elif args.model_status:
         run_model_status()
+    elif args.paper_engine:
+        run_paper_engine()
+    elif args.webhook_test:
+        run_webhook_test()
     elif args.ml:
         run_ml()
     elif args.report:

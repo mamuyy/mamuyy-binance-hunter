@@ -802,6 +802,54 @@ Kolom utama:
 
 Engine ini analytics-only. Ia hanya memberi ranking dan suggested max weight untuk riset, tanpa auto trade, tanpa broker integration, dan tanpa mengubah scanner/execution logic.
 
+## TradingView Webhook Bridge & Internal Paper Engine
+
+Jalankan internal paper engine:
+
+```bash
+python main.py --paper-engine
+```
+
+Generate payload TradingView-compatible untuk localhost testing:
+
+```bash
+python main.py --webhook-test
+```
+
+File utama:
+
+- `bridge_tradingview.py`
+- `internal_paper_engine.py`
+
+Flow:
+
+- Hunter membaca signal dan opportunity allocation.
+- Internal paper engine membuat simulated paper entry/exit only.
+- Trade disimpan ke SQLite table `internal_paper_trades`.
+- TradingView bridge menghasilkan JSON payload dengan `mode=PAPER_ONLY`.
+- Dashboard menampilkan `Webhook & Paper Engine` berisi latest simulated trades, payload preview, equity summary, winrate, dan drawdown.
+
+Fields internal paper:
+
+- `symbol`
+- `side`
+- `entry_price`
+- `exit_price`
+- `pnl`
+- `confidence`
+- `regime`
+- `macro_state`
+- `allocation_tier`
+- `timestamp`
+
+Safety:
+
+- Tidak ada broker API key.
+- Tidak ada exchange order placement.
+- Tidak ada public webhook endpoint.
+- Webhook bridge saat ini hanya payload generator untuk localhost/testing.
+- Architecture disiapkan untuk future market type: crypto, forex, stocks, ETF, dan gold.
+
 ## Execution Simulation Engine
 
 Jalankan simulasi execution:
@@ -1351,6 +1399,8 @@ analytics.py
 report_generator.py
 ml_engine.py
 retrain_model.py
+bridge_tradingview.py
+internal_paper_engine.py
 walkforward.py
 backfill.py
 outcome_labeler.py

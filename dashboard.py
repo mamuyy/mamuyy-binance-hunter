@@ -65,6 +65,7 @@ def table_counts() -> dict[str, int]:
         "ml_results",
         "walkforward_results",
         "historical_outcomes",
+        "internal_paper_trades",
     ]
     counts = {}
     try:
@@ -154,6 +155,17 @@ def read_model_registry(path: str = "model_registry.json") -> dict[str, Any]:
         if os.path.exists(path):
             with open(path, encoding="utf-8") as registry_file:
                 return json.load(registry_file)
+    except Exception:
+        return {}
+    return {}
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_webhook_payload(path: str = "logs/webhook_test_payload.json") -> dict[str, Any]:
+    try:
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as payload_file:
+                return json.load(payload_file)
     except Exception:
         return {}
     return {}
@@ -329,6 +341,49 @@ def render_opportunity_allocation(allocation: pd.DataFrame) -> None:
             st.info("No AVOID symbols right now.")
         else:
             st.dataframe(avoid[[column for column in avoid_columns if column in avoid.columns]], use_container_width=True, hide_index=True)
+
+
+def render_webhook_paper_engine(trades: pd.DataFrame, payload: dict[str, Any]) -> None:
+    st.header("Webhook & Paper Engine")
+    if trades.empty:
+        st.info("No internal paper trades yet. Run python main.py --paper-engine.")
+    else:
+        df = trades.copy()
+        df["pnl"] = pd.to_numeric(df.get("pnl", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+        equity = df.sort_values("id")["pnl"].cumsum().reset_index(drop=True)
+        drawdown = equity - equity.cummax() if not equity.empty else pd.Series(dtype=float)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Paper Trades", len(df))
+        col2.metric("Paper Winrate", f"{(df['pnl'] > 0).mean() * 100:.2f}%")
+        col3.metric("Paper Drawdown", f"{drawdown.min() if not drawdown.empty else 0:.2f}%")
+        col4.metric("Paper Total PnL", f"{df['pnl'].sum():.2f}%")
+        safe_plot_line(pd.DataFrame({"trade": range(1, len(equity) + 1), "equity": equity}), "trade", "equity", "Internal Paper Equity")
+        columns = [
+            "timestamp",
+            "symbol",
+            "side",
+            "entry_price",
+            "exit_price",
+            "pnl",
+            "confidence",
+            "regime",
+            "macro_state",
+            "allocation_tier",
+            "status",
+        ]
+        st.subheader("Latest Simulated Trades")
+        st.dataframe(df[[column for column in columns if column in df.columns]].head(25), use_container_width=True)
+
+    st.subheader("Webhook Payload Preview")
+    if payload:
+        st.json(payload)
+    elif not trades.empty and "payload_json" in trades.columns:
+        try:
+            st.json(json.loads(str(trades.iloc[0].get("payload_json") or "{}")))
+        except json.JSONDecodeError:
+            st.info("Latest paper trade payload is not valid JSON.")
+    else:
+        st.info("No webhook payload preview yet. Run python main.py --webhook-test.")
 
 
 def _registry_age_days(production: dict[str, Any] | None) -> str:
@@ -961,6 +1016,8 @@ def main() -> None:
     portfolio_observability = read_portfolio_observability()
     opportunity_allocation = read_opportunity_allocation()
     model_registry = read_model_registry()
+    internal_paper_trades = read_table("internal_paper_trades", limit=200)
+    webhook_payload = read_webhook_payload()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1135,6 +1192,7 @@ def main() -> None:
             st.info("No regime profitability data yet.")
 
     render_opportunity_allocation(opportunity_allocation)
+    render_webhook_paper_engine(internal_paper_trades, webhook_payload)
 
 
 if __name__ == "__main__":
