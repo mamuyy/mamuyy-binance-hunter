@@ -1034,6 +1034,9 @@ def render_orchestrator_diagnostics(diagnostics: dict[str, Any]) -> None:
     col2.metric("Last Step", diagnostics.get("last_completed_step") or last_event.get("last_completed_step") or "-")
     col3.metric("Crash Count 24h", crash_count)
     col4.metric("Heartbeat Written", str(last_event.get("heartbeat_written")))
+    col1, col2 = st.columns(2)
+    col1.metric("Last Keepalive", diagnostics.get("last_keepalive_source") or "-")
+    col2.metric("Long Running Module", diagnostics.get("long_running_module_status") or "IDLE")
     st.caption(f"Last error: {last_error}")
 
 

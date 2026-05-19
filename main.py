@@ -248,7 +248,7 @@ from market_regime import (
 from macro_observer import format_macro_observer, observe_macro
 from ml_engine import run_ml_research
 from opportunity_allocator import allocate_opportunities, format_allocation_summary
-from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diagnostics, run_orchestrator, uptime_seconds
+from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diagnostics, run_orchestrator, runtime_keepalive, uptime_seconds
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
@@ -403,7 +403,13 @@ def run_cross_market() -> Dict[str, Any]:
 
 
 def run_strategy_genome_command() -> Dict[str, Any]:
-    result = run_strategy_genome(db_path=config.database_path)
+    with runtime_keepalive(
+        "strategy_genome",
+        db_path=config.database_path,
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = run_strategy_genome(db_path=config.database_path)
     print(format_strategy_genome_result(result))
     return result
 
@@ -421,13 +427,25 @@ def run_daily_ops_report() -> Dict[str, Any]:
 
 
 def run_anomaly_scan_command() -> Dict[str, Any]:
-    result = run_anomaly_scan(db_path=config.database_path, notify_critical=False)
+    with runtime_keepalive(
+        "anomaly_scan",
+        db_path=config.database_path,
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = run_anomaly_scan(db_path=config.database_path, notify_critical=False)
     print(format_anomaly_scan(result))
     return result
 
 
 def run_incident_report_command() -> Dict[str, Any]:
-    result = run_anomaly_scan(db_path=config.database_path, notify_critical=True)
+    with runtime_keepalive(
+        "incident_report",
+        db_path=config.database_path,
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = run_anomaly_scan(db_path=config.database_path, notify_critical=True)
     print(format_anomaly_scan(result))
     return result
 
@@ -460,13 +478,19 @@ def run_notify_summary() -> Dict[str, Any]:
 
 
 def run_walkforward() -> Dict[str, Any]:
-    result = run_walkforward_validation(
-        paper_trades_path=config.paper_trades_path,
-        signals_log_path=config.signals_log_path,
-        output_path=config.walkforward_results_path,
-        chart_dir=config.chart_output_dir,
-        database_path=config.database_path,
-    )
+    with runtime_keepalive(
+        "walkforward",
+        db_path=config.database_path,
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = run_walkforward_validation(
+            paper_trades_path=config.paper_trades_path,
+            signals_log_path=config.signals_log_path,
+            output_path=config.walkforward_results_path,
+            chart_dir=config.chart_output_dir,
+            database_path=config.database_path,
+        )
     message = format_walkforward_report_message(result)
     print(message)
     print(f"Walk-forward results generated: {config.walkforward_results_path}")
@@ -492,11 +516,17 @@ def run_regime_models() -> Dict[str, Any]:
 
 
 def run_portfolio() -> Dict[str, Any]:
-    result = build_portfolio(
+    with runtime_keepalive(
+        "portfolio",
         db_path=config.database_path,
-        tags_path="symbol_tags.json",
-        chart_dir=config.chart_output_dir,
-    )
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = build_portfolio(
+            db_path=config.database_path,
+            tags_path="symbol_tags.json",
+            chart_dir=config.chart_output_dir,
+        )
     message = format_portfolio_message(result)
     print(message)
     print(f"Charts: {result.get('charts', {})}")
@@ -505,7 +535,13 @@ def run_portfolio() -> Dict[str, Any]:
 
 
 def run_portfolio_observer() -> Dict[str, Any]:
-    result = observe_portfolio(db_path=config.database_path)
+    with runtime_keepalive(
+        "portfolio_observer",
+        db_path=config.database_path,
+        interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
+    ):
+        result = observe_portfolio(db_path=config.database_path)
     print(format_portfolio_observer(result))
     return result
 
@@ -568,6 +604,8 @@ def run_orchestrator_command() -> Dict[str, Any]:
         retention_days=config.log_retention_days,
         db_retention_days=config.db_retention_days,
         max_log_bytes=config.max_log_bytes,
+        keepalive_interval_seconds=config.orchestrator_keepalive_interval_seconds,
+        keepalive_threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
     )
     message = format_orchestrator_message(result)
     print(message)

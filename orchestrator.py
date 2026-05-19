@@ -2,11 +2,13 @@ import csv
 import json
 import os
 import sqlite3
+import threading
 import time
 import traceback
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, Iterator, List
 
 from database import insert_runtime_heartbeat
 
@@ -100,6 +102,7 @@ def _crash_count_last_24h(events: List[Dict[str, Any]]) -> int:
 
 def _write_diagnostics(
     event_type: str,
+    module_name: str = "",
     cycle: int | None = None,
     cycle_start: str = "",
     cycle_end: str = "",
@@ -113,6 +116,7 @@ def _write_diagnostics(
     event = {
         "timestamp": _now(),
         "event_type": event_type,
+        "module_name": module_name,
         "cycle": cycle,
         "cycle_start": cycle_start,
         "cycle_end": cycle_end,
@@ -138,6 +142,8 @@ def _write_diagnostics(
             "last_event": event,
             "last_cycle_time": cycle_end or cycle_start or event["timestamp"],
             "last_completed_step": last_completed_step,
+            "last_keepalive_source": _latest_keepalive_source(events),
+            "long_running_module_status": _long_running_module_status(events),
             "last_error": last_error_event.get("exception_message", ""),
             "last_error_type": last_error_event.get("exception_type", ""),
             "last_error_timestamp": last_error_event.get("timestamp", ""),
@@ -150,6 +156,28 @@ def _write_diagnostics(
         return
 
 
+def _latest_keepalive_source(events: List[Dict[str, Any]]) -> str:
+    for event in reversed(events):
+        if event.get("event_type") == "keepalive_heartbeat":
+            module_name = str(event.get("module_name") or "-")
+            timestamp = str(event.get("timestamp") or "-")
+            return f"{module_name} @ {timestamp}"
+    return "-"
+
+
+def _long_running_module_status(events: List[Dict[str, Any]]) -> str:
+    active_modules = []
+    for event in reversed(events[-30:]):
+        event_type = str(event.get("event_type") or "")
+        module_name = str(event.get("module_name") or "")
+        if event_type in {"keepalive_start", "keepalive_heartbeat"} and module_name:
+            active_modules.append(module_name)
+            break
+        if event_type in {"engine_end", "cycle_end", "keepalive_stop"} and module_name:
+            break
+    return active_modules[0] if active_modules else "IDLE"
+
+
 def load_orchestrator_diagnostics(path: str = DIAGNOSTICS_JSON_PATH) -> Dict[str, Any]:
     if not os.path.exists(path):
         return {
@@ -157,6 +185,8 @@ def load_orchestrator_diagnostics(path: str = DIAGNOSTICS_JSON_PATH) -> Dict[str
             "last_event": {},
             "last_cycle_time": "",
             "last_completed_step": "",
+            "last_keepalive_source": "-",
+            "long_running_module_status": "IDLE",
             "last_error": "",
             "last_error_type": "",
             "crash_count_last_24h": 0,
@@ -178,12 +208,96 @@ def format_orchestrator_diagnostics(result: Dict[str, Any]) -> str:
             f"Updated At: {result.get('updated_at') or '-'}",
             f"Last Cycle Time: {result.get('last_cycle_time') or '-'}",
             f"Last Completed Step: {result.get('last_completed_step') or last_event.get('last_completed_step') or '-'}",
+            f"Last Keepalive Source: {result.get('last_keepalive_source') or '-'}",
+            f"Long Running Module: {result.get('long_running_module_status') or 'IDLE'}",
             f"Last Error: {result.get('last_error') or '-'}",
             f"Last Error Type: {result.get('last_error_type') or '-'}",
             f"Crash Count Last 24h: {result.get('crash_count_last_24h', 0)}",
             f"Heartbeat Written: {last_event.get('heartbeat_written')}",
         ]
     )
+
+
+def heartbeat_ping(
+    module_name: str,
+    db_path: str = "mamuyy_hunter.db",
+    scheduler: str = "KEEPALIVE",
+    cycle: int | None = None,
+    log_path: str = "orchestrator_log.csv",
+) -> bool:
+    message = f"keepalive;module={module_name};cycle={cycle or '-'};uptime={uptime_seconds()}s"
+    written = _record_runtime_heartbeat(
+        db_path=db_path,
+        state="RUNNING",
+        message=message,
+        scheduler=scheduler,
+        log_path=log_path,
+    )
+    _append_log(
+        {
+            "timestamp": _now(),
+            "engine": "heartbeat_keepalive",
+            "state": "RUNNING" if written else "FAILED",
+            "execution_time": 0,
+            "failure_count": 0 if written else 1,
+            "restart_count": 0,
+            "avg_runtime": 0,
+            "last_success_timestamp": _now() if written else "",
+            "message": message,
+        },
+        log_path,
+    )
+    _write_diagnostics(
+        "keepalive_heartbeat",
+        module_name=module_name,
+        cycle=cycle,
+        last_completed_step=f"{module_name}:keepalive",
+        heartbeat_written=written,
+    )
+    return written
+
+
+@contextmanager
+def runtime_keepalive(
+    module_name: str,
+    db_path: str = "mamuyy_hunter.db",
+    scheduler: str = "KEEPALIVE",
+    cycle: int | None = None,
+    interval_seconds: int = 30,
+    threshold_seconds: int = 30,
+    log_path: str = "orchestrator_log.csv",
+) -> Iterator[None]:
+    stop_event = threading.Event()
+    interval = max(5, int(interval_seconds or 30))
+    threshold = max(0, int(threshold_seconds if threshold_seconds is not None else interval))
+
+    def _loop() -> None:
+        if stop_event.wait(threshold):
+            return
+        while not stop_event.is_set():
+            heartbeat_ping(module_name, db_path, scheduler, cycle, log_path)
+            if stop_event.wait(interval):
+                break
+
+    _write_diagnostics(
+        "keepalive_start",
+        module_name=module_name,
+        cycle=cycle,
+        last_completed_step=f"{module_name}:keepalive_start",
+    )
+    thread = threading.Thread(target=_loop, name=f"keepalive-{module_name}", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join(timeout=2)
+        _write_diagnostics(
+            "keepalive_stop",
+            module_name=module_name,
+            cycle=cycle,
+            last_completed_step=f"{module_name}:keepalive_stop",
+        )
 
 
 def _record_runtime_heartbeat(
@@ -344,11 +458,29 @@ def _health_score(engines: Dict[str, EngineRuntime], db_seconds: float, memory_h
     return max(0, min(100, score))
 
 
-def _run_engine(engine: EngineRuntime, retries: int, log_path: str) -> None:
+def _run_engine(
+    engine: EngineRuntime,
+    retries: int,
+    log_path: str,
+    db_path: str = "mamuyy_hunter.db",
+    scheduler: str = "NORMAL",
+    cycle: int | None = None,
+    keepalive_interval_seconds: int = 30,
+    keepalive_threshold_seconds: int = 30,
+) -> None:
     engine.state = "RUNNING"
     start = time.perf_counter()
     try:
-        engine.callback()
+        with runtime_keepalive(
+            engine.name,
+            db_path=db_path,
+            scheduler=scheduler,
+            cycle=cycle,
+            interval_seconds=keepalive_interval_seconds,
+            threshold_seconds=keepalive_threshold_seconds,
+            log_path=log_path,
+        ):
+            engine.callback()
         elapsed = time.perf_counter() - start
         engine.execution_times.append(elapsed)
         engine.state = "IDLE"
@@ -362,7 +494,16 @@ def _run_engine(engine: EngineRuntime, retries: int, log_path: str) -> None:
             engine.restart_count += 1
             try:
                 retry_start = time.perf_counter()
-                engine.callback()
+                with runtime_keepalive(
+                    f"{engine.name}:retry",
+                    db_path=db_path,
+                    scheduler=scheduler,
+                    cycle=cycle,
+                    interval_seconds=keepalive_interval_seconds,
+                    threshold_seconds=keepalive_threshold_seconds,
+                    log_path=log_path,
+                ):
+                    engine.callback()
                 elapsed = time.perf_counter() - retry_start
                 engine.execution_times.append(elapsed)
                 engine.state = "IDLE"
@@ -397,6 +538,8 @@ def run_orchestrator(
     retention_days: int = 14,
     db_retention_days: int = 90,
     max_log_bytes: int = 5_000_000,
+    keepalive_interval_seconds: int = 30,
+    keepalive_threshold_seconds: int = 30,
 ) -> Dict[str, Any]:
     scheduler = profile if profile in SCHEDULER_PROFILES else "NORMAL"
     _write_diagnostics("orchestrator_start", last_completed_step="startup_begin")
@@ -463,7 +606,16 @@ def run_orchestrator(
                     cycle_start=cycle_start_timestamp,
                     last_completed_step=f"{name}:start",
                 )
-                _run_engine(engine, retries, log_path)
+                _run_engine(
+                    engine,
+                    retries,
+                    log_path,
+                    db_path=db_path,
+                    scheduler=scheduler,
+                    cycle=cycle_number,
+                    keepalive_interval_seconds=keepalive_interval_seconds,
+                    keepalive_threshold_seconds=keepalive_threshold_seconds,
+                )
                 last_completed_step = f"{name}:{engine.state}"
                 _write_diagnostics(
                     "engine_end",

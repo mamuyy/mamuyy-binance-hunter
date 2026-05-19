@@ -1816,6 +1816,30 @@ Field yang dicatat:
 
 Dashboard menampilkan panel kecil `Orchestrator Diagnostics` berisi last cycle time, last error, last completed step, dan crash count 24h.
 
+## Runtime Keepalive Heartbeat
+
+Long-running research modules seperti `walkforward`, `strategy_genome`, `portfolio`, `portfolio_observer`, dan anomaly/incident scan dapat berjalan beberapa menit. Agar Health Guardian tidak salah membaca orchestrator sebagai stale, Hunter memakai keepalive heartbeat ringan.
+
+Default:
+
+- `ORCHESTRATOR_KEEPALIVE_INTERVAL_SECONDS=30`
+- `ORCHESTRATOR_KEEPALIVE_THRESHOLD_SECONDS=30`
+
+Cara kerja:
+
+1. Saat task panjang mulai, `runtime_keepalive()` membuat thread daemon ringan.
+2. Jika task melewati threshold, keepalive menulis heartbeat ke `runtime_heartbeats`.
+3. Diagnostics mencatat `keepalive_heartbeat` dengan module name dan cycle number.
+4. Dashboard menampilkan `Last Keepalive` dan `Long Running Module`.
+
+Safety:
+
+- Tidak mengubah trading logic.
+- Tidak mengirim order.
+- Tidak memakai broker API.
+- Tidak mengubah schema database.
+- Hanya menulis heartbeat runtime dan diagnostics log.
+
 ## Konfigurasi `.env`
 
 ```env
@@ -1845,6 +1869,8 @@ WALKFORWARD_RESULTS_PATH=walkforward_results.csv
 CHART_OUTPUT_DIR=charts
 PAPER_SUMMARY_STATE_PATH=.paper_summary_state
 ORCHESTRATOR_PROFILE=NORMAL
+ORCHESTRATOR_KEEPALIVE_INTERVAL_SECONDS=30
+ORCHESTRATOR_KEEPALIVE_THRESHOLD_SECONDS=30
 LOG_RETENTION_DAYS=14
 DB_RETENTION_DAYS=90
 MAX_LOG_BYTES=5000000
