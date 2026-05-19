@@ -269,6 +269,28 @@ def read_daily_ops_report(path: str = "logs/daily_ops_report.json") -> dict[str,
         return {}
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_incident_anomaly_report(
+    anomaly_path: str = "logs/anomaly_report.csv",
+    incident_path: str = "logs/incident_report.json",
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    anomalies = _empty_df()
+    incident: dict[str, Any] = {}
+    try:
+        if os.path.exists(anomaly_path):
+            anomalies = pd.read_csv(anomaly_path)
+    except Exception:
+        anomalies = _empty_df()
+    try:
+        if os.path.exists(incident_path):
+            with open(incident_path, encoding="utf-8") as incident_file:
+                payload = json.load(incident_file)
+            incident = payload if isinstance(payload, dict) else {}
+    except Exception:
+        incident = {}
+    return anomalies, incident
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -912,6 +934,80 @@ def render_daily_ops_report(report: dict[str, Any]) -> None:
         st.info(str(report.get("recommended_next_action", "-")))
 
 
+def render_incident_anomaly_intelligence(anomalies: pd.DataFrame, incident: dict[str, Any]) -> None:
+    st.header("Incident & Anomaly Intelligence")
+    if anomalies.empty and not incident:
+        st.info("No anomaly report yet. Run python main.py --anomaly-scan or python main.py --incident-report.")
+        return
+
+    active_count = int(incident.get("active_incident_count", 0) or 0)
+    critical_count = int(incident.get("critical_count", 0) or 0)
+    warning_count = int(incident.get("warning_count", 0) or 0)
+    health_color = "RED" if critical_count else "YELLOW" if warning_count else "GREEN"
+    status_badge("Incident Health", health_color, f" active={active_count}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Active Incidents", active_count)
+    col2.metric("Critical", critical_count)
+    col3.metric("Warnings", warning_count)
+    col4.metric("Telegram", incident.get("telegram_result", {}).get("send_status", "SKIPPED"))
+
+    if anomalies.empty:
+        st.info("Incident JSON exists but anomaly CSV is empty or unavailable.")
+        return
+
+    df = anomalies.copy()
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+    if "score" in df.columns:
+        df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0.0)
+
+    active = df[df.get("severity", pd.Series(dtype=str)).astype(str).str.upper().isin(["WARNING", "CRITICAL"])]
+    st.subheader("Active Incidents")
+    if active.empty:
+        st.success("No active WARNING/CRITICAL incidents.")
+    else:
+        cols = ["timestamp", "severity", "anomaly_type", "score", "reason", "recommended_action"]
+        st.dataframe(active[[column for column in cols if column in active.columns]], use_container_width=True, hide_index=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Severity Distribution")
+        if "severity" in df.columns:
+            severity = df["severity"].fillna("INFO").astype(str).value_counts().reset_index()
+            severity.columns = ["severity", "count"]
+            safe_plot_bar(severity, "severity", "count", "Anomaly Severity Distribution")
+        else:
+            st.info("No severity data available.")
+    with col2:
+        st.subheader("Top Recurring Incidents")
+        if "anomaly_type" in df.columns:
+            recurring = df["anomaly_type"].fillna("UNKNOWN").astype(str).value_counts().head(10).reset_index()
+            recurring.columns = ["anomaly_type", "count"]
+            st.dataframe(recurring, use_container_width=True, hide_index=True)
+        else:
+            st.info("No anomaly type data available.")
+
+    st.subheader("Anomaly Timeline")
+    if {"timestamp", "score", "anomaly_type"}.issubset(df.columns) and df["timestamp"].notna().any():
+        st.plotly_chart(
+            px.scatter(
+                df.sort_values("timestamp"),
+                x="timestamp",
+                y="score",
+                color="severity" if "severity" in df.columns else None,
+                hover_name="anomaly_type",
+                title="Anomaly Score Timeline",
+            ),
+            use_container_width=True,
+        )
+    else:
+        st.info("Timeline unavailable until timestamped anomaly rows exist.")
+
+    st.subheader("Recommended Operator Action")
+    st.warning(str(incident.get("recommended_operator_action") or "Continue PAPER_ONLY monitoring."))
+
+
 def _registry_age_days(production: dict[str, Any] | None) -> str:
     if not production or not production.get("train_timestamp"):
         return "-"
@@ -1551,6 +1647,7 @@ def main() -> None:
     cross_market, cross_market_components, cross_market_correlation = read_cross_market()
     strategy_genome_results, strategy_genome_archive = read_strategy_genome()
     daily_ops_report = read_daily_ops_report()
+    anomaly_report, incident_report = read_incident_anomaly_report()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1579,6 +1676,7 @@ def main() -> None:
 
     render_risk_engine_status(risk_status)
     render_daily_ops_report(daily_ops_report)
+    render_incident_anomaly_intelligence(anomaly_report, incident_report)
     render_macro_observer(macro_observer, macro_components)
     render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
     render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)

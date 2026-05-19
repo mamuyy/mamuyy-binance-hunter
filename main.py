@@ -217,6 +217,7 @@ if "--fix-regime-labels" in sys.argv:
     sys.exit(0)
 
 from config import config
+from anomaly_detector import format_anomaly_scan, run_anomaly_scan
 from outcome_labeler import label_historical_outcomes
 from regime_labeler import fix_historical_regime_labels
 from broadcast_router import broadcast_test, format_broadcast_result
@@ -416,6 +417,18 @@ def run_strategy_ranking() -> Dict[str, Any]:
 def run_daily_ops_report() -> Dict[str, Any]:
     result = generate_daily_ops_report(db_path=config.database_path)
     print(format_daily_ops_report(result))
+    return result
+
+
+def run_anomaly_scan_command() -> Dict[str, Any]:
+    result = run_anomaly_scan(db_path=config.database_path, notify_critical=False)
+    print(format_anomaly_scan(result))
+    return result
+
+
+def run_incident_report_command() -> Dict[str, Any]:
+    result = run_anomaly_scan(db_path=config.database_path, notify_critical=True)
+    print(format_anomaly_scan(result))
     return result
 
 
@@ -971,6 +984,16 @@ def parse_args() -> argparse.Namespace:
         help="Generate daily ops report dan Telegram preview/send sesuai config.",
     )
     parser.add_argument(
+        "--anomaly-scan",
+        action="store_true",
+        help="Jalankan Incident & Anomaly Intelligence scan tanpa Telegram critical send.",
+    )
+    parser.add_argument(
+        "--incident-report",
+        action="store_true",
+        help="Generate incident report dan kirim/preview CRITICAL incidents sesuai Telegram config.",
+    )
+    parser.add_argument(
         "--broadcast-test",
         action="store_true",
         help="Uji multi-target broadcast router dalam mode paper/simulation only.",
@@ -1145,6 +1168,10 @@ if __name__ == "__main__":
         run_strategy_ranking()
     elif args.daily_ops_report:
         run_daily_ops_report()
+    elif args.anomaly_scan:
+        run_anomaly_scan_command()
+    elif args.incident_report:
+        run_incident_report_command()
     elif args.broadcast_test:
         run_broadcast_test()
     elif args.competition_status:

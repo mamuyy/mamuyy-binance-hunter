@@ -1743,6 +1743,51 @@ Alert banner muncul jika:
 - Drawdown terlalu tinggi.
 - Tidak ada signal terlalu lama.
 
+## Incident & Anomaly Intelligence
+
+Layer ini adalah observability `PAPER_ONLY` untuk mendeteksi perilaku sistem yang tidak normal tanpa mengubah strategi, routing, atau eksekusi.
+
+Jalankan scan anomaly:
+
+```bash
+python main.py --anomaly-scan
+```
+
+Generate incident report dan kirim/preview Telegram hanya untuk incident `CRITICAL`:
+
+```bash
+python main.py --incident-report
+```
+
+Output:
+
+- `logs/anomaly_report.csv`
+- `logs/incident_report.md`
+- `logs/incident_report.json`
+
+Deteksi mencakup sudden drop in profit factor, equity curve flattening, abnormal drawdown increase, excessive broadcast rejections, macro divergence spikes, cross-market stress spikes, excessive strategy mutation failures, stale runtime heartbeat, repeated guardian recoveries, Telegram notification failures, sudden drop in signal generation, dan walkforward degradation.
+
+Severity:
+
+- `INFO`: observasi ringan atau data baseline belum cukup.
+- `WARNING`: degradasi yang perlu dipantau operator.
+- `CRITICAL`: risiko survivability/runtime/performance tinggi dan layak masuk Telegram jika `TELEGRAM_ENABLED=true`.
+
+Incident lifecycle:
+
+1. `--anomaly-scan` membaca SQLite/CSV/report secara read-only dan menulis report ke folder `logs`.
+2. Dashboard menampilkan active incidents, timeline, severity distribution, recurring incidents, dan recommended action.
+3. `--incident-report` menjalankan scan yang sama, lalu mengirim/preview Telegram hanya untuk incident `CRITICAL`.
+4. Cooldown Telegram mencegah spam incident berulang.
+
+PAPER_ONLY clarification:
+
+- Tidak ada broker API.
+- Tidak ada live trading.
+- Tidak ada exchange execution.
+- Tidak ada automatic strategy promotion/disabling.
+- Layer ini hanya analytics dan operator awareness.
+
 ## Konfigurasi `.env`
 
 ```env
@@ -1818,6 +1863,7 @@ telegram_notifier.py
 cross_market_intelligence.py
 strategy_genome.py
 daily_ops_report.py
+anomaly_detector.py
 macro_observer.py
 walkforward.py
 backfill.py
