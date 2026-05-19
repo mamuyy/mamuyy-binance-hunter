@@ -257,6 +257,7 @@ from risk_manager import RiskConfig, check_execution_safety
 from scanner import BinanceFuturesScanner
 from shadow_analysis import format_shadow_analysis_summary, run_shadow_equity_analysis
 from shadow_engine import run_shadow_live
+from strategy_genome import format_strategy_genome_result, run_strategy_genome, strategy_ranking
 from telegram_notifier import format_notification_result, notify_summary, telegram_test
 from telegram import (
     format_execution_message,
@@ -396,6 +397,18 @@ def run_cross_market() -> Dict[str, Any]:
         output_path="logs/cross_market_intelligence.csv",
     )
     print(format_cross_market_report(result))
+    return result
+
+
+def run_strategy_genome_command() -> Dict[str, Any]:
+    result = run_strategy_genome(db_path=config.database_path)
+    print(format_strategy_genome_result(result))
+    return result
+
+
+def run_strategy_ranking() -> Dict[str, Any]:
+    result = strategy_ranking()
+    print(format_strategy_genome_result(result))
     return result
 
 
@@ -936,6 +949,16 @@ def parse_args() -> argparse.Namespace:
         help="Generate dan tampilkan Cross Market Intelligence report.",
     )
     parser.add_argument(
+        "--strategy-genome",
+        action="store_true",
+        help="Jalankan PAPER_ONLY Strategy Genome Lab evaluation dan mutation.",
+    )
+    parser.add_argument(
+        "--strategy-ranking",
+        action="store_true",
+        help="Tampilkan ranking Strategy Genome Lab terakhir.",
+    )
+    parser.add_argument(
         "--broadcast-test",
         action="store_true",
         help="Uji multi-target broadcast router dalam mode paper/simulation only.",
@@ -1104,6 +1127,10 @@ if __name__ == "__main__":
         run_macro_observer()
     elif args.cross_market or args.cross_market_report:
         run_cross_market()
+    elif args.strategy_genome:
+        run_strategy_genome_command()
+    elif args.strategy_ranking:
+        run_strategy_ranking()
     elif args.broadcast_test:
         run_broadcast_test()
     elif args.competition_status:

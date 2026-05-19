@@ -237,6 +237,26 @@ def read_cross_market(path: str = "logs/cross_market_intelligence.csv") -> tuple
     return df, components, correlation
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_strategy_genome(
+    results_path: str = "logs/strategy_genome_results.csv",
+    archive_path: str = "logs/strategy_genome_archive.csv",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    results = _empty_df()
+    archive = _empty_df()
+    try:
+        if os.path.exists(results_path):
+            results = pd.read_csv(results_path)
+    except Exception:
+        results = _empty_df()
+    try:
+        if os.path.exists(archive_path):
+            archive = pd.read_csv(archive_path)
+    except Exception:
+        archive = _empty_df()
+    return results, archive
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -744,6 +764,89 @@ def render_cross_market_intelligence(cross_market: pd.DataFrame, components: pd.
         numeric = correlation.set_index("asset") if "asset" in correlation.columns else correlation
         numeric = numeric.apply(pd.to_numeric, errors="coerce")
         st.plotly_chart(px.imshow(numeric, text_auto=True, aspect="auto", title="Cross-Market Correlation Matrix"), use_container_width=True)
+
+
+def render_strategy_genome_lab(results: pd.DataFrame, archive: pd.DataFrame) -> None:
+    st.header("Strategy Genome Lab")
+    if results.empty:
+        st.info("No strategy genome results yet. Run python main.py --strategy-genome.")
+        return
+    df = results.copy()
+    for column in [
+        "profit_factor",
+        "max_drawdown",
+        "stability_score",
+        "trade_count",
+        "regime_survival_score",
+        "macro_survival_score",
+        "cross_market_survival_score",
+        "overfit_risk",
+        "total_pnl",
+        "winrate",
+    ]:
+        if column in df.columns:
+            df[column] = pd.to_numeric(df[column].replace("inf", float("inf")), errors="coerce")
+
+    top = df.sort_values(["stability_score", "profit_factor", "trade_count"], ascending=[False, False, False]).head(20)
+    promoted = df[df.get("status", pd.Series(dtype=str)) == "PROMOTED"].head(20)
+    rejected = df[df.get("status", pd.Series(dtype=str)) == "REJECTED"].sort_values("overfit_risk", ascending=False).head(20)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Strategies", len(df))
+    col2.metric("Promoted", len(promoted))
+    col3.metric("Rejected", int((df.get("status", pd.Series(dtype=str)) == "REJECTED").sum()))
+    col4.metric("Best Stability", f"{pd.to_numeric(top.get('stability_score', pd.Series(dtype=float)), errors='coerce').max() or 0:.2f}")
+
+    st.subheader("Top Ranked Strategies")
+    top_columns = [
+        "strategy_id",
+        "strategy_name",
+        "status",
+        "profit_factor",
+        "max_drawdown",
+        "winrate",
+        "trade_count",
+        "stability_score",
+        "overfit_risk",
+    ]
+    st.dataframe(top[[column for column in top_columns if column in top.columns]], use_container_width=True, hide_index=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Promoted Candidates")
+        show_dataframe_or_info(promoted[[column for column in top_columns if column in promoted.columns]], "No promoted candidates. Manual review required before any future production use.")
+        st.subheader("Regime Survival")
+        survival_cols = ["strategy_id", "regime_survival_score", "macro_survival_score", "cross_market_survival_score"]
+        show_dataframe_or_info(top[[column for column in survival_cols if column in top.columns]], "No survival score data.")
+    with col2:
+        st.subheader("Rejected Strategies")
+        show_dataframe_or_info(rejected[[column for column in top_columns if column in rejected.columns]], "No rejected strategies.")
+        st.subheader("Macro Survival")
+        macro_cols = ["strategy_id", "macro_filter", "cross_market_filter", "macro_survival_score", "cross_market_survival_score"]
+        show_dataframe_or_info(top[[column for column in macro_cols if column in top.columns]], "No macro survival data.")
+
+    if {"profit_factor", "max_drawdown", "status", "strategy_name"}.issubset(df.columns):
+        plot_df = df.copy()
+        plot_df["profit_factor"] = plot_df["profit_factor"].replace(float("inf"), 5.0).fillna(0.0).clip(upper=5.0)
+        st.plotly_chart(
+            px.scatter(
+                plot_df,
+                x="max_drawdown",
+                y="profit_factor",
+                color="status",
+                size="trade_count" if "trade_count" in plot_df.columns else None,
+                hover_name="strategy_name",
+                title="PF vs DD Strategy Comparison",
+            ),
+            use_container_width=True,
+        )
+
+    st.subheader("Mutation History")
+    if archive.empty:
+        st.info("No archive history yet.")
+    else:
+        history = archive.tail(100).sort_index(ascending=False)
+        st.dataframe(history[[column for column in top_columns if column in history.columns]], use_container_width=True, hide_index=True)
 
 
 def _registry_age_days(production: dict[str, Any] | None) -> str:
@@ -1383,6 +1486,7 @@ def main() -> None:
     webhook_payload = read_webhook_payload()
     macro_observer, macro_components = read_macro_observer()
     cross_market, cross_market_components, cross_market_correlation = read_cross_market()
+    strategy_genome_results, strategy_genome_archive = read_strategy_genome()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1412,6 +1516,7 @@ def main() -> None:
     render_risk_engine_status(risk_status)
     render_macro_observer(macro_observer, macro_components)
     render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
+    render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)
     render_portfolio_observability(portfolio_observability)
 
     st.header("2. MARKET REGIME")

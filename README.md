@@ -1072,6 +1072,83 @@ Safety:
 - Tidak ada destructive DB write.
 - Tidak ada schema-breaking change.
 
+## Strategy Genome Lab
+
+Jalankan strategy genome evaluation:
+
+```bash
+python main.py --strategy-genome
+```
+
+Tampilkan ranking terakhir:
+
+```bash
+python main.py --strategy-ranking
+```
+
+File utama:
+
+- `strategy_genome.py`
+
+Output:
+
+- `logs/strategy_genome_registry.json`
+- `logs/strategy_genome_results.csv`
+- `logs/strategy_genome_archive.csv`
+
+Purpose:
+
+- Mengevaluasi kandidat strategy secara PAPER_ONLY.
+- Membandingkan parameter strategy tanpa mengganti production strategy.
+- Mengarsipkan hasil riset agar bisa dilihat evolusinya dari waktu ke waktu.
+
+Registry strategy menyimpan:
+
+- `strategy_id`
+- `strategy_name`
+- `parameters`
+- `regime_filter`
+- `macro_filter`
+- `cross_market_filter`
+- `created_at`
+- `status`: `ACTIVE` / `WATCH` / `REJECTED` / `PROMOTED`
+
+Metrics:
+
+- `total_pnl`: total PnL dari subset trade yang lolos filter kandidat.
+- `profit_factor`: gross profit dibagi gross loss.
+- `max_drawdown`: drawdown terdalam dari equity kandidat.
+- `winrate`: persentase trade profit.
+- `trade_count`: jumlah sample yang dipakai.
+- `regime_survival_score`: kemampuan bertahan pada hostile regime.
+- `macro_survival_score`: kemampuan bertahan saat macro stress.
+- `cross_market_survival_score`: kemampuan bertahan saat cross-market stress.
+- `overfit_risk`: penalty untuk sample kecil, drawdown, dan correlation concentration.
+- `stability_score`: ranking gabungan untuk research review.
+
+Mutation safety:
+
+- Mutasi hanya membuat variasi parameter ringan:
+  - confidence threshold
+  - macro risk threshold
+  - regime penalty multiplier
+  - correlation penalty multiplier
+  - allocation score threshold
+- Mutasi tidak mengubah scanner logic.
+- Mutasi tidak mengubah execution logic.
+- Kandidat `PROMOTED` hanya berarti layak review manual, bukan auto deployment.
+
+Dashboard section `Strategy Genome Lab` menampilkan top ranked strategies, rejected strategies, promoted candidates, PF vs DD comparison, regime survival, macro survival, dan mutation history.
+
+Safety:
+
+- Strict `PAPER_ONLY`.
+- Tidak ada broker API.
+- Tidak ada exchange order placement.
+- Tidak ada live trading.
+- Tidak ada production strategy replacement otomatis.
+- Tidak ada destructive DB write.
+
 ## Real Macro Observer Engine
 
 Jalankan macro observer:
@@ -1681,6 +1758,7 @@ broadcast_router.py
 competition_control.py
 telegram_notifier.py
 cross_market_intelligence.py
+strategy_genome.py
 macro_observer.py
 walkforward.py
 backfill.py
