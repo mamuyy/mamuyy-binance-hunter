@@ -74,6 +74,8 @@ class Config:
         ".paper_summary_state",
     )
     orchestrator_profile: str = os.getenv("ORCHESTRATOR_PROFILE", "NORMAL")
+    orchestrator_keepalive_interval_seconds: int = _get_int("ORCHESTRATOR_KEEPALIVE_INTERVAL_SECONDS", 30)
+    orchestrator_keepalive_threshold_seconds: int = _get_int("ORCHESTRATOR_KEEPALIVE_THRESHOLD_SECONDS", 30)
     log_retention_days: int = _get_int("LOG_RETENTION_DAYS", 14)
     db_retention_days: int = _get_int("DB_RETENTION_DAYS", 90)
     max_log_bytes: int = _get_int("MAX_LOG_BYTES", 5_000_000)
