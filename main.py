@@ -248,7 +248,7 @@ from market_regime import (
 from macro_observer import format_macro_observer, observe_macro
 from ml_engine import run_ml_research
 from opportunity_allocator import allocate_opportunities, format_allocation_summary
-from orchestrator import run_orchestrator, uptime_seconds
+from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diagnostics, run_orchestrator, uptime_seconds
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
@@ -572,6 +572,12 @@ def run_orchestrator_command() -> Dict[str, Any]:
     message = format_orchestrator_message(result)
     print(message)
     send_message_if_enabled(message)
+    return result
+
+
+def run_orchestrator_diagnostics() -> Dict[str, Any]:
+    result = load_orchestrator_diagnostics()
+    print(format_orchestrator_diagnostics(result))
     return result
 
 
@@ -1059,6 +1065,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan orchestration engine satu siklus.",
     )
     parser.add_argument(
+        "--orchestrator-diagnostics",
+        action="store_true",
+        help="Tampilkan crash diagnostics orchestrator terbaru.",
+    )
+    parser.add_argument(
         "--health",
         action="store_true",
         help="Tampilkan lightweight runtime health monitor.",
@@ -1134,6 +1145,8 @@ if __name__ == "__main__":
         run_shadow_analysis()
     elif args.orchestrator:
         run_orchestrator_command()
+    elif args.orchestrator_diagnostics:
+        run_orchestrator_diagnostics()
     elif args.shadow:
         run_shadow()
     elif args.execution:

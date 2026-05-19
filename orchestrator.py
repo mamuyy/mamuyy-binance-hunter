@@ -1,7 +1,9 @@
 import csv
+import json
 import os
 import sqlite3
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List
@@ -17,6 +19,8 @@ SCHEDULER_PROFILES = {
 
 LOG_FIELDS = ["timestamp", "engine", "state", "execution_time", "failure_count", "restart_count", "avg_runtime", "last_success_timestamp", "message"]
 PROCESS_START = time.time()
+DIAGNOSTICS_LOG_PATH = "logs/orchestrator_diagnostics.log"
+DIAGNOSTICS_JSON_PATH = "logs/orchestrator_diagnostics.json"
 
 
 @dataclass
@@ -49,6 +53,137 @@ def _append_log(row: Dict[str, Any], path: str) -> None:
             writer.writerow({field: row.get(field, "") for field in LOG_FIELDS})
     except OSError:
         return
+
+
+def _read_diagnostic_events(path: str = DIAGNOSTICS_LOG_PATH, limit: int = 250) -> List[Dict[str, Any]]:
+    if not os.path.exists(path):
+        return []
+    events: List[Dict[str, Any]] = []
+    try:
+        with open(path, encoding="utf-8") as log_file:
+            for line in log_file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                    if isinstance(event, dict):
+                        events.append(event)
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
+    return events[-limit:]
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _crash_count_last_24h(events: List[Dict[str, Any]]) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    count = 0
+    for event in events:
+        timestamp = _parse_timestamp(event.get("timestamp"))
+        if timestamp and timestamp >= cutoff and event.get("exception_type"):
+            count += 1
+    return count
+
+
+def _write_diagnostics(
+    event_type: str,
+    cycle: int | None = None,
+    cycle_start: str = "",
+    cycle_end: str = "",
+    cycle_duration_seconds: float = 0.0,
+    last_completed_step: str = "",
+    exception: BaseException | None = None,
+    heartbeat_written: bool | None = None,
+    log_path: str = DIAGNOSTICS_LOG_PATH,
+    json_path: str = DIAGNOSTICS_JSON_PATH,
+) -> None:
+    event = {
+        "timestamp": _now(),
+        "event_type": event_type,
+        "cycle": cycle,
+        "cycle_start": cycle_start,
+        "cycle_end": cycle_end,
+        "cycle_duration_seconds": round(float(cycle_duration_seconds or 0.0), 4),
+        "last_completed_step": last_completed_step,
+        "exception_type": type(exception).__name__ if exception else "",
+        "exception_message": str(exception) if exception else "",
+        "traceback_summary": "".join(traceback.format_exception_only(type(exception), exception)).strip() if exception else "",
+        "heartbeat_written": heartbeat_written,
+    }
+    if exception:
+        event["traceback_summary"] = "".join(traceback.format_exception(exception)).strip()[-4000:]
+
+    try:
+        os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, default=str) + "\n")
+
+        events = _read_diagnostic_events(log_path, limit=100)
+        last_error_event = next((item for item in reversed(events) if item.get("exception_type")), {})
+        snapshot = {
+            "updated_at": _now(),
+            "last_event": event,
+            "last_cycle_time": cycle_end or cycle_start or event["timestamp"],
+            "last_completed_step": last_completed_step,
+            "last_error": last_error_event.get("exception_message", ""),
+            "last_error_type": last_error_event.get("exception_type", ""),
+            "last_error_timestamp": last_error_event.get("timestamp", ""),
+            "crash_count_last_24h": _crash_count_last_24h(events),
+            "events": events,
+        }
+        with open(json_path, "w", encoding="utf-8") as json_file:
+            json.dump(snapshot, json_file, indent=2, default=str)
+    except OSError:
+        return
+
+
+def load_orchestrator_diagnostics(path: str = DIAGNOSTICS_JSON_PATH) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {
+            "updated_at": "",
+            "last_event": {},
+            "last_cycle_time": "",
+            "last_completed_step": "",
+            "last_error": "",
+            "last_error_type": "",
+            "crash_count_last_24h": 0,
+            "events": [],
+        }
+    try:
+        with open(path, encoding="utf-8") as json_file:
+            payload = json.load(json_file)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def format_orchestrator_diagnostics(result: Dict[str, Any]) -> str:
+    last_event = result.get("last_event") or {}
+    return "\n".join(
+        [
+            "ORCHESTRATOR DIAGNOSTICS",
+            f"Updated At: {result.get('updated_at') or '-'}",
+            f"Last Cycle Time: {result.get('last_cycle_time') or '-'}",
+            f"Last Completed Step: {result.get('last_completed_step') or last_event.get('last_completed_step') or '-'}",
+            f"Last Error: {result.get('last_error') or '-'}",
+            f"Last Error Type: {result.get('last_error_type') or '-'}",
+            f"Crash Count Last 24h: {result.get('crash_count_last_24h', 0)}",
+            f"Heartbeat Written: {last_event.get('heartbeat_written')}",
+        ]
+    )
 
 
 def _record_runtime_heartbeat(
@@ -264,16 +399,23 @@ def run_orchestrator(
     max_log_bytes: int = 5_000_000,
 ) -> Dict[str, Any]:
     scheduler = profile if profile in SCHEDULER_PROFILES else "NORMAL"
-    _record_runtime_heartbeat(
+    _write_diagnostics("orchestrator_start", last_completed_step="startup_begin")
+    startup_heartbeat_written = _record_runtime_heartbeat(
         db_path,
         "STARTING",
         f"orchestrator_startup;uptime={uptime_seconds()}s",
         scheduler,
         log_path=log_path,
     )
+    _write_diagnostics(
+        "orchestrator_startup_heartbeat",
+        last_completed_step="startup_heartbeat",
+        heartbeat_written=startup_heartbeat_written,
+    )
     rotated_log = rotate_log_if_needed(log_path, max_log_bytes)
     cleanup_count = cleanup_old_files(["charts", "db_backups"], retention_days)
     db_deleted = cleanup_old_db_records(db_path, db_retention_days)
+    _write_diagnostics("orchestrator_startup_cleanup", last_completed_step="startup_cleanup")
     engines = {name: EngineRuntime(name=name, callback=callback) for name, callback in callbacks.items()}
     db_seconds = _db_latency(db_path)
     memory_high = _memory_warning()
@@ -282,42 +424,102 @@ def run_orchestrator(
     recovery_actions = []
 
     for cycle in range(max(1, cycles)):
-        _record_runtime_heartbeat(
-            db_path,
-            "RUNNING",
-            f"cycle={cycle + 1};phase=before;uptime={uptime_seconds()}s",
-            scheduler,
-            log_path=log_path,
+        cycle_number = cycle + 1
+        cycle_start_time = time.perf_counter()
+        cycle_start_timestamp = _now()
+        last_completed_step = "cycle_start"
+        heartbeat_written = False
+        _write_diagnostics(
+            "cycle_start",
+            cycle=cycle_number,
+            cycle_start=cycle_start_timestamp,
+            last_completed_step=last_completed_step,
         )
-        for name, engine in engines.items():
-            if name not in intervals:
-                engine.state = "WARNING"
-                engine.message = "not scheduled in active profile"
-                continue
-            _run_engine(engine, retries, log_path)
-            if engine.restart_count:
-                recovery_actions.append(f"{name}: retry/restart simulation")
-        _append_log(
-            {
-                "timestamp": _now(),
-                "engine": "heartbeat",
-                "state": "IDLE",
-                "execution_time": db_seconds,
-                "failure_count": sum(engine.failure_count for engine in engines.values()),
-                "restart_count": sum(engine.restart_count for engine in engines.values()),
-                "avg_runtime": sum(engine.avg_runtime for engine in engines.values()) / max(len(engines), 1),
-                "last_success_timestamp": _now(),
-                "message": f"cycle={cycle + 1};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
-            },
-            log_path,
-        )
-        _record_runtime_heartbeat(
-            db_path,
-            "IDLE",
-            f"cycle={cycle + 1};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
-            scheduler,
-            log_path=log_path,
-        )
+        try:
+            heartbeat_written = _record_runtime_heartbeat(
+                db_path,
+                "RUNNING",
+                f"cycle={cycle_number};phase=before;uptime={uptime_seconds()}s",
+                scheduler,
+                log_path=log_path,
+            )
+            last_completed_step = "cycle_start_heartbeat"
+            _write_diagnostics(
+                "cycle_start_heartbeat",
+                cycle=cycle_number,
+                cycle_start=cycle_start_timestamp,
+                last_completed_step=last_completed_step,
+                heartbeat_written=heartbeat_written,
+            )
+            for name, engine in engines.items():
+                if name not in intervals:
+                    engine.state = "WARNING"
+                    engine.message = "not scheduled in active profile"
+                    last_completed_step = f"{name}:not_scheduled"
+                    continue
+                _write_diagnostics(
+                    "engine_start",
+                    cycle=cycle_number,
+                    cycle_start=cycle_start_timestamp,
+                    last_completed_step=f"{name}:start",
+                )
+                _run_engine(engine, retries, log_path)
+                last_completed_step = f"{name}:{engine.state}"
+                _write_diagnostics(
+                    "engine_end",
+                    cycle=cycle_number,
+                    cycle_start=cycle_start_timestamp,
+                    cycle_duration_seconds=time.perf_counter() - cycle_start_time,
+                    last_completed_step=last_completed_step,
+                    heartbeat_written=heartbeat_written,
+                )
+                if engine.restart_count:
+                    recovery_actions.append(f"{name}: retry/restart simulation")
+            _append_log(
+                {
+                    "timestamp": _now(),
+                    "engine": "heartbeat",
+                    "state": "IDLE",
+                    "execution_time": db_seconds,
+                    "failure_count": sum(engine.failure_count for engine in engines.values()),
+                    "restart_count": sum(engine.restart_count for engine in engines.values()),
+                    "avg_runtime": sum(engine.avg_runtime for engine in engines.values()) / max(len(engines), 1),
+                    "last_success_timestamp": _now(),
+                    "message": f"cycle={cycle_number};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
+                },
+                log_path,
+            )
+            last_completed_step = "cycle_csv_heartbeat"
+            heartbeat_written = _record_runtime_heartbeat(
+                db_path,
+                "IDLE",
+                f"cycle={cycle_number};uptime={uptime_seconds()}s;rotated={rotated_log or '-'};cleanup_files={cleanup_count};db_deleted={db_deleted}",
+                scheduler,
+                log_path=log_path,
+            )
+            cycle_end_timestamp = _now()
+            last_completed_step = "cycle_end_heartbeat"
+            _write_diagnostics(
+                "cycle_end",
+                cycle=cycle_number,
+                cycle_start=cycle_start_timestamp,
+                cycle_end=cycle_end_timestamp,
+                cycle_duration_seconds=time.perf_counter() - cycle_start_time,
+                last_completed_step=last_completed_step,
+                heartbeat_written=heartbeat_written,
+            )
+        except Exception as exc:
+            _write_diagnostics(
+                "cycle_exception",
+                cycle=cycle_number,
+                cycle_start=cycle_start_timestamp,
+                cycle_end=_now(),
+                cycle_duration_seconds=time.perf_counter() - cycle_start_time,
+                last_completed_step=last_completed_step,
+                exception=exc,
+                heartbeat_written=heartbeat_written,
+            )
+            raise
 
     failures_high = sum(engine.failure_count for engine in engines.values()) >= 3
     scheduler = _degrade_profile(scheduler, db_seconds > 0.5, failures_high, memory_high)

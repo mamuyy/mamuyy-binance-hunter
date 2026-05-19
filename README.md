@@ -1788,6 +1788,34 @@ PAPER_ONLY clarification:
 - Tidak ada automatic strategy promotion/disabling.
 - Layer ini hanya analytics dan operator awareness.
 
+## Orchestrator Crash Diagnostics
+
+Diagnostics ini membantu mencari penyebab session `hunter` berhenti dan perlu dipulihkan Health Guardian. Layer ini hanya observability dan tidak mengubah trading logic.
+
+Jalankan:
+
+```bash
+python main.py --orchestrator-diagnostics
+```
+
+Saat `python main.py --orchestrator` berjalan, orchestrator menulis:
+
+- `logs/orchestrator_diagnostics.log`
+- `logs/orchestrator_diagnostics.json`
+
+Field yang dicatat:
+
+- `cycle_start`
+- `cycle_end`
+- `cycle_duration_seconds`
+- `last_completed_step`
+- `exception_type`
+- `exception_message`
+- `traceback_summary`
+- `heartbeat_written`
+
+Dashboard menampilkan panel kecil `Orchestrator Diagnostics` berisi last cycle time, last error, last completed step, dan crash count 24h.
+
 ## Konfigurasi `.env`
 
 ```env

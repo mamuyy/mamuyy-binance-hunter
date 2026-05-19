@@ -291,6 +291,18 @@ def read_incident_anomaly_report(
     return anomalies, incident
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_orchestrator_diagnostics(path: str = "logs/orchestrator_diagnostics.json") -> dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as diagnostics_file:
+            payload = json.load(diagnostics_file)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -1008,6 +1020,23 @@ def render_incident_anomaly_intelligence(anomalies: pd.DataFrame, incident: dict
     st.warning(str(incident.get("recommended_operator_action") or "Continue PAPER_ONLY monitoring."))
 
 
+def render_orchestrator_diagnostics(diagnostics: dict[str, Any]) -> None:
+    st.subheader("Orchestrator Diagnostics")
+    if not diagnostics:
+        st.info("No orchestrator diagnostics yet. Run python main.py --orchestrator or python main.py --orchestrator-diagnostics.")
+        return
+    last_event = diagnostics.get("last_event") or {}
+    last_error = diagnostics.get("last_error") or "-"
+    crash_count = int(diagnostics.get("crash_count_last_24h", 0) or 0)
+    status_badge("Orchestrator Crash Watch", "RED" if crash_count else "GREEN", f" crashes_24h={crash_count}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Last Cycle Time", diagnostics.get("last_cycle_time") or "-")
+    col2.metric("Last Step", diagnostics.get("last_completed_step") or last_event.get("last_completed_step") or "-")
+    col3.metric("Crash Count 24h", crash_count)
+    col4.metric("Heartbeat Written", str(last_event.get("heartbeat_written")))
+    st.caption(f"Last error: {last_error}")
+
+
 def _registry_age_days(production: dict[str, Any] | None) -> str:
     if not production or not production.get("train_timestamp"):
         return "-"
@@ -1648,6 +1677,7 @@ def main() -> None:
     strategy_genome_results, strategy_genome_archive = read_strategy_genome()
     daily_ops_report = read_daily_ops_report()
     anomaly_report, incident_report = read_incident_anomaly_report()
+    orchestrator_diagnostics = read_orchestrator_diagnostics()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1675,6 +1705,7 @@ def main() -> None:
         st.dataframe(pd.DataFrame([counts]), use_container_width=True)
 
     render_risk_engine_status(risk_status)
+    render_orchestrator_diagnostics(orchestrator_diagnostics)
     render_daily_ops_report(daily_ops_report)
     render_incident_anomaly_intelligence(anomaly_report, incident_report)
     render_macro_observer(macro_observer, macro_components)
