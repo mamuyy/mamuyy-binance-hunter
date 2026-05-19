@@ -8,6 +8,7 @@ import pandas as pd
 
 from bridge_tradingview import build_webhook_payload
 from competition_control import evaluate_profile, market_type
+from cross_market_intelligence import latest_cross_market_state
 from database import init_db
 from macro_observer import latest_macro_state
 
@@ -117,13 +118,21 @@ def _latest_signal(db_path: str, allocation_path: str) -> Dict[str, Any]:
         if not match.empty:
             signal.update(match.iloc[0].to_dict())
     macro = latest_macro_state("logs/macro_observer.csv")
+    cross_market = latest_cross_market_state("logs/cross_market_intelligence.csv")
     signal["macro_state"] = macro.get("macro_state", "UNKNOWN")
-    signal["confidence"] = _num(
+    confidence = _num(
         signal.get("model_confidence")
         or signal.get("adaptive_confidence_score")
         or signal.get("shadow_score")
         or signal.get("score")
     )
+    if str(cross_market.get("cross_market_state") or "") in {"CROSS_MARKET_STRESS", "SAFE_HAVEN_ROTATION"}:
+        confidence *= 0.80
+    if _num(cross_market.get("dxy_pressure")) >= 15:
+        confidence *= 0.90
+    signal["confidence"] = round(confidence, 4)
+    signal["cross_market_state"] = cross_market.get("cross_market_state", "UNKNOWN")
+    signal["safe_haven_rotation"] = bool(cross_market.get("safe_haven_rotation"))
     signal["market"] = market_type(str(signal.get("symbol") or ""))
     signal["allocation_tier"] = str(signal.get("allocation_tier") or "WATCH").upper()
     return signal
@@ -173,6 +182,9 @@ def broadcast_test(
             elif _cooldown_active(connection, str(signal.get("symbol") or ""), target["target_name"], cooldown_seconds):
                 status = "SKIPPED"
                 reason = "cooldown active"
+            elif signal.get("safe_haven_rotation") and target["profile"] == "aggressive":
+                status = "REJECTED"
+                reason = "safe-haven rotation suppresses aggressive routing"
             elif not profile["allowed"]:
                 status = "REJECTED"
                 reason = profile["reason"]

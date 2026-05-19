@@ -216,6 +216,27 @@ def read_macro_observer(path: str = "logs/macro_observer.csv") -> tuple[pd.DataF
     return df, components
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_cross_market(path: str = "logs/cross_market_intelligence.csv") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if not os.path.exists(path):
+        return _empty_df(), _empty_df(), _empty_df()
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return _empty_df(), _empty_df(), _empty_df()
+    if df.empty:
+        return df, _empty_df(), _empty_df()
+    try:
+        components = pd.DataFrame(json.loads(str(df.iloc[-1].get("components_json") or "[]")))
+    except Exception:
+        components = _empty_df()
+    try:
+        correlation = pd.DataFrame(json.loads(str(df.iloc[-1].get("correlation_matrix_json") or "[]")))
+    except Exception:
+        correlation = _empty_df()
+    return df, components, correlation
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -682,6 +703,47 @@ def render_macro_observer(macro: pd.DataFrame, components: pd.DataFrame) -> None
         st.info("No macro component detail available.")
     else:
         st.dataframe(components, use_container_width=True, hide_index=True)
+
+
+def render_cross_market_intelligence(cross_market: pd.DataFrame, components: pd.DataFrame, correlation: pd.DataFrame) -> None:
+    st.header("CROSS MARKET INTELLIGENCE")
+    if cross_market.empty:
+        st.info("No cross-market intelligence yet. Run python main.py --cross-market.")
+        return
+    latest = cross_market.iloc[-1]
+    state = str(latest.get("cross_market_state", "UNKNOWN"))
+    stress = pd.to_numeric(pd.Series([latest.get("cross_market_stress_score")]), errors="coerce").fillna(0).iloc[0]
+    badge = "RED" if stress >= 70 else "YELLOW" if stress >= 45 else "GREEN"
+    status_badge("Cross Market State", badge, f" {state}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Risk Alignment", latest.get("risk_alignment", "-"))
+    col2.metric("Altseason Probability", f"{pd.to_numeric(pd.Series([latest.get('altseason_probability')]), errors='coerce').fillna(0).iloc[0]:.2f}%")
+    col3.metric("DXY Pressure", f"{pd.to_numeric(pd.Series([latest.get('dxy_pressure')]), errors='coerce').fillna(0).iloc[0]:.2f}")
+    col4.metric("Stress Score", f"{stress:.2f}/100")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Safe Haven Rotation")
+        st.info(str(latest.get("safe_haven_rotation", "-")))
+        st.subheader("Stress Contributors")
+        st.warning(str(latest.get("stress_contributors", "none"))) if stress >= 45 else st.info(str(latest.get("stress_contributors", "none")))
+        st.subheader("Source Labels")
+        st.info(str(latest.get("source_labels", "-")))
+    with col2:
+        st.subheader("Cross-Market Components")
+        if components.empty:
+            st.info("No component detail available.")
+        else:
+            st.dataframe(components, use_container_width=True, hide_index=True)
+
+    st.subheader("Correlation Matrix")
+    if correlation.empty:
+        st.info("No correlation matrix available.")
+    else:
+        st.dataframe(correlation, use_container_width=True, hide_index=True)
+        numeric = correlation.set_index("asset") if "asset" in correlation.columns else correlation
+        numeric = numeric.apply(pd.to_numeric, errors="coerce")
+        st.plotly_chart(px.imshow(numeric, text_auto=True, aspect="auto", title="Cross-Market Correlation Matrix"), use_container_width=True)
 
 
 def _registry_age_days(production: dict[str, Any] | None) -> str:
@@ -1320,6 +1382,7 @@ def main() -> None:
     telegram_events = read_table("telegram_events", limit=200)
     webhook_payload = read_webhook_payload()
     macro_observer, macro_components = read_macro_observer()
+    cross_market, cross_market_components, cross_market_correlation = read_cross_market()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1348,6 +1411,7 @@ def main() -> None:
 
     render_risk_engine_status(risk_status)
     render_macro_observer(macro_observer, macro_components)
+    render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
     render_portfolio_observability(portfolio_observability)
 
     st.header("2. MARKET REGIME")

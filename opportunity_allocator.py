@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from database import init_db
+from cross_market_intelligence import latest_cross_market_state
 from macro_observer import latest_macro_state
 from portfolio_observer import observe_portfolio
 
@@ -207,11 +208,17 @@ def allocate_opportunities(
     real_macro = latest_macro_state(os.path.join(logs_dir, "macro_observer.csv"))
     real_macro_state = str(real_macro.get("macro_state") or "UNKNOWN")
     real_macro_risk = _number(real_macro.get("macro_risk_score"))
+    cross_market = latest_cross_market_state(os.path.join(logs_dir, "cross_market_intelligence.csv"))
+    cross_market_state = str(cross_market.get("cross_market_state") or "UNKNOWN")
+    cross_stress = _number(cross_market.get("cross_market_stress_score"))
+    dxy_pressure = _number(cross_market.get("dxy_pressure"))
+    safe_haven_rotation = bool(cross_market.get("safe_haven_rotation"))
     global_model_confidence = _latest_ml_confidence(ml_results)
 
     portfolio_heat = str(portfolio.get("portfolio_heat") or "LOW")
     heat_penalty = {"LOW": 0.0, "MEDIUM": 8.0, "HIGH": 18.0}.get(portfolio_heat, 8.0)
     macro_state_penalty = {"HIGH_STRESS": 12.0, "PANIC": 24.0, "CAUTION": 6.0}.get(real_macro_state, 0.0)
+    cross_market_penalty = cross_stress * 0.18 + dxy_pressure * 0.35 + (12.0 if safe_haven_rotation else 0.0)
     concentration_rows = {row.get("symbol"): _number(row.get("exposure_pct")) for row in portfolio.get("symbol_exposure", [])}
 
     latest_flow = _latest_signal_rows(flow_logs.rename(columns={"final_score": "score"})) if not flow_logs.empty else pd.DataFrame()
@@ -262,6 +269,7 @@ def allocate_opportunities(
             + macro_bonus
             - heat_penalty * 0.35
             - macro_state_penalty * 0.55
+            - cross_market_penalty * 0.45
             - concentration_penalty * 0.45
             - correlation_penalty * 0.35
         )
@@ -270,6 +278,7 @@ def allocate_opportunities(
             heat_penalty * 2.0
             + macro_state_penalty * 2.0
             + real_macro_risk * 0.20
+            + cross_market_penalty * 1.2
             + concentration_penalty * 1.7
             + correlation_penalty * 1.4
             + max(0.0, 30.0 - freshness_score) * 0.5
@@ -284,7 +293,10 @@ def allocate_opportunities(
             f"regime={regime_name}",
             f"heat={portfolio_heat}",
             f"macro={real_macro_state}",
+            f"cross={cross_market_state}",
         ]
+        if cross_market_penalty:
+            reasons.append(f"cross_penalty={cross_market_penalty:.1f}")
         if concentration_penalty:
             reasons.append(f"concentration_penalty={concentration_penalty:.1f}")
         if correlation_penalty:

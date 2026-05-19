@@ -147,6 +147,22 @@ def _state(score: float) -> str:
     return "LOW_RISK"
 
 
+def _latest_cross_market_risk(path: str = "logs/cross_market_intelligence.csv") -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {"score": 0.0, "state": "UNKNOWN"}
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return {"score": 0.0, "state": "UNKNOWN"}
+    if df.empty:
+        return {"score": 0.0, "state": "UNKNOWN"}
+    row = df.iloc[-1]
+    return {
+        "score": _num(row.get("cross_market_stress_score")),
+        "state": str(row.get("cross_market_state") or "UNKNOWN"),
+    }
+
+
 def observe_macro(
     db_path: str = "mamuyy_hunter.db",
     output_path: str = "logs/macro_observer.csv",
@@ -172,6 +188,9 @@ def observe_macro(
         "volatility_proxy": 0.17,
     }
     score = sum(item["risk"] * weights.get(item["component"], 0.10) for item in components)
+    cross_market = _latest_cross_market_risk()
+    if cross_market["state"] in {"CROSS_MARKET_STRESS", "SAFE_HAVEN_ROTATION"}:
+        score += min(12.0, cross_market["score"] * 0.12)
     score = round(max(0.0, min(100.0, score)), 4)
     contributors = sorted(components, key=lambda item: item["risk"], reverse=True)[:3]
     source_labels = sorted({item["source"] for item in components})

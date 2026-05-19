@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from bridge_tradingview import build_webhook_payload
+from cross_market_intelligence import latest_cross_market_state
 from database import init_db
 from macro_observer import latest_macro_state
 
@@ -112,6 +113,22 @@ def _macro_adjusted_confidence(confidence: float, macro_state: str) -> float:
     return confidence
 
 
+def _cross_market_adjusted_confidence(confidence: float, cross_market: Dict[str, Any]) -> float:
+    state = str(cross_market.get("cross_market_state") or "UNKNOWN")
+    stress = _num(cross_market.get("cross_market_stress_score"))
+    dxy_pressure = _num(cross_market.get("dxy_pressure"))
+    multiplier = 1.0
+    if state in {"CROSS_MARKET_STRESS", "SAFE_HAVEN_ROTATION"}:
+        multiplier *= 0.70
+    elif state == "CAUTION":
+        multiplier *= 0.85
+    if dxy_pressure >= 15:
+        multiplier *= 0.85
+    if stress >= 70:
+        multiplier *= 0.80
+    return confidence * multiplier
+
+
 def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
     init_db(db_path)
     with sqlite3.connect(db_path) as connection:
@@ -163,6 +180,7 @@ def run_internal_paper_engine(
     allocations = _read_allocations(allocation_path)
     real_macro = latest_macro_state("logs/macro_observer.csv")
     real_macro_state = str(real_macro.get("macro_state") or "UNKNOWN")
+    cross_market = latest_cross_market_state("logs/cross_market_intelligence.csv")
     candidates = _latest_signal_candidates(signals, allocations).head(max_new_trades)
     inserted = 0
     generated: List[Dict[str, Any]] = []
@@ -175,6 +193,7 @@ def run_internal_paper_engine(
         regime = str(signal.get("regime_name") or "UNKNOWN")
         macro_state = real_macro_state if real_macro_state != "UNKNOWN" else _macro_state(regime)
         confidence = _macro_adjusted_confidence(confidence, macro_state)
+        confidence = _cross_market_adjusted_confidence(confidence, cross_market)
         allocation_tier = str(signal.get("allocation_tier") or "WATCH").upper()
         exit_price, status = _simulated_exit(price, confidence, regime, allocation_tier)
         pnl = ((exit_price - price) / price * 100.0) if price > 0 and exit_price > 0 else 0.0

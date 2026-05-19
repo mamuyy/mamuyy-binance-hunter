@@ -1004,6 +1004,74 @@ Kolom:
 
 Dashboard menampilkan section `Telegram Notification Center` berisi enabled/disabled status, latest Telegram events, last send status, dan event counts.
 
+## Cross Market Intelligence Layer
+
+Jalankan cross-market intelligence:
+
+```bash
+python main.py --cross-market
+```
+
+Generate report terminal:
+
+```bash
+python main.py --cross-market-report
+```
+
+Output:
+
+- `logs/cross_market_intelligence.csv`
+
+File utama:
+
+- `cross_market_intelligence.py`
+
+Arsitektur:
+
+- Layer ini membaca SQLite dan log internal secara read-only.
+- Tidak menambahkan schema DB.
+- Tidak membuka broker API.
+- Tidak mengirim order.
+- Offline-first: jika data live/proxy tidak tersedia, engine memakai deterministic synthetic/internal fallback.
+
+Input/proxy yang dipantau:
+
+- `DXY proxy`: tekanan dollar sintetis dari funding, ATR, dan regime.
+- `Gold proxy`: safe-haven proxy dari squeeze probability dan risk regime.
+- `SPX/S&P500 proxy`: risk sentiment proxy dari BTC 24h change dan flow pressure.
+- `BTC dominance`: dari `regime_logs.btc_volume_dominance` atau default synthetic.
+- `Altseason proxy`: kombinasi alt signal breadth dan BTC dominance.
+- `Stablecoin flow proxy`: dari `pressure_score` dan `taker_delta`.
+- `ETF risk sentiment proxy`: SPX proxy yang dipenalti oleh DXY pressure.
+
+Analytics:
+
+- Crypto vs DXY relationship.
+- Crypto vs gold relationship.
+- Risk-on / risk-off alignment.
+- Altseason probability.
+- Cross-market stress score.
+- Macro divergence detection.
+- Safe-haven rotation detection.
+- Synthetic correlation matrix untuk dashboard jika historical data terbatas.
+
+Integrasi PAPER_ONLY:
+
+- Opportunity Allocation menambah risk penalty saat cross-market stress, DXY pressure, atau safe-haven rotation.
+- Internal Paper Engine mengurangi confidence simulasi saat `CROSS_MARKET_STRESS`, `CAUTION`, atau `SAFE_HAVEN_ROTATION`.
+- Broadcast Router menurunkan confidence dan menolak aggressive route saat safe-haven rotation.
+- Macro Observer dapat memakai cross-market stress terakhir sebagai tambahan caution.
+
+Dashboard section `CROSS MARKET INTELLIGENCE` menampilkan state, risk alignment, altseason probability, DXY pressure, safe-haven rotation, correlation matrix, stress contributors, dan source labels (`internal`, `synthetic`, atau `live` jika nanti ditambahkan).
+
+Safety:
+
+- Strict `PAPER_ONLY`.
+- Tidak ada live trading.
+- Tidak ada exchange order placement.
+- Tidak ada destructive DB write.
+- Tidak ada schema-breaking change.
+
 ## Real Macro Observer Engine
 
 Jalankan macro observer:
@@ -1612,6 +1680,7 @@ internal_paper_engine.py
 broadcast_router.py
 competition_control.py
 telegram_notifier.py
+cross_market_intelligence.py
 macro_observer.py
 walkforward.py
 backfill.py

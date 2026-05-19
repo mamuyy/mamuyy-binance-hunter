@@ -222,6 +222,7 @@ from regime_labeler import fix_historical_regime_labels
 from broadcast_router import broadcast_test, format_broadcast_result
 from bridge_tradingview import format_webhook_test, webhook_test_payload
 from competition_control import competition_status, format_competition_status
+from cross_market_intelligence import format_cross_market_report, run_cross_market_intelligence
 from database import (
     backup_database,
     db_health_check,
@@ -386,6 +387,15 @@ def run_macro_observer() -> Dict[str, Any]:
         output_path="logs/macro_observer.csv",
     )
     print(format_macro_observer(result))
+    return result
+
+
+def run_cross_market() -> Dict[str, Any]:
+    result = run_cross_market_intelligence(
+        db_path=config.database_path,
+        output_path="logs/cross_market_intelligence.csv",
+    )
+    print(format_cross_market_report(result))
     return result
 
 
@@ -916,6 +926,16 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan real macro observer analytics read-only.",
     )
     parser.add_argument(
+        "--cross-market",
+        action="store_true",
+        help="Jalankan Cross Market Intelligence analytics dan update CSV.",
+    )
+    parser.add_argument(
+        "--cross-market-report",
+        action="store_true",
+        help="Generate dan tampilkan Cross Market Intelligence report.",
+    )
+    parser.add_argument(
         "--broadcast-test",
         action="store_true",
         help="Uji multi-target broadcast router dalam mode paper/simulation only.",
@@ -1082,6 +1102,8 @@ if __name__ == "__main__":
         run_webhook_test()
     elif args.macro_observer:
         run_macro_observer()
+    elif args.cross_market or args.cross_market_report:
+        run_cross_market()
     elif args.broadcast_test:
         run_broadcast_test()
     elif args.competition_status:
