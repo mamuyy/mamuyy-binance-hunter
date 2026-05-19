@@ -8,7 +8,7 @@ import pandas as pd
 
 from config import config
 from database import db_health_check, init_db
-from health_guardian import resolve_runtime_heartbeat
+from health_guardian import _tmux_available, _tmux_session_exists, resolve_runtime_heartbeat
 from portfolio_analytics import calculate_portfolio_analytics
 from telegram_notifier import send_or_preview
 
@@ -43,6 +43,25 @@ def _num(value: Any, default: float = 0.0) -> float:
         return number
     except (TypeError, ValueError):
         return default
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _age_minutes(value: Any) -> float:
+    timestamp = _parse_timestamp(value)
+    if not timestamp:
+        return 9999.0
+    return round((datetime.now(timezone.utc) - timestamp).total_seconds() / 60, 2)
 
 
 def _read_table(db_path: str, table: str, limit: int = 100) -> pd.DataFrame:
@@ -110,20 +129,75 @@ def _latest_telegram_status(db_path: str) -> str:
     return str(row.get("send_status") or "-")
 
 
-def _latest_guardian_status(db_path: str) -> Dict[str, Any]:
+def _latest_guardian_event(db_path: str) -> Dict[str, Any]:
     risks = _read_table(db_path, "risk_events", limit=20)
     if risks.empty:
-        return {"status": "-", "reason": "-"}
+        return {}
     guardian = risks[
         risks.get("regime_name", pd.Series(dtype=str)).fillna("").astype(str).str.upper().eq("HEALTH_GUARDIAN")
         | risks.get("session_name", pd.Series(dtype=str)).fillna("").astype(str).str.len().gt(0)
     ]
     if guardian.empty:
-        return {"status": "-", "reason": "-"}
+        return {}
     row = guardian.iloc[0]
     return {
         "status": str(row.get("status") or "-"),
         "reason": str(row.get("reason") or row.get("reasons_json") or "-"),
+        "source": "risk_events",
+        "timestamp": str(row.get("timestamp") or ""),
+        "age_minutes": _age_minutes(row.get("timestamp")),
+    }
+
+
+def _latest_guardian_status(db_path: str, db_ok: bool, heartbeat: Dict[str, Any]) -> Dict[str, Any]:
+    heartbeat_age = _num(heartbeat.get("age_minutes"), 9999.0)
+    heartbeat_fresh = bool(heartbeat.get("timestamp")) and heartbeat_age <= config.health_guardian_stale_minutes
+    heartbeat_source = str(heartbeat.get("source") or "-")
+    primary_heartbeat_fresh = heartbeat_fresh and not heartbeat_source.startswith("fallback_")
+
+    tmux_available = _tmux_available()
+    hunter_running = _tmux_session_exists(config.health_guardian_hunter_session) if tmux_available else False
+    dashboard_running = _tmux_session_exists(config.health_guardian_dashboard_session) if tmux_available else False
+
+    if db_ok and primary_heartbeat_fresh and hunter_running and dashboard_running:
+        return {
+            "status": "SAFE",
+            "reason": "fresh heartbeat and tmux sessions running",
+            "source": "runtime_fresh",
+            "hunter_session": "RUNNING",
+            "dashboard_session": "RUNNING",
+            "tmux_available": tmux_available,
+        }
+
+    runtime_reasons: List[str] = []
+    if not db_ok:
+        runtime_reasons.append("database health check failed")
+    if not heartbeat_fresh:
+        runtime_reasons.append(f"heartbeat stale/missing: {heartbeat_age}m")
+    elif heartbeat_source.startswith("fallback_"):
+        runtime_reasons.append(f"heartbeat table stale; using {heartbeat_source}")
+    if not tmux_available:
+        runtime_reasons.append("tmux unavailable in current environment")
+    else:
+        if not hunter_running:
+            runtime_reasons.append(f"tmux session missing: {config.health_guardian_hunter_session}")
+        if not dashboard_running:
+            runtime_reasons.append(f"tmux session missing: {config.health_guardian_dashboard_session}")
+
+    stale_event_cutoff = max(30, config.health_guardian_stale_minutes * 3)
+    event = _latest_guardian_event(db_path)
+    runtime_status_known = bool(heartbeat.get("timestamp")) or tmux_available
+    if event and not runtime_status_known and _num(event.get("age_minutes"), 9999.0) <= stale_event_cutoff:
+        return event
+
+    status = "WATCH" if heartbeat_fresh and db_ok else "HALT"
+    return {
+        "status": status,
+        "reason": "; ".join(runtime_reasons) or "runtime status unresolved",
+        "source": "runtime_fresh" if runtime_status_known else "runtime_unresolved",
+        "hunter_session": "RUNNING" if hunter_running else "MISSING",
+        "dashboard_session": "RUNNING" if dashboard_running else "MISSING",
+        "tmux_available": tmux_available,
     }
 
 
@@ -189,6 +263,8 @@ def _markdown(report: Dict[str, Any]) -> str:
             f"- Broadcast Rejected/Skipped: `{report.get('broadcast_rejected_count')}`",
             f"- Latest Telegram Status: `{report.get('latest_telegram_send_status')}`",
             f"- Latest Guardian Status: `{report.get('latest_guardian_status')}`",
+            f"- Guardian Source: `{report.get('latest_guardian_source')}`",
+            f"- Guardian Reason: `{report.get('latest_guardian_reason')}`",
             "",
             "## Warnings",
             *[f"- {warning}" for warning in warnings],
@@ -212,7 +288,7 @@ def _telegram_message(report: Dict[str, Any]) -> str:
             f"Paper: trades={report.get('internal_paper_trade_count')} pnl={report.get('internal_paper_total_pnl')} dd={report.get('internal_paper_max_drawdown')}",
             f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
             f"Telegram: {report.get('latest_telegram_send_status')}",
-            f"Guardian: {report.get('latest_guardian_status')}",
+            f"Guardian: {report.get('latest_guardian_status')} via {report.get('latest_guardian_source')}",
             f"Warnings: {' | '.join(map(str, warnings[:3]))}",
             f"Next: {report.get('recommended_next_action')}",
         ]
@@ -233,7 +309,7 @@ def generate_daily_ops_report(
     portfolio = calculate_portfolio_analytics(db_path)
     metrics = portfolio.get("metrics", {})
     broadcast = _broadcast_counts(db_path)
-    guardian = _latest_guardian_status(db_path)
+    guardian = _latest_guardian_status(db_path, bool(db_health.get("ok")), heartbeat)
 
     report = {
         "timestamp": _now(),
@@ -255,6 +331,9 @@ def generate_daily_ops_report(
         "latest_telegram_send_status": _latest_telegram_status(db_path),
         "latest_guardian_status": guardian["status"],
         "latest_guardian_reason": guardian["reason"],
+        "latest_guardian_source": guardian.get("source", "-"),
+        "hunter_session": guardian.get("hunter_session", "-"),
+        "dashboard_session": guardian.get("dashboard_session", "-"),
     }
     warning_reasons = _warnings(report)
     report["top_warning_reasons"] = warning_reasons or ["none"]
@@ -292,7 +371,7 @@ def format_daily_ops_report(report: Dict[str, Any]) -> str:
             f"Paper Trades: {report.get('internal_paper_trade_count')} | PnL: {report.get('internal_paper_total_pnl')} | DD: {report.get('internal_paper_max_drawdown')}",
             f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
             f"Telegram: {report.get('telegram_result', {}).get('send_status')}",
-            f"Guardian: {report.get('latest_guardian_status')}",
+            f"Guardian: {report.get('latest_guardian_status')} via {report.get('latest_guardian_source')}",
             f"Warnings: {', '.join(map(str, report.get('top_warning_reasons', [])))}",
             f"Next Action: {report.get('recommended_next_action')}",
             f"Markdown: {report.get('markdown_path')}",
