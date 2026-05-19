@@ -223,6 +223,7 @@ from broadcast_router import broadcast_test, format_broadcast_result
 from bridge_tradingview import format_webhook_test, webhook_test_payload
 from competition_control import competition_status, format_competition_status
 from cross_market_intelligence import format_cross_market_report, run_cross_market_intelligence
+from daily_ops_report import format_daily_ops_report, generate_daily_ops_report
 from database import (
     backup_database,
     db_health_check,
@@ -409,6 +410,12 @@ def run_strategy_genome_command() -> Dict[str, Any]:
 def run_strategy_ranking() -> Dict[str, Any]:
     result = strategy_ranking()
     print(format_strategy_genome_result(result))
+    return result
+
+
+def run_daily_ops_report() -> Dict[str, Any]:
+    result = generate_daily_ops_report(db_path=config.database_path)
+    print(format_daily_ops_report(result))
     return result
 
 
@@ -959,6 +966,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan ranking Strategy Genome Lab terakhir.",
     )
     parser.add_argument(
+        "--daily-ops-report",
+        action="store_true",
+        help="Generate daily ops report dan Telegram preview/send sesuai config.",
+    )
+    parser.add_argument(
         "--broadcast-test",
         action="store_true",
         help="Uji multi-target broadcast router dalam mode paper/simulation only.",
@@ -1131,6 +1143,8 @@ if __name__ == "__main__":
         run_strategy_genome_command()
     elif args.strategy_ranking:
         run_strategy_ranking()
+    elif args.daily_ops_report:
+        run_daily_ops_report()
     elif args.broadcast_test:
         run_broadcast_test()
     elif args.competition_status:

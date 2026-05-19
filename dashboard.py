@@ -257,6 +257,18 @@ def read_strategy_genome(
     return results, archive
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_daily_ops_report(path: str = "logs/daily_ops_report.json") -> dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as report_file:
+            payload = json.load(report_file)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -847,6 +859,57 @@ def render_strategy_genome_lab(results: pd.DataFrame, archive: pd.DataFrame) -> 
     else:
         history = archive.tail(100).sort_index(ascending=False)
         st.dataframe(history[[column for column in top_columns if column in history.columns]], use_container_width=True, hide_index=True)
+
+
+def render_daily_ops_report(report: dict[str, Any]) -> None:
+    st.header("Daily Ops Report")
+    if not report:
+        st.info("No daily ops report yet. Run python main.py --daily-ops-report.")
+        return
+    runtime = str(report.get("runtime_status", "WATCH")).upper()
+    warnings = report.get("top_warning_reasons") or ["none"]
+    status_badge("Daily Ops Health", "GREEN" if runtime == "OK" else "YELLOW", f" {runtime}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Heartbeat Age", f"{float(report.get('heartbeat_age_minutes', 0) or 0):.2f}m")
+    col2.metric("Macro", report.get("macro_state", "-"))
+    col3.metric("Cross Market", report.get("cross_market_state", "-"))
+    col4.metric("Telegram", report.get("latest_telegram_send_status", "-"))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Health Summary")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"metric": "heartbeat_source", "value": report.get("heartbeat_source", "-")},
+                    {"metric": "database_ok", "value": report.get("database_ok", "-")},
+                    {"metric": "guardian_status", "value": report.get("latest_guardian_status", "-")},
+                    {"metric": "broadcast_routed", "value": report.get("broadcast_accepted_count", 0)},
+                    {"metric": "broadcast_rejected", "value": report.get("broadcast_rejected_count", 0)},
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.subheader("Warning Summary")
+        st.dataframe(pd.DataFrame({"warning": warnings}), use_container_width=True, hide_index=True)
+    with col2:
+        st.subheader("Paper Performance Snapshot")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"metric": "trade_count", "value": report.get("internal_paper_trade_count", 0)},
+                    {"metric": "total_pnl", "value": report.get("internal_paper_total_pnl", 0)},
+                    {"metric": "max_drawdown", "value": report.get("internal_paper_max_drawdown", 0)},
+                    {"metric": "macro_risk_score", "value": report.get("macro_risk_score", 0)},
+                    {"metric": "cross_market_stress_score", "value": report.get("cross_market_stress_score", 0)},
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.subheader("Recommended Next Action")
+        st.info(str(report.get("recommended_next_action", "-")))
 
 
 def _registry_age_days(production: dict[str, Any] | None) -> str:
@@ -1487,6 +1550,7 @@ def main() -> None:
     macro_observer, macro_components = read_macro_observer()
     cross_market, cross_market_components, cross_market_correlation = read_cross_market()
     strategy_genome_results, strategy_genome_archive = read_strategy_genome()
+    daily_ops_report = read_daily_ops_report()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -1514,6 +1578,7 @@ def main() -> None:
         st.dataframe(pd.DataFrame([counts]), use_container_width=True)
 
     render_risk_engine_status(risk_status)
+    render_daily_ops_report(daily_ops_report)
     render_macro_observer(macro_observer, macro_components)
     render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
     render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)

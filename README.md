@@ -1149,6 +1149,63 @@ Safety:
 - Tidak ada production strategy replacement otomatis.
 - Tidak ada destructive DB write.
 
+## Daily Ops Report
+
+Generate daily operations report:
+
+```bash
+python main.py --daily-ops-report
+```
+
+Output files:
+
+- `logs/daily_ops_report.md`
+- `logs/daily_ops_report.json`
+- `logs/daily_ops_report.log` jika dijalankan melalui script cron-ready.
+
+Isi report:
+
+- Runtime status.
+- Heartbeat age dan heartbeat source.
+- Database row counts.
+- Latest macro state dan macro risk score.
+- Latest cross-market state dan stress score.
+- Internal paper trade count, total PnL, dan max drawdown.
+- Broadcast routed/rejected count.
+- Latest Telegram send status.
+- Latest Health Guardian status.
+- Top warning reasons.
+- Recommended next action.
+
+Telegram behavior:
+
+- Jika `TELEGRAM_ENABLED=true` dan token/chat id valid, command mengirim satu daily summary.
+- Jika `TELEGRAM_ENABLED=false` atau credentials kosong, command hanya preview/log `PREVIEW_DISABLED`.
+- Tidak ada spam loop. Satu command run hanya membuat satu summary notification.
+- Token Telegram tidak dicetak.
+
+Cron-ready script:
+
+```bash
+bash scripts/daily_ops_report.sh
+```
+
+Contoh crontab harian, tidak di-install otomatis:
+
+```cron
+0 7 * * * MAMUYY_HUNTER_DIR=$HOME/mamuyy-binance-hunter bash $HOME/mamuyy-binance-hunter/scripts/daily_ops_report.sh
+```
+
+Safety:
+
+- Strict `PAPER_ONLY`.
+- Tidak ada broker API.
+- Tidak ada exchange execution.
+- Tidak ada live order placement.
+- Tidak mengubah scanner logic.
+- Tidak mengubah strategy execution.
+- Hanya read-only analytics, file report, dan Telegram notification jika enabled.
+
 ## Real Macro Observer Engine
 
 Jalankan macro observer:
@@ -1664,6 +1721,7 @@ Dashboard memakai SQLite existing dan tetap jalan walaupun database masih kosong
 Sections:
 
 - `SYSTEM HEALTH`: scanner status, database status, latest runtime, latest signal timestamp, latest ML run, latest walkforward run, dan total DB rows.
+- `Daily Ops Report`: latest report, health summary, warning summary, paper performance snapshot, dan recommended next action.
 - `MARKET REGIME`: current regime, confidence, dan history chart.
 - `LIVE SIGNALS`: latest signals, score, flow state, whale activity, squeeze risk.
 - `PAPER TRADING`: open trades, winrate, PnL curve, current drawdown, best/worst trade.
@@ -1759,6 +1817,7 @@ competition_control.py
 telegram_notifier.py
 cross_market_intelligence.py
 strategy_genome.py
+daily_ops_report.py
 macro_observer.py
 walkforward.py
 backfill.py
@@ -1777,6 +1836,7 @@ shadow_engine.py
 orchestrator.py
 risk_manager.py
 health_guardian.py
+scripts/daily_ops_report.sh
 symbol_tags.json
 requirements.txt
 README.md

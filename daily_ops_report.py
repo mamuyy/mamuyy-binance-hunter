@@ -1,0 +1,301 @@
+import json
+import os
+import sqlite3
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+
+import pandas as pd
+
+from config import config
+from database import db_health_check, init_db
+from health_guardian import resolve_runtime_heartbeat
+from portfolio_analytics import calculate_portfolio_analytics
+from telegram_notifier import send_or_preview
+
+
+TABLES = [
+    "signals",
+    "paper_trades",
+    "flow_logs",
+    "regime_logs",
+    "ml_results",
+    "walkforward_results",
+    "shadow_trades",
+    "internal_paper_trades",
+    "broadcast_events",
+    "telegram_events",
+    "risk_events",
+    "runtime_heartbeats",
+]
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _num(value: Any, default: float = 0.0) -> float:
+    try:
+        if value in (None, ""):
+            return default
+        number = float(value)
+        if pd.isna(number):
+            return default
+        return number
+    except (TypeError, ValueError):
+        return default
+
+
+def _read_table(db_path: str, table: str, limit: int = 100) -> pd.DataFrame:
+    try:
+        init_db(db_path)
+        with sqlite3.connect(db_path) as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+                (table,),
+            ).fetchone()
+            if not exists:
+                return pd.DataFrame()
+            return pd.read_sql_query(
+                f"SELECT * FROM {table} ORDER BY id DESC LIMIT ?",
+                connection,
+                params=(limit,),
+            )
+    except Exception:
+        return pd.DataFrame()
+
+
+def _table_counts(db_path: str) -> Dict[str, int]:
+    counts = {}
+    try:
+        init_db(db_path)
+        with sqlite3.connect(db_path) as connection:
+            for table in TABLES:
+                try:
+                    counts[table] = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                except sqlite3.Error:
+                    counts[table] = 0
+    except sqlite3.Error:
+        return {table: 0 for table in TABLES}
+    return counts
+
+
+def _latest_csv_row(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return {}
+    if df.empty:
+        return {}
+    return df.iloc[-1].to_dict()
+
+
+def _broadcast_counts(db_path: str) -> Dict[str, int]:
+    broadcasts = _read_table(db_path, "broadcast_events", limit=1000)
+    if broadcasts.empty or "route_status" not in broadcasts.columns:
+        return {"accepted": 0, "rejected": 0}
+    status = broadcasts["route_status"].fillna("").astype(str).str.upper()
+    return {
+        "accepted": int((status == "ROUTED").sum()),
+        "rejected": int(status.isin(["REJECTED", "SKIPPED", "FAILED"]).sum()),
+    }
+
+
+def _latest_telegram_status(db_path: str) -> str:
+    telegram = _read_table(db_path, "telegram_events", limit=1)
+    if telegram.empty:
+        return "-"
+    row = telegram.iloc[0]
+    return str(row.get("send_status") or "-")
+
+
+def _latest_guardian_status(db_path: str) -> Dict[str, Any]:
+    risks = _read_table(db_path, "risk_events", limit=20)
+    if risks.empty:
+        return {"status": "-", "reason": "-"}
+    guardian = risks[
+        risks.get("regime_name", pd.Series(dtype=str)).fillna("").astype(str).str.upper().eq("HEALTH_GUARDIAN")
+        | risks.get("session_name", pd.Series(dtype=str)).fillna("").astype(str).str.len().gt(0)
+    ]
+    if guardian.empty:
+        return {"status": "-", "reason": "-"}
+    row = guardian.iloc[0]
+    return {
+        "status": str(row.get("status") or "-"),
+        "reason": str(row.get("reason") or row.get("reasons_json") or "-"),
+    }
+
+
+def _warnings(report: Dict[str, Any]) -> List[str]:
+    warnings: List[str] = []
+    if not report.get("database_ok"):
+        warnings.append("database health check failed")
+    if _num(report.get("heartbeat_age_minutes"), 9999) > config.health_guardian_stale_minutes:
+        warnings.append(f"heartbeat stale: {report.get('heartbeat_age_minutes')}m")
+    if str(report.get("macro_state")).upper() in {"HIGH_STRESS", "PANIC"}:
+        warnings.append(f"macro stress active: {report.get('macro_state')}")
+    if str(report.get("cross_market_state")).upper() in {"CROSS_MARKET_STRESS", "SAFE_HAVEN_ROTATION"}:
+        warnings.append(f"cross-market stress active: {report.get('cross_market_state')}")
+    if _num(report.get("internal_paper_max_drawdown")) < -10:
+        warnings.append(f"paper drawdown warning: {report.get('internal_paper_max_drawdown')}%")
+    if str(report.get("latest_guardian_status")).upper() == "HALT":
+        warnings.append("health guardian status HALT")
+    if str(report.get("latest_telegram_send_status")).upper() == "FAILED":
+        warnings.append("latest Telegram send failed")
+    return warnings[:8]
+
+
+def _recommended_action(warnings: List[str], report: Dict[str, Any]) -> str:
+    if any("heartbeat stale" in warning for warning in warnings):
+        return "Check hunter tmux session and run python main.py --health-guardian-once."
+    if any("database" in warning for warning in warnings):
+        return "Run python main.py --db-check and verify SQLite disk permissions."
+    if any("macro stress" in warning or "cross-market stress" in warning for warning in warnings):
+        return "Keep PAPER_ONLY mode conservative; review Opportunity Allocation and Broadcast Control."
+    if _num(report.get("broadcast_rejected_count")) > _num(report.get("broadcast_accepted_count")):
+        return "Review allocation tiers and rejected broadcast reasons before relaxing routing."
+    return "System is monitorable. Continue data collection and review dashboard."
+
+
+def _markdown(report: Dict[str, Any]) -> str:
+    warnings = report.get("top_warning_reasons") or ["none"]
+    return "\n".join(
+        [
+            "# MAMUYY Hunter Daily Ops Report",
+            "",
+            f"- Generated: `{report.get('timestamp')}`",
+            f"- PAPER_ONLY: `{report.get('paper_only')}`",
+            "",
+            "## Runtime",
+            f"- Runtime Status: `{report.get('runtime_status')}`",
+            f"- Heartbeat Age: `{report.get('heartbeat_age_minutes')}m`",
+            f"- Heartbeat Source: `{report.get('heartbeat_source')}`",
+            f"- Database OK: `{report.get('database_ok')}`",
+            "",
+            "## Macro",
+            f"- Macro State: `{report.get('macro_state')}`",
+            f"- Macro Risk Score: `{report.get('macro_risk_score')}`",
+            f"- Cross Market State: `{report.get('cross_market_state')}`",
+            f"- Cross Market Stress Score: `{report.get('cross_market_stress_score')}`",
+            "",
+            "## Paper Trading",
+            f"- Internal Paper Trade Count: `{report.get('internal_paper_trade_count')}`",
+            f"- Internal Paper Total PnL: `{report.get('internal_paper_total_pnl')}`",
+            f"- Internal Paper Max Drawdown: `{report.get('internal_paper_max_drawdown')}`",
+            "",
+            "## Routing & Telegram",
+            f"- Broadcast Accepted: `{report.get('broadcast_accepted_count')}`",
+            f"- Broadcast Rejected/Skipped: `{report.get('broadcast_rejected_count')}`",
+            f"- Latest Telegram Status: `{report.get('latest_telegram_send_status')}`",
+            f"- Latest Guardian Status: `{report.get('latest_guardian_status')}`",
+            "",
+            "## Warnings",
+            *[f"- {warning}" for warning in warnings],
+            "",
+            "## Recommended Next Action",
+            report.get("recommended_next_action", "-"),
+        ]
+    )
+
+
+def _telegram_message(report: Dict[str, Any]) -> str:
+    warnings = report.get("top_warning_reasons") or ["none"]
+    return "\n".join(
+        [
+            "MAMUYY HUNTER DAILY OPS",
+            "PAPER_ONLY",
+            "",
+            f"Runtime: {report.get('runtime_status')} ({report.get('heartbeat_source')}, {report.get('heartbeat_age_minutes')}m)",
+            f"Macro: {report.get('macro_state')} risk={report.get('macro_risk_score')}",
+            f"Cross: {report.get('cross_market_state')} stress={report.get('cross_market_stress_score')}",
+            f"Paper: trades={report.get('internal_paper_trade_count')} pnl={report.get('internal_paper_total_pnl')} dd={report.get('internal_paper_max_drawdown')}",
+            f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
+            f"Telegram: {report.get('latest_telegram_send_status')}",
+            f"Guardian: {report.get('latest_guardian_status')}",
+            f"Warnings: {' | '.join(map(str, warnings[:3]))}",
+            f"Next: {report.get('recommended_next_action')}",
+        ]
+    )
+
+
+def generate_daily_ops_report(
+    db_path: str = "mamuyy_hunter.db",
+    markdown_path: str = "logs/daily_ops_report.md",
+    json_path: str = "logs/daily_ops_report.json",
+    send_telegram: bool = True,
+) -> Dict[str, Any]:
+    db_health = db_health_check(database_url=db_path, migrate_csv=False, backup=False)
+    heartbeat = resolve_runtime_heartbeat(db_path, "orchestrator_log.csv", config.health_guardian_stale_minutes)
+    counts = _table_counts(db_path)
+    macro = _latest_csv_row("logs/macro_observer.csv")
+    cross = _latest_csv_row("logs/cross_market_intelligence.csv")
+    portfolio = calculate_portfolio_analytics(db_path)
+    metrics = portfolio.get("metrics", {})
+    broadcast = _broadcast_counts(db_path)
+    guardian = _latest_guardian_status(db_path)
+
+    report = {
+        "timestamp": _now(),
+        "paper_only": True,
+        "runtime_status": "OK" if db_health.get("ok") and _num(heartbeat.get("age_minutes"), 9999) <= config.health_guardian_stale_minutes else "WATCH",
+        "heartbeat_age_minutes": heartbeat.get("age_minutes", 9999.0),
+        "heartbeat_source": heartbeat.get("source", "-"),
+        "database_ok": bool(db_health.get("ok")),
+        "database_row_counts": counts,
+        "macro_state": macro.get("macro_state", "UNKNOWN"),
+        "macro_risk_score": _num(macro.get("macro_risk_score")),
+        "cross_market_state": cross.get("cross_market_state", "UNKNOWN"),
+        "cross_market_stress_score": _num(cross.get("cross_market_stress_score")),
+        "internal_paper_trade_count": int(metrics.get("trade_count", 0) or 0),
+        "internal_paper_total_pnl": metrics.get("total_pnl", 0.0),
+        "internal_paper_max_drawdown": metrics.get("max_drawdown", 0.0),
+        "broadcast_accepted_count": broadcast["accepted"],
+        "broadcast_rejected_count": broadcast["rejected"],
+        "latest_telegram_send_status": _latest_telegram_status(db_path),
+        "latest_guardian_status": guardian["status"],
+        "latest_guardian_reason": guardian["reason"],
+    }
+    warning_reasons = _warnings(report)
+    report["top_warning_reasons"] = warning_reasons or ["none"]
+    report["recommended_next_action"] = _recommended_action(warning_reasons, report)
+
+    os.makedirs(os.path.dirname(markdown_path) or ".", exist_ok=True)
+    markdown = _markdown(report)
+    with open(markdown_path, "w", encoding="utf-8") as markdown_file:
+        markdown_file.write(markdown + "\n")
+    with open(json_path, "w", encoding="utf-8") as json_file:
+        json.dump(report, json_file, indent=2, default=str)
+
+    telegram = {"send_status": "SKIPPED", "enabled": config.telegram_enabled}
+    if send_telegram:
+        telegram = send_or_preview("DAILY_OPS_REPORT", _telegram_message(report), db_path)
+    report["telegram_result"] = {
+        "send_status": telegram.get("send_status"),
+        "enabled": telegram.get("enabled"),
+        "error_message": telegram.get("error_message", ""),
+    }
+    report["markdown_path"] = markdown_path
+    report["json_path"] = json_path
+    return report
+
+
+def format_daily_ops_report(report: Dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "DAILY OPS REPORT",
+            f"PAPER_ONLY: {report.get('paper_only')}",
+            f"Runtime: {report.get('runtime_status')}",
+            f"Heartbeat: {report.get('heartbeat_age_minutes')}m via {report.get('heartbeat_source')}",
+            f"Macro: {report.get('macro_state')} ({report.get('macro_risk_score')})",
+            f"Cross Market: {report.get('cross_market_state')} ({report.get('cross_market_stress_score')})",
+            f"Paper Trades: {report.get('internal_paper_trade_count')} | PnL: {report.get('internal_paper_total_pnl')} | DD: {report.get('internal_paper_max_drawdown')}",
+            f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
+            f"Telegram: {report.get('telegram_result', {}).get('send_status')}",
+            f"Guardian: {report.get('latest_guardian_status')}",
+            f"Warnings: {', '.join(map(str, report.get('top_warning_reasons', [])))}",
+            f"Next Action: {report.get('recommended_next_action')}",
+            f"Markdown: {report.get('markdown_path')}",
+            f"JSON: {report.get('json_path')}",
+        ]
+    )
