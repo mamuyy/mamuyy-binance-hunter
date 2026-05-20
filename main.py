@@ -6,6 +6,21 @@ import sys
 import time
 from typing import List, Dict, Any
 
+CLI_SUBCOMMAND_FLAGS = {
+    "health": "--health",
+    "risk-check": "--risk-check",
+    "health-guardian-once": "--health-guardian-once",
+    "heartbeat-test": "--heartbeat-test",
+    "shadow-analysis": "--shadow-analysis",
+    "label-outcomes": "--label-outcomes",
+    "backfill": "--backfill",
+    "optimize-filters": "--optimize-filters",
+    "fix-regime-labels": "--fix-regime-labels",
+}
+
+if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
+    sys.argv[1] = CLI_SUBCOMMAND_FLAGS[sys.argv[1]]
+
 if "--health" in sys.argv:
     from config import config as _health_config
     from database import db_health_check as _db_health_check
@@ -958,6 +973,12 @@ def run_loop(paper: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MAMUYY Binance Hunter V1")
     parser.add_argument(
+        "command",
+        nargs="?",
+        choices=sorted(CLI_SUBCOMMAND_FLAGS),
+        help="Optional safe subcommand alias for selected legacy flags.",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Jalankan scanner sekali saja lalu keluar.",
@@ -1163,23 +1184,23 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     args = parse_args()
-    if args.label_outcomes:
+    if args.label_outcomes or args.command == "label-outcomes":
         run_label_outcomes(days=args.days)
-    elif args.fix_regime_labels:
+    elif args.fix_regime_labels or args.command == "fix-regime-labels":
         run_fix_regime_labels()
-    elif args.optimize_filters:
+    elif args.optimize_filters or args.command == "optimize-filters":
         run_optimize_filters()
-    elif args.backfill:
+    elif args.backfill or args.command == "backfill":
         run_backfill(days=args.days)
-    elif args.health:
+    elif args.health or args.command == "health":
         run_health()
-    elif args.risk_check:
+    elif args.risk_check or args.command == "risk-check":
         run_risk_check()
-    elif args.health_guardian_once:
+    elif args.health_guardian_once or args.command == "health-guardian-once":
         run_health_guardian_once()
-    elif args.heartbeat_test:
+    elif args.heartbeat_test or args.command == "heartbeat-test":
         run_heartbeat_test()
-    elif args.shadow_analysis:
+    elif args.shadow_analysis or args.command == "shadow-analysis":
         run_shadow_analysis()
     elif args.orchestrator:
         run_orchestrator_command()
