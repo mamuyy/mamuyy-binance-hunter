@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from database import init_db
 from health_guardian import resolve_runtime_heartbeat
+from shadow_lifecycle import active_shadow_positions
 
 
 @dataclass(frozen=True)
@@ -177,20 +178,9 @@ def _open_trades(connection: sqlite3.Connection) -> int:
     except sqlite3.Error:
         pass
     try:
-        total += int(
-            connection.execute(
-                """
-                SELECT COUNT(*)
-                FROM (
-                    SELECT symbol, lifecycle_status, MAX(id) AS latest_id
-                    FROM shadow_trades
-                    GROUP BY symbol
-                )
-                WHERE COALESCE(lifecycle_status, '') NOT IN ('trade closed', 'closed', 'WIN', 'LOSS')
-                """
-            ).fetchone()[0]
-        )
-    except sqlite3.Error:
+        # Count only lifecycle-governed ACTIVE shadows to avoid permanent congestion from stale rows.
+        total += len(active_shadow_positions())
+    except Exception:
         pass
     return total
 
