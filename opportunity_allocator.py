@@ -133,6 +133,110 @@ def _correlation_penalties(outcomes: pd.DataFrame) -> Dict[str, float]:
     return penalties
 
 
+
+
+def _build_shadow_correlation_guard(outcomes: pd.DataFrame, threshold: float = 0.85) -> Dict[str, Dict[str, float]]:
+    if outcomes.empty or not {"timestamp", "symbol", "pnl_pct"}.issubset(outcomes.columns):
+        return {}
+    df = outcomes.copy()
+    df["pnl_pct"] = pd.to_numeric(df["pnl_pct"], errors="coerce").fillna(0.0)
+    pivot = df.pivot_table(index="timestamp", columns="symbol", values="pnl_pct", aggfunc="sum")
+    if pivot.shape[0] < 5 or pivot.shape[1] < 2:
+        return {}
+    corr = pivot.corr().replace([math.inf, -math.inf], pd.NA)
+    matrix: Dict[str, Dict[str, float]] = {}
+    for left in corr.columns:
+        left_key = str(left)
+        peers: Dict[str, float] = {}
+        for right in corr.columns:
+            if left == right:
+                continue
+            value = corr.loc[left, right]
+            if pd.isna(value):
+                continue
+            value_f = float(value)
+            if abs(value_f) >= threshold:
+                peers[str(right)] = round(value_f, 4)
+        if peers:
+            matrix[left_key] = peers
+    return matrix
+
+
+def _active_shadow_positions(shadow_trades: pd.DataFrame) -> pd.DataFrame:
+    if shadow_trades.empty or "symbol" not in shadow_trades.columns:
+        return pd.DataFrame(columns=["symbol", "pnl_percent", "lifecycle_status"])
+    latest = shadow_trades.sort_values("id").drop_duplicates("symbol", keep="last").copy()
+    if "lifecycle_status" in latest.columns:
+        latest = latest[
+            ~latest["lifecycle_status"].fillna("").astype(str).str.upper().isin({"TRADE CLOSED", "CLOSED", "WIN", "LOSS"})
+        ]
+    return latest
+
+
+def _apply_correlation_shadow_guard(
+    output: pd.DataFrame,
+    active_shadow: pd.DataFrame,
+    correlation_map: Dict[str, Dict[str, float]],
+    max_active_shadow_positions: int,
+) -> pd.DataFrame:
+    guarded = output.copy()
+    guarded["rejection_reason"] = ""
+    guarded["guard_decision"] = "ALLOW"
+    guarded["guard_blocker_symbol"] = ""
+    guarded["guard_correlation"] = pd.NA
+
+    active_count = int(len(active_shadow))
+    if active_count >= max_active_shadow_positions:
+        reason = f"MAX_SHADOW_EXPOSURE_CAP:{active_count}/{max_active_shadow_positions}"
+        guarded["allocation_tier"] = "AVOID"
+        guarded["suggested_max_weight_pct"] = 0.0
+        guarded["guard_decision"] = "BLOCK"
+        guarded["rejection_reason"] = reason
+        guarded["reason"] = guarded["reason"].astype(str) + f" | {reason}"
+        return guarded
+
+    active_negative = set()
+    if not active_shadow.empty:
+        pnl_available = "pnl_percent" in active_shadow.columns and active_shadow["pnl_percent"].notna().any()
+        for _, row in active_shadow.iterrows():
+            symbol = str(row.get("symbol") or "")
+            if not symbol:
+                continue
+            if pnl_available:
+                if _number(row.get("pnl_percent"), 0.0) < 0:
+                    active_negative.add(symbol)
+            else:
+                active_negative.add(symbol)
+
+    fallback_mode = bool(active_negative) and ("pnl_percent" not in active_shadow.columns or not active_shadow["pnl_percent"].notna().any())
+    for idx, row in guarded.iterrows():
+        symbol = str(row.get("symbol") or "")
+        if not symbol:
+            continue
+        blockers = correlation_map.get(symbol, {})
+        blocker_symbol = ""
+        blocker_corr = None
+        for active_symbol in active_negative:
+            corr = blockers.get(active_symbol)
+            if corr is None:
+                continue
+            if blocker_corr is None or abs(corr) > abs(blocker_corr):
+                blocker_symbol = active_symbol
+                blocker_corr = corr
+        if blocker_symbol:
+            reason = "CORRELATED_SHADOW_EXPOSURE"
+            if fallback_mode:
+                reason = "CORRELATED_SHADOW_EXPOSURE_FAILSAFE_NO_PNL"
+            guarded.at[idx, "allocation_tier"] = "AVOID"
+            guarded.at[idx, "suggested_max_weight_pct"] = 0.0
+            guarded.at[idx, "guard_decision"] = "BLOCK"
+            guarded.at[idx, "rejection_reason"] = reason
+            guarded.at[idx, "guard_blocker_symbol"] = blocker_symbol
+            guarded.at[idx, "guard_correlation"] = blocker_corr
+            guarded.at[idx, "reason"] = f"{row.get('reason')} | {reason}:{blocker_symbol}:{blocker_corr}"
+
+    return guarded
+
 def _macro_adaptive_bonus(logs_dir: str) -> float:
     path = os.path.join(logs_dir, "adaptive_threshold_comparison.csv")
     if not os.path.exists(path):
@@ -190,6 +294,8 @@ def allocate_opportunities(
     db_path: str = "mamuyy_hunter.db",
     output_path: str = "logs/opportunity_allocation.csv",
     logs_dir: str = "logs",
+    max_active_shadow_positions: int = 10,
+    correlation_threshold: float = 0.85,
 ) -> Dict[str, Any]:
     signals = _read_table(db_path, "signals", limit=2000)
     shadow_trades = _read_table(db_path, "shadow_trades", limit=2000)
@@ -318,7 +424,10 @@ def allocate_opportunities(
         )
 
     output = pd.DataFrame(rows)
+    active_shadow = _active_shadow_positions(shadow_trades)
+    correlation_map = _build_shadow_correlation_guard(outcomes, threshold=correlation_threshold)
     if not output.empty:
+        output = _apply_correlation_shadow_guard(output, active_shadow, correlation_map, max_active_shadow_positions)
         tier_order = {"PRIORITY": 0, "SMALL": 1, "WATCH": 2, "AVOID": 3}
         output["_tier_order"] = output["allocation_tier"].map(tier_order).fillna(9)
         output = output.sort_values(["_tier_order", "opportunity_score", "risk_score"], ascending=[True, False, True])
@@ -332,6 +441,12 @@ def allocate_opportunities(
         "portfolio_heat": portfolio_heat,
         "macro_bonus": round(macro_bonus, 4),
         "allocations": output.to_dict("records"),
+        "shadow_guard": {
+            "active_shadow_exposure_count": int(len(active_shadow)),
+            "max_active_shadow_positions": int(max_active_shadow_positions),
+            "correlation_threshold": float(correlation_threshold),
+            "blocked_candidates": int((output.get("guard_decision") == "BLOCK").sum()) if not output.empty and "guard_decision" in output.columns else 0,
+        },
     }
 
 
@@ -355,3 +470,41 @@ def format_allocation_summary(result: Dict[str, Any]) -> str:
             avoid.to_string(index=False) if not avoid.empty else "No AVOID symbols.",
         ]
     )
+
+
+def shadow_guard_audit(db_path: str = "mamuyy_hunter.db", candidate_symbol: str = "", correlation_threshold: float = 0.85) -> Dict[str, Any]:
+    shadow_trades = _read_table(db_path, "shadow_trades", limit=2000)
+    outcomes = _read_outcomes(db_path, limit=10000)
+    active_shadow = _active_shadow_positions(shadow_trades)
+    correlation_map = _build_shadow_correlation_guard(outcomes, threshold=correlation_threshold)
+    active_negative = set()
+    pnl_available = "pnl_percent" in active_shadow.columns and active_shadow["pnl_percent"].notna().any() if not active_shadow.empty else False
+    for _, row in active_shadow.iterrows():
+        symbol = str(row.get("symbol") or "")
+        if not symbol:
+            continue
+        if pnl_available:
+            if _number(row.get("pnl_percent"), 0.0) < 0:
+                active_negative.add(symbol)
+        else:
+            active_negative.add(symbol)
+    candidate = str(candidate_symbol or "").upper()
+    blockers = correlation_map.get(candidate, {}) if candidate else {}
+    blocker = ""
+    corr = None
+    for a in active_negative:
+        if a in blockers and (corr is None or abs(blockers[a]) > abs(corr)):
+            blocker = a
+            corr = blockers[a]
+    decision = "BLOCK" if blocker else "ALLOW"
+    reason = "CORRELATED_SHADOW_EXPOSURE" if blocker else "NONE"
+    if blocker and not pnl_available:
+        reason = "CORRELATED_SHADOW_EXPOSURE_FAILSAFE_NO_PNL"
+    return {
+        "active_shadow_exposure_count": int(len(active_shadow)),
+        "candidate_symbol": candidate or "N/A",
+        "correlated_blocker_symbol": blocker or "N/A",
+        "correlation_value": corr if corr is not None else "N/A",
+        "decision": decision,
+        "reason": reason,
+    }
