@@ -16,6 +16,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "backfill": "--backfill",
     "optimize-filters": "--optimize-filters",
     "fix-regime-labels": "--fix-regime-labels",
+    "shadow-lifecycle-audit": "--shadow-lifecycle-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -176,6 +177,20 @@ if "--shadow-analysis" in sys.argv:
         macro_stress_output_path="logs/macro_stress_summary.csv",
     )
     print(_format_shadow_analysis_summary(_shadow_result))
+    sys.exit(0)
+
+if "--shadow-lifecycle-audit" in sys.argv:
+    from config import config as _cfg
+    from shadow_lifecycle import shadow_lifecycle_audit as _shadow_lifecycle_audit
+
+    _report = _shadow_lifecycle_audit(db_path=_cfg.database_path)
+    print("SHADOW LIFECYCLE AUDIT")
+    print(f"Active Count: {_report.get('active_count', 0)}")
+    print(f"Stale Count: {_report.get('stale_count', 0)}")
+    print(f"Expired Count: {_report.get('expired_count', 0)}")
+    print(f"Oldest Age Minutes: {float(_report.get('oldest_shadow_age_minutes', 0.0)):.2f}")
+    print(f"Stuck Symbols: {_report.get('stuck_symbols', []) or ['none']}")
+    print(f"Total Rows: {_report.get('total_rows', 0)}")
     sys.exit(0)
 
 if "--label-outcomes" in sys.argv:

@@ -10,6 +10,7 @@ from database import init_db
 from cross_market_intelligence import latest_cross_market_state
 from macro_observer import latest_macro_state
 from portfolio_observer import observe_portfolio
+from shadow_lifecycle import active_shadow_positions
 
 
 def _read_table(db_path: str, table: str, limit: int = 5000) -> pd.DataFrame:
@@ -163,14 +164,11 @@ def _build_shadow_correlation_guard(outcomes: pd.DataFrame, threshold: float = 0
 
 
 def _active_shadow_positions(shadow_trades: pd.DataFrame) -> pd.DataFrame:
-    if shadow_trades.empty or "symbol" not in shadow_trades.columns:
+    # shadow_trades arg kept for compatibility; source of truth is lifecycle-governed DB evaluation.
+    rows = active_shadow_positions()
+    if not rows:
         return pd.DataFrame(columns=["symbol", "pnl_percent", "lifecycle_status"])
-    latest = shadow_trades.sort_values("id").drop_duplicates("symbol", keep="last").copy()
-    if "lifecycle_status" in latest.columns:
-        latest = latest[
-            ~latest["lifecycle_status"].fillna("").astype(str).str.upper().isin({"TRADE CLOSED", "CLOSED", "WIN", "LOSS"})
-        ]
-    return latest
+    return pd.DataFrame(rows)
 
 
 def _apply_correlation_shadow_guard(
