@@ -189,24 +189,27 @@ def main() -> int:
 
     # 3) avg holding period
     now = datetime.now(timezone.utc)
-    if open_df["timestamp"].notna().any():
+    print("\n[4] OPEN holding period")
+    if "timestamp" not in open_df.columns or open_df.empty or not open_df["timestamp"].notna().any():
+        print("timestamp/holding-period unavailable (no open rows with parsable timestamps).")
+    else:
         hold = open_df.dropna(subset=["timestamp"]).copy()
         hold["holding_hours"] = (now - hold["timestamp"]).dt.total_seconds() / 3600.0
-        hold_summary = pd.DataFrame(
-            [
-                {
-                    "open_positions_with_timestamp": int(len(hold)),
-                    "avg_holding_hours": round(float(hold["holding_hours"].mean()), 2),
-                    "median_holding_hours": round(float(hold["holding_hours"].median()), 2),
-                    "max_holding_hours": round(float(hold["holding_hours"].max()), 2),
-                }
-            ]
-        )
-        print("\n[4] OPEN holding period")
-        print(fmt_table(hold_summary))
-    else:
-        print("\n[4] OPEN holding period")
-        print("timestamp column not available/parsable in open positions.")
+        hold = hold[pd.to_numeric(hold["holding_hours"], errors="coerce").notna()]
+        if hold.empty:
+            print("timestamp/holding-period unavailable (holding hours could not be computed).")
+        else:
+            hold_summary = pd.DataFrame(
+                [
+                    {
+                        "open_positions_with_timestamp": int(len(hold)),
+                        "avg_holding_hours": round(float(hold["holding_hours"].mean()), 2),
+                        "median_holding_hours": round(float(hold["holding_hours"].median()), 2),
+                        "max_holding_hours": round(float(hold["holding_hours"].max()), 2),
+                    }
+                ]
+            )
+            print(fmt_table(hold_summary))
 
     # 4) loss grouped by regime, score bucket, symbol
     loss_df = all_df.copy()
@@ -225,25 +228,31 @@ def main() -> int:
     print(fmt_table(grouped))
 
     # 5) breakout/high-score vs hostile regime dominance
-    loss_df["is_breakout_or_high"] = loss_df["score"].fillna(-1) >= 75
-    loss_df["is_hostile_regime"] = loss_df["regime_name"].apply(hostile_regime)
-
-    breakdown = pd.DataFrame(
-        [
-            {
-                "bucket": "breakout/high-score losses",
-                "loss_trades": int(loss_df["is_breakout_or_high"].sum()),
-                "total_loss_pct": round(float(loss_df.loc[loss_df["is_breakout_or_high"], "pnl_percent"].sum()), 2),
-            },
-            {
-                "bucket": "hostile-regime losses",
-                "loss_trades": int(loss_df["is_hostile_regime"].sum()),
-                "total_loss_pct": round(float(loss_df.loc[loss_df["is_hostile_regime"], "pnl_percent"].sum()), 2),
-            },
-        ]
-    )
     print("\n[6] Loss attribution flags")
-    print(fmt_table(breakdown))
+    if loss_df.empty:
+        print("No negative-loss rows available for attribution analysis.")
+    else:
+        loss_df["is_breakout_or_high"] = (pd.to_numeric(loss_df.get("score"), errors="coerce").fillna(-1) >= 75)
+        loss_df["is_hostile_regime"] = loss_df.get("regime_name", pd.Series(index=loss_df.index, dtype="object")).fillna("").apply(hostile_regime)
+
+        breakout_flag = loss_df.get("is_breakout_or_high", pd.Series(False, index=loss_df.index)).fillna(False).astype(bool)
+        hostile_flag = loss_df.get("is_hostile_regime", pd.Series(False, index=loss_df.index)).fillna(False).astype(bool)
+
+        breakdown = pd.DataFrame(
+            [
+                {
+                    "bucket": "breakout/high-score losses",
+                    "loss_trades": int(breakout_flag.sum()),
+                    "total_loss_pct": round(float(loss_df.loc[breakout_flag, "pnl_percent"].sum()), 2),
+                },
+                {
+                    "bucket": "hostile-regime losses",
+                    "loss_trades": int(hostile_flag.sum()),
+                    "total_loss_pct": round(float(loss_df.loc[hostile_flag, "pnl_percent"].sum()), 2),
+                },
+            ]
+        )
+        print(fmt_table(breakdown))
 
     # 7) drawdown sanity analysis
     closed_like = all_df.copy()
