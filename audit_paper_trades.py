@@ -189,27 +189,24 @@ def main() -> int:
 
     # 3) avg holding period
     now = datetime.now(timezone.utc)
-    print("\n[4] OPEN holding period")
-    if "timestamp" not in open_df.columns or open_df.empty or not open_df["timestamp"].notna().any():
-        print("timestamp/holding-period unavailable (no open rows with parsable timestamps).")
-    else:
+    if open_df["timestamp"].notna().any():
         hold = open_df.dropna(subset=["timestamp"]).copy()
         hold["holding_hours"] = (now - hold["timestamp"]).dt.total_seconds() / 3600.0
-        hold = hold[pd.to_numeric(hold["holding_hours"], errors="coerce").notna()]
-        if hold.empty:
-            print("timestamp/holding-period unavailable (holding hours could not be computed).")
-        else:
-            hold_summary = pd.DataFrame(
-                [
-                    {
-                        "open_positions_with_timestamp": int(len(hold)),
-                        "avg_holding_hours": round(float(hold["holding_hours"].mean()), 2),
-                        "median_holding_hours": round(float(hold["holding_hours"].median()), 2),
-                        "max_holding_hours": round(float(hold["holding_hours"].max()), 2),
-                    }
-                ]
-            )
-            print(fmt_table(hold_summary))
+        hold_summary = pd.DataFrame(
+            [
+                {
+                    "open_positions_with_timestamp": int(len(hold)),
+                    "avg_holding_hours": round(float(hold["holding_hours"].mean()), 2),
+                    "median_holding_hours": round(float(hold["holding_hours"].median()), 2),
+                    "max_holding_hours": round(float(hold["holding_hours"].max()), 2),
+                }
+            ]
+        )
+        print("\n[4] OPEN holding period")
+        print(fmt_table(hold_summary))
+    else:
+        print("\n[4] OPEN holding period")
+        print("timestamp column not available/parsable in open positions.")
 
     # 4) loss grouped by regime, score bucket, symbol
     loss_df = all_df.copy()
@@ -232,11 +229,8 @@ def main() -> int:
     if loss_df.empty:
         print("No negative-loss rows available for attribution analysis.")
     else:
-        loss_df["is_breakout_or_high"] = (pd.to_numeric(loss_df.get("score"), errors="coerce").fillna(-1) >= 75)
-        loss_df["is_hostile_regime"] = loss_df.get("regime_name", pd.Series(index=loss_df.index, dtype="object")).fillna("").apply(hostile_regime)
-
-        breakout_flag = loss_df.get("is_breakout_or_high", pd.Series(False, index=loss_df.index)).fillna(False).astype(bool)
-        hostile_flag = loss_df.get("is_hostile_regime", pd.Series(False, index=loss_df.index)).fillna(False).astype(bool)
+        breakout_flag = (pd.to_numeric(loss_df["score"], errors="coerce").fillna(-1) >= 75).fillna(False).astype(bool)
+        hostile_flag = loss_df["regime_name"].fillna("").apply(hostile_regime).fillna(False).astype(bool)
 
         breakdown = pd.DataFrame(
             [
