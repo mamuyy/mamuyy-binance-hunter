@@ -137,10 +137,29 @@ def _feature_usefulness_by_regime(dataset: pd.DataFrame) -> Dict[str, List[Dict[
 
 def _diagnosis(audit: Dict[str, Any]) -> List[str]:
     findings: List[str] = []
-    global_acc = audit["global_accuracy"]
-    rolling_acc = audit["walkforward"]["average_accuracy"]
-    mismatch = audit["label_quality"]["label_pnl_mismatch_rate"]
-    imbalance = audit["class_imbalance"]["imbalance_ratio"]
+    global_acc = float(audit.get("global_accuracy", 0.0))
+    walkforward = audit.get("walkforward_score") or audit.get("walkforward") or {}
+    rolling_acc = float(walkforward.get("average_accuracy", audit.get("rolling_accuracy", 0.0)))
+    label_quality = audit.get("label_quality") or {}
+    mismatch = float(label_quality.get("label_pnl_mismatch_rate", 0.0))
+    class_imbalance = audit.get("class_imbalance") or {}
+    imbalance = float(class_imbalance.get("imbalance_ratio", 0.0))
+    profitability = audit.get("profitability_outcome") or audit.get("profitability") or {}
+    profit_weighted_acc = profitability.get("profit_weighted_accuracy")
+
+    missing_sections: List[str] = []
+    for name in ("walkforward", "global_accuracy", "profitability"):
+        if name == "walkforward" and not walkforward:
+            missing_sections.append(name)
+        if name == "global_accuracy" and "global_accuracy" not in audit:
+            missing_sections.append(name)
+        if name == "profitability" and not profitability:
+            missing_sections.append(name)
+
+    if missing_sections:
+        findings.append(
+            f"insufficient_data: missing sections -> {', '.join(missing_sections)}."
+        )
 
     if global_acc < 0.45 and rolling_acc >= 0.6:
         findings.append("Metric mismatch: global holdout underperforms while walk-forward remains robust.")
@@ -148,8 +167,10 @@ def _diagnosis(audit: Dict[str, Any]) -> List[str]:
         findings.append("Label mismatch risk is high: many rows disagree between label and realized PnL sign.")
     if imbalance >= 2.0:
         findings.append("Class imbalance is material and may bias signal selection.")
+    if isinstance(profit_weighted_acc, (int, float)) and float(profit_weighted_acc) < 0.5:
+        findings.append("Profitability signal is weak: profit-weighted accuracy is below 50%.")
 
-    regime_stats = audit["regime_stats"]
+    regime_stats = audit.get("regime_stats") or {}
     if regime_stats:
         worst = min(regime_stats.items(), key=lambda it: it[1]["accuracy"])
         best = max(regime_stats.items(), key=lambda it: it[1]["accuracy"])
