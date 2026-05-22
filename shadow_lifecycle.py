@@ -4,7 +4,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 
 _TERMINAL = {"TRADE CLOSED", "CLOSED", "WIN", "LOSS", "EXPIRED", "IGNORED", "PROFIT_MATURED"}
@@ -76,6 +76,15 @@ def _evaluate_status(row: sqlite3.Row, latest_ts: Dict[str, datetime], now: date
     return "ACTIVE"
 
 
+def _row_sort_key(row: sqlite3.Row) -> Tuple[datetime, int]:
+    ts = _parse_ts(row["timestamp"]) or datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        rid = int(row["id"])
+    except (TypeError, ValueError):
+        rid = -1
+    return ts, rid
+
+
 def load_shadow_lifecycle_config_from_env() -> ShadowLifecycleConfig:
     def _i(name: str, default: int) -> int:
         try:
@@ -113,6 +122,8 @@ def shadow_lifecycle_audit(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecyc
         "stuck_symbols": [],
         "profit_matured_symbols": [],
         "total_rows": 0,
+        "legacy_active_latest_row_count": 0,
+        "active_after_profit_matured_filter_count": 0,
     }
     try:
         with sqlite3.connect(db_path) as con:
@@ -144,6 +155,24 @@ def shadow_lifecycle_audit(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecyc
             ages.append((str(r["symbol"] or "UNKNOWN"), age))
 
     result["total_rows"] = len(rows)
+
+    legacy_latest_rows: Dict[str, sqlite3.Row] = {}
+    latest_rows_by_ts_id: Dict[str, sqlite3.Row] = {}
+    latest_state_by_symbol: Dict[str, str] = {}
+    for r in rows:
+        sym = str(r["symbol"] or "").strip()
+        if not sym:
+            continue
+        legacy_latest_rows[sym] = r
+        state = _evaluate_status(r, latest_by_symbol, now, cfg)
+        existing = latest_rows_by_ts_id.get(sym)
+        if existing is None or _row_sort_key(r) >= _row_sort_key(existing):
+            latest_rows_by_ts_id[sym] = r
+            latest_state_by_symbol[sym] = state
+
+    result["legacy_active_latest_row_count"] = sum(1 for r in legacy_latest_rows.values() if _evaluate_status(r, latest_by_symbol, now, cfg) == "ACTIVE")
+    result["active_after_profit_matured_filter_count"] = sum(1 for st in latest_state_by_symbol.values() if st == "ACTIVE")
+
     ages.sort(key=lambda item: item[1], reverse=True)
     result["stuck_symbols"] = [f"{sym}:{age:.1f}m" for sym, age in ages[:5]]
     result["profit_matured_symbols"] = sorted(set(result["profit_matured_symbols"]))
@@ -169,19 +198,30 @@ def active_shadow_positions(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecy
     if not rows:
         return []
 
-    latest_rows: Dict[str, sqlite3.Row] = {}
-    latest_ts: Dict[str, datetime] = {}
+    latest_ts_by_symbol: Dict[str, datetime] = {}
     for r in rows:
-        sym = str(r["symbol"])
-        latest_rows[sym] = r
+        sym = str(r["symbol"] or "").strip()
+        if not sym:
+            continue
         ts = _parse_ts(r["timestamp"])
-        if ts:
-            latest_ts[sym] = ts
+        if ts and (sym not in latest_ts_by_symbol or ts > latest_ts_by_symbol[sym]):
+            latest_ts_by_symbol[sym] = ts
+
+    latest_row_by_symbol: Dict[str, sqlite3.Row] = {}
+    latest_state_by_symbol: Dict[str, str] = {}
+    for r in rows:
+        sym = str(r["symbol"] or "").strip()
+        if not sym:
+            continue
+        state = _evaluate_status(r, latest_ts_by_symbol, now, cfg)
+        existing = latest_row_by_symbol.get(sym)
+        if existing is None or _row_sort_key(r) >= _row_sort_key(existing):
+            latest_row_by_symbol[sym] = r
+            latest_state_by_symbol[sym] = state
 
     active: List[Dict[str, Any]] = []
-    for sym, r in latest_rows.items():
-        state = _evaluate_status(r, latest_ts, now, cfg)
-        if state != "ACTIVE":
+    for sym, r in latest_row_by_symbol.items():
+        if latest_state_by_symbol.get(sym) != "ACTIVE":
             continue
         active.append({"symbol": sym, "pnl_percent": _num(r["pnl_percent"], 0.0), "lifecycle_status": "ACTIVE"})
     return active
