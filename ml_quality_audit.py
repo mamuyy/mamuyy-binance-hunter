@@ -184,6 +184,48 @@ def _diagnosis(audit: Dict[str, Any]) -> List[str]:
     return findings
 
 
+def _safe_scoring_improvement_plan(audit: Dict[str, Any]) -> List[Dict[str, Any]]:
+    class_imbalance = audit.get("class_imbalance") or {}
+    imbalance = float(class_imbalance.get("imbalance_ratio", 0.0))
+    calibration = audit.get("confidence_calibration") or {}
+    brier = float(calibration.get("brier_score", 1.0))
+    plan: List[Dict[str, Any]] = [
+        {
+            "priority": "high",
+            "category": "class_imbalance",
+            "action": "Enable inverse-frequency sample weighting in model scoring pipeline.",
+            "safety": "Read-only feature/scoring change only; does not affect broker, DB schema, or execution routing.",
+            "acceptance_criteria": "Minority-class recall improves by >= 3pp while profit-weighted accuracy does not decline.",
+        },
+        {
+            "priority": "high",
+            "category": "confidence_calibration",
+            "action": "Apply post-hoc probability calibration (isotonic or Platt) on out-of-fold predictions.",
+            "safety": "Calibration layer wraps model probabilities only and preserves PAPER_ONLY behavior.",
+            "acceptance_criteria": "Brier score improves by >= 0.01 and confidence-vs-hit-rate gap narrows across bins.",
+        },
+        {
+            "priority": "medium",
+            "category": "decision_threshold",
+            "action": "Retune profit decision threshold using walk-forward folds for maximum profit-weighted utility.",
+            "safety": "Scoring policy update only; no order execution path changes.",
+            "acceptance_criteria": "Profit-weighted accuracy improves and false-positive rate does not materially increase.",
+        },
+        {
+            "priority": "medium",
+            "category": "monitoring",
+            "action": "Track per-regime calibration error and per-class precision/recall in each audit run.",
+            "safety": "Telemetry-only extension, read-only.",
+            "acceptance_criteria": "Alerts when any regime calibration error exceeds configured tolerance.",
+        },
+    ]
+    if imbalance < 2.0:
+        plan = [item for item in plan if item["category"] != "class_imbalance"]
+    if brier <= 0.20:
+        plan = [item for item in plan if item["category"] != "confidence_calibration"]
+    return plan
+
+
 def run_audit(output_path: str = "ml_quality_audit.json") -> Dict[str, Any]:
     dataset = build_ml_dataset("paper_trades.csv", "signals_log.csv", "flow_log.csv", database_path="mamuyy_hunter.db")
     if len(dataset) < 8 or dataset["target"].nunique() < 2:
@@ -230,6 +272,7 @@ def run_audit(output_path: str = "ml_quality_audit.json") -> Dict[str, Any]:
         "global_feature_importance": model_meta["feature_importance"][:15],
     }
     audit["diagnosis"] = _diagnosis(audit)
+    audit["safe_scoring_improvement_plan"] = _safe_scoring_improvement_plan(audit)
     audit["model_promotion_rule_v2"] = [
         "Promote only if walk-forward average_accuracy >= 0.60 for >= 5 folds.",
         "Require profitability-weighted accuracy >= 0.55 and average_winrate >= 42%.",
@@ -260,6 +303,9 @@ def _print_report(audit: Dict[str, Any]) -> None:
     print("\nTop Diagnosis:")
     for item in audit["diagnosis"]:
         print(f"- {item}")
+    print("\nSafe Scoring Improvement Plan:")
+    for item in audit.get("safe_scoring_improvement_plan", []):
+        print(f"- [{item['priority']}] {item['category']}: {item['action']}")
     print("\nModel Promotion Rule V2:")
     for item in audit["model_promotion_rule_v2"]:
         print(f"- {item}")
