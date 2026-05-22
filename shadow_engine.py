@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from execution_engine import simulate_execution
+from shadow_lifecycle import active_shadow_positions
 
 
 def ensure_shadow_table(db_path: str = "mamuyy_hunter.db") -> None:
@@ -141,9 +142,13 @@ def run_shadow_live(db_path: str = "mamuyy_hunter.db", chart_dir: str = "charts"
             _placeholder(path, title)
         return {
             "live_pnl": 0.0,
+            "rolling_live_pnl_pct": 0.0,
+            "cumulative_shadow_pnl_pct": 0.0,
             "live_winrate": 0.0,
             "live_drawdown": 0.0,
             "live_exposure": 0.0,
+            "rolling_live_exposure_pct": 0.0,
+            "cumulative_shadow_exposure_pct": 0.0,
             "execution_drift": 0.0,
             "prediction_drift": 0.0,
             "regime_drift": 0.0,
@@ -196,6 +201,17 @@ def run_shadow_live(db_path: str = "mamuyy_hunter.db", chart_dir: str = "charts"
     prediction_drift = pd.to_numeric(shadow.get("prediction_drift", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     regime_drift = pd.to_numeric(shadow.get("regime_drift", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     exposure = pd.to_numeric(shadow.get("exposure", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    cumulative_pnl_pct = float(equity.iloc[-1]) if not equity.empty else 0.0
+    cumulative_exposure_pct = float(exposure.sum() * 100) if len(exposure) else 0.0
+
+    # Live metrics should reflect currently active lifecycle-governed shadows only.
+    active_positions = active_shadow_positions(db_path=db_path)
+    rolling_live_pnl_pct = 0.0
+    rolling_live_exposure_pct = 0.0
+    if active_positions:
+        rolling_live_pnl_pct = float(sum(_num(position.get("pnl_percent")) for position in active_positions))
+        rolling_live_exposure_pct = float(sum(_num(position.get("exposure")) for position in active_positions) * 100)
+
     _line(equity.tolist(), charts["shadow_equity_curve"], "Shadow Equity Curve", "PnL (%)")
     _line(drawdown.tolist(), charts["live_drawdown_curve"], "Live Drawdown Curve", "Drawdown (%)")
     _line(execution_drift.tolist(), charts["execution_drift_chart"], "Execution Drift", "Drift (%)")
@@ -204,10 +220,14 @@ def run_shadow_live(db_path: str = "mamuyy_hunter.db", chart_dir: str = "charts"
     avg_execution_drift = float(execution_drift.mean()) if len(execution_drift) else 0.0
     avg_prediction_drift = float(prediction_drift.mean()) if len(prediction_drift) else 0.0
     return {
-        "live_pnl": round(float(equity.iloc[-1]) if not equity.empty else 0.0, 4),
+        "live_pnl": round(rolling_live_pnl_pct, 4),
+        "rolling_live_pnl_pct": round(rolling_live_pnl_pct, 4),
+        "cumulative_shadow_pnl_pct": round(cumulative_pnl_pct, 4),
         "live_winrate": round(float((pnl > 0).mean() * 100) if len(pnl) else 0.0, 2),
         "live_drawdown": round(live_drawdown, 4),
-        "live_exposure": round(float(exposure.sum() * 100), 2),
+        "live_exposure": round(rolling_live_exposure_pct, 2),
+        "rolling_live_exposure_pct": round(rolling_live_exposure_pct, 2),
+        "cumulative_shadow_exposure_pct": round(cumulative_exposure_pct, 2),
         "execution_drift": round(avg_execution_drift, 4),
         "prediction_drift": round(avg_prediction_drift, 2),
         "regime_drift": round(float(regime_drift.mean()) if len(regime_drift) else 0.0, 4),
