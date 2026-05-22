@@ -188,6 +188,8 @@ if "--shadow-lifecycle-audit" in sys.argv:
     print(f"Active Count: {_report.get('active_count', 0)}")
     print(f"Stale Count: {_report.get('stale_count', 0)}")
     print(f"Expired Count: {_report.get('expired_count', 0)}")
+    print(f"Profit Matured Count: {_report.get('profit_matured_count', 0)}")
+    print(f"Profit Matured Symbols: {_report.get('profit_matured_symbols', []) or ['none']}")
     print(f"Oldest Age Minutes: {float(_report.get('oldest_shadow_age_minutes', 0.0)):.2f}")
     print(f"Stuck Symbols: {_report.get('stuck_symbols', []) or ['none']}")
     print(f"Total Rows: {_report.get('total_rows', 0)}")
