@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 
-_TERMINAL = {"TRADE CLOSED", "CLOSED", "WIN", "LOSS", "EXPIRED", "IGNORED"}
+_TERMINAL = {"TRADE CLOSED", "CLOSED", "WIN", "LOSS", "EXPIRED", "IGNORED", "PROFIT_MATURED"}
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,9 @@ class ShadowLifecycleConfig:
     stale_regime_decay_minutes: int = 45
     negative_pnl_accelerated_expiry: bool = True
     negative_pnl_expiry_multiplier: float = 0.6
+    positive_exit_enabled: bool = True
+    take_profit_pct: float = 1.5
+    profit_maturity_minutes: int = 30
 
 
 
@@ -55,11 +58,15 @@ def _evaluate_status(row: sqlite3.Row, latest_ts: Dict[str, datetime], now: date
     if age_min < 0:
         age_min = 0
 
+    pnl_percent = _num(row["pnl_percent"], 0.0)
+    if cfg.positive_exit_enabled and pnl_percent >= cfg.take_profit_pct and age_min >= cfg.profit_maturity_minutes:
+        return "PROFIT_MATURED"
+
     latest_symbol_ts = latest_ts.get(symbol)
     inactive_min = (now - latest_symbol_ts).total_seconds() / 60 if latest_symbol_ts else age_min
 
     expiry_age = float(cfg.max_shadow_age_minutes)
-    if cfg.negative_pnl_accelerated_expiry and _num(row["pnl_percent"], 0.0) < 0:
+    if cfg.negative_pnl_accelerated_expiry and pnl_percent < 0:
         expiry_age *= max(0.1, cfg.negative_pnl_expiry_multiplier)
 
     if age_min >= expiry_age or inactive_min >= cfg.inactivity_timeout_minutes:
@@ -88,6 +95,9 @@ def load_shadow_lifecycle_config_from_env() -> ShadowLifecycleConfig:
         stale_regime_decay_minutes=_i("SHADOW_STALE_REGIME_DECAY_MINUTES", 45),
         negative_pnl_accelerated_expiry=os.getenv("SHADOW_NEGATIVE_PNL_ACCELERATED_EXPIRY", "true").strip().lower() in {"1", "true", "yes", "on"},
         negative_pnl_expiry_multiplier=_f("SHADOW_NEGATIVE_PNL_EXPIRY_MULTIPLIER", 0.6),
+        positive_exit_enabled=os.getenv("SHADOW_POSITIVE_EXIT_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
+        take_profit_pct=_f("SHADOW_TAKE_PROFIT_PCT", 1.5),
+        profit_maturity_minutes=_i("SHADOW_PROFIT_MATURITY_MINUTES", 30),
     )
 
 
@@ -98,8 +108,10 @@ def shadow_lifecycle_audit(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecyc
         "active_count": 0,
         "stale_count": 0,
         "expired_count": 0,
+        "profit_matured_count": 0,
         "oldest_shadow_age_minutes": 0.0,
         "stuck_symbols": [],
+        "profit_matured_symbols": [],
         "total_rows": 0,
     }
     try:
@@ -122,6 +134,9 @@ def shadow_lifecycle_audit(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecyc
     for r in rows:
         evaluated = _evaluate_status(r, latest_by_symbol, now, cfg)
         result[f"{evaluated.lower()}_count"] = int(result.get(f"{evaluated.lower()}_count", 0)) + 1
+        if evaluated == "PROFIT_MATURED":
+            sym = str(r["symbol"] or "UNKNOWN").strip() or "UNKNOWN"
+            result["profit_matured_symbols"].append(sym)
         ts = _parse_ts(r["timestamp"])
         if ts:
             age = max(0.0, (now - ts).total_seconds() / 60)
@@ -131,6 +146,7 @@ def shadow_lifecycle_audit(db_path: str = "mamuyy_hunter.db", cfg: ShadowLifecyc
     result["total_rows"] = len(rows)
     ages.sort(key=lambda item: item[1], reverse=True)
     result["stuck_symbols"] = [f"{sym}:{age:.1f}m" for sym, age in ages[:5]]
+    result["profit_matured_symbols"] = sorted(set(result["profit_matured_symbols"]))
     return result
 
 
