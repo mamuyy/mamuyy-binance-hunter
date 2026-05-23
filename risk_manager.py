@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
+from config import config as app_config
 from database import init_db
 from health_guardian import resolve_runtime_heartbeat
 from shadow_lifecycle import active_shadow_positions
@@ -21,6 +22,63 @@ class RiskConfig:
     loss_cooldown: int = 3
     base_position_multiplier: float = 1.0
     high_vol_confidence_min: float = 55.0
+    toxic_regime_filter_enabled: bool = True
+    toxic_regime_names: tuple[str, ...] = ("SIDEWAYS / CHOPPY",)
+    toxic_regime_position_multiplier: float = 0.25
+    toxic_regime_confidence_multiplier: float = 0.50
+    toxic_regime_hard_block: bool = False
+
+
+def _default_risk_config() -> RiskConfig:
+    toxic_names = tuple(
+        name.strip().upper()
+        for name in str(app_config.risk_toxic_regime_names).split(",")
+        if name.strip()
+    ) or ("SIDEWAYS / CHOPPY",)
+    return RiskConfig(
+        ml_accuracy_halt=app_config.risk_ml_accuracy_halt,
+        drawdown_halt=app_config.risk_drawdown_halt,
+        drawdown_watch=app_config.risk_drawdown_watch,
+        stale_minutes=app_config.risk_stale_minutes,
+        max_open_trades=app_config.risk_max_open_trades,
+        loss_cooldown=app_config.risk_loss_cooldown,
+        base_position_multiplier=app_config.risk_base_position_multiplier,
+        high_vol_confidence_min=app_config.risk_high_vol_confidence_min,
+        toxic_regime_filter_enabled=app_config.risk_toxic_regime_filter_enabled,
+        toxic_regime_names=toxic_names,
+        toxic_regime_position_multiplier=max(0.0, app_config.risk_toxic_regime_position_multiplier),
+        toxic_regime_confidence_multiplier=max(0.0, app_config.risk_toxic_regime_confidence_multiplier),
+        toxic_regime_hard_block=app_config.risk_toxic_regime_hard_block,
+    )
+
+
+def _apply_toxic_regime_suppression(
+    regime_name: str,
+    model_confidence: float,
+    risk_config: RiskConfig,
+    halt_reasons: List[str],
+    watch_reasons: List[str],
+    position_multiplier: float,
+) -> tuple[float, float]:
+    if not risk_config.toxic_regime_filter_enabled:
+        return position_multiplier, model_confidence
+    regime_upper = str(regime_name).upper()
+    if regime_upper not in risk_config.toxic_regime_names:
+        return position_multiplier, model_confidence
+
+    position_multiplier *= risk_config.toxic_regime_position_multiplier
+    adjusted_confidence = model_confidence * risk_config.toxic_regime_confidence_multiplier
+    watch_reasons.append(
+        (
+            f"Toxic regime suppression applied for {regime_name}: "
+            f"position x{risk_config.toxic_regime_position_multiplier:.2f}, "
+            f"confidence x{risk_config.toxic_regime_confidence_multiplier:.2f}"
+        )
+    )
+    if risk_config.toxic_regime_hard_block:
+        halt_reasons.append(f"Toxic regime hard block active for {regime_name}")
+        position_multiplier = 0.0
+    return position_multiplier, adjusted_confidence
 
 
 def _now_iso() -> str:
@@ -254,7 +312,7 @@ def check_execution_safety(
     config: RiskConfig | None = None,
     log_event: bool = True,
 ) -> Dict[str, Any]:
-    risk_config = config or RiskConfig()
+    risk_config = config or _default_risk_config()
     init_db(db_path)
     halt_reasons: List[str] = []
     watch_reasons: List[str] = []
@@ -287,17 +345,22 @@ def check_execution_safety(
             watch_reasons.append(f"Heartbeat table stale; using {heartbeat['source']}")
 
         regime_upper = regime_name.upper()
-        if regime_upper == "SIDEWAYS / CHOPPY":
-            watch_reasons.append("SIDEWAYS / CHOPPY regime: exposure reduced by 70%")
-            position_multiplier *= 0.30
-        elif regime_upper == "TRENDING BEAR":
+        position_multiplier, effective_confidence = _apply_toxic_regime_suppression(
+            regime_name=regime_name,
+            model_confidence=ml["confidence"],
+            risk_config=risk_config,
+            halt_reasons=halt_reasons,
+            watch_reasons=watch_reasons,
+            position_multiplier=position_multiplier,
+        )
+        if regime_upper == "TRENDING BEAR":
             halt_reasons.append("TRENDING BEAR regime: risk halt")
             position_multiplier *= 0.10
         elif regime_upper == "HIGH VOLATILITY":
             position_multiplier *= 0.40
-            if ml["confidence"] < risk_config.high_vol_confidence_min:
+            if effective_confidence < risk_config.high_vol_confidence_min:
                 halt_reasons.append(
-                    f"HIGH VOLATILITY with model confidence {ml['confidence']:.2f}% below {risk_config.high_vol_confidence_min:.2f}%"
+                    f"HIGH VOLATILITY with adjusted model confidence {effective_confidence:.2f}% below {risk_config.high_vol_confidence_min:.2f}%"
                 )
             else:
                 watch_reasons.append("HIGH VOLATILITY regime: exposure reduced")
@@ -339,6 +402,7 @@ def check_execution_safety(
             "metrics": {
                 "ml_accuracy": round(ml["accuracy"], 4),
                 "model_confidence": round(ml["confidence"], 4),
+                "effective_model_confidence": round(effective_confidence, 4),
                 "drawdown": round(drawdown, 4),
                 "regime_name": regime_name,
                 "heartbeat_age_minutes": round(heartbeat_age, 2),
@@ -355,3 +419,35 @@ def check_execution_safety(
             _insert_risk_event(connection, result)
             connection.commit()
         return result
+
+
+def dry_run_toxic_regime_suppression(
+    regime_name: str = "SIDEWAYS / CHOPPY",
+    model_confidence: float = 60.0,
+    config: RiskConfig | None = None,
+) -> Dict[str, Any]:
+    risk_config = config or _default_risk_config()
+    halt_reasons: List[str] = []
+    watch_reasons: List[str] = []
+    position_multiplier = max(risk_config.base_position_multiplier, 0.0)
+    adjusted_position, adjusted_confidence = _apply_toxic_regime_suppression(
+        regime_name=regime_name,
+        model_confidence=model_confidence,
+        risk_config=risk_config,
+        halt_reasons=halt_reasons,
+        watch_reasons=watch_reasons,
+        position_multiplier=position_multiplier,
+    )
+    return {
+        "input": {
+            "regime_name": regime_name,
+            "model_confidence": model_confidence,
+            "base_position_multiplier": position_multiplier,
+        },
+        "output": {
+            "position_multiplier": round(max(adjusted_position, 0.0), 4),
+            "effective_model_confidence": round(adjusted_confidence, 4),
+            "hard_block": bool(risk_config.toxic_regime_hard_block),
+        },
+        "reasons": halt_reasons + watch_reasons,
+    }
