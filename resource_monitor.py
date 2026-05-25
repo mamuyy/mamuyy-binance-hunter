@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import shutil
+import requests
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -242,11 +243,67 @@ def append_history(snapshot: dict[str, Any]) -> None:
         writer.writerow({field: snapshot.get(field) for field in CSV_FIELDS})
 
 
+def _load_env() -> dict[str, str]:
+    env_path = BASE_DIR / ".env"
+    values = {}
+    if not env_path.exists():
+        return values
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        values[k.strip()] = v.strip().strip('"').strip("'")
+    return values
+
+
+def send_telegram_alert(message: str) -> bool:
+    env = _load_env()
+    token = env.get("TELEGRAM_BOT_TOKEN")
+    chat_id = env.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": message}
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def build_alerts(snapshot: dict[str, Any]) -> list[str]:
+    alerts = []
+    disk = snapshot.get("disk_percent")
+    ram = snapshot.get("ram_percent")
+    cpu = snapshot.get("cpu_percent")
+
+    if disk is not None and disk >= 85:
+        alerts.append(f"🚨 DISK HIGH: {disk}%")
+    if ram is not None and ram >= 90:
+        alerts.append(f"🚨 RAM HIGH: {ram}%")
+    if cpu is not None and cpu >= 95:
+        alerts.append(f"🚨 CPU HIGH: {cpu}%")
+    if not snapshot.get("database_exists"):
+        alerts.append("🚨 DATABASE NOT FOUND")
+
+    return alerts
+
 def main() -> int:
     snapshot = collect_snapshot()
+    alerts = build_alerts(snapshot)
+    snapshot["alerts"] = alerts
+    snapshot["resource_health"] = "WARNING" if alerts else "HEALTHY"
+
     write_latest(snapshot)
     append_history(snapshot)
     print(json.dumps(snapshot, indent=2, sort_keys=True))
+
+    if alerts:
+        message = "🚨 MAMUYY Hunter Resource Alert\n" + "\n".join(alerts)
+        send_telegram_alert(message)
+
     return 0
 
 
