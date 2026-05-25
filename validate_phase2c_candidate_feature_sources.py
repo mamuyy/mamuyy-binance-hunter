@@ -190,15 +190,54 @@ def core(r):
     return [1.0, r['score_norm'], r['regime_score_norm'], r['delta_norm'], r['holding_norm'], r['sl_dist'] * 100.0, r['tp1_dist'] * 100.0, r['tp2_dist'] * 100.0, r['rr1'], r['rr2']]
 
 
-def eval_model(train, valid, extra_keys, label):
-    x_train = [core(r) + [r[k] for k in extra_keys] for r in train]
+def summary_stats(values):
+    if not values:
+        return {'min': None, 'max': None, 'mean': None, 'std': None}
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / len(values)
+    return {'min': round(min(values), 6), 'max': round(max(values), 6), 'mean': round(mean, 6), 'std': round(math.sqrt(var), 6)}
+
+
+def standardize_candidates(train, valid, candidate_keys):
+    params = {}
+    for k in candidate_keys:
+        tvals = [r.get(k, 0.0) for r in train]
+        mean = (sum(tvals) / len(tvals)) if tvals else 0.0
+        var = (sum((v - mean) ** 2 for v in tvals) / len(tvals)) if tvals else 0.0
+        std = math.sqrt(var)
+        if std <= 1e-12:
+            std = 1.0
+        params[k] = (mean, std)
+    for r in train + valid:
+        for k in candidate_keys:
+            mean, std = params[k]
+            r[k + '_z'] = (r.get(k, 0.0) - mean) / std
+    return params
+
+
+def feature_debug_stats(train, valid, keys):
+    out = {}
+    for k in keys:
+        out[k] = {
+            'train': summary_stats([r.get(k, 0.0) for r in train]),
+            'validation': summary_stats([r.get(k, 0.0) for r in valid]),
+        }
+    return out
+
+
+def eval_model(train, valid, extra_keys, label, baseline_brier=None):
+    model_keys = [k + '_z' for k in extra_keys]
+    x_train = [core(r) + [r.get(k, 0.0) for k in model_keys] for r in train]
     y_train = [r['y'] for r in train]
     w = fit_logistic(x_train, y_train)
     scored = []
+    preds = []
     for r in valid:
-        p = pred(w, core(r) + [r[k] for k in extra_keys])
+        p = pred(w, core(r) + [r.get(k, 0.0) for k in model_keys])
+        preds.append(p)
         scored.append({'y': r['y'], 'p': p})
     b = brier(scored)
+    degraded = bool(baseline_brier is not None and (b - baseline_brier) > 0.01)
     return {
         'model': label,
         'features_added': extra_keys,
@@ -206,6 +245,11 @@ def eval_model(train, valid, extra_keys, label):
         'improvement_vs_0_247747': round(BASELINE_REF - b, 6),
         'gap_to_0_24': round(b - TARGET, 6),
         'passes_target': b <= TARGET,
+        'degraded_vs_baseline_gt_0_01': degraded,
+        'prediction_min': summary_stats(preds)['min'],
+        'prediction_max': summary_stats(preds)['max'],
+        'prediction_mean': summary_stats(preds)['mean'],
+        'prediction_std': summary_stats(preds)['std'],
     }
 
 
@@ -221,14 +265,23 @@ def main():
         'post_signal_fields_used': False,
     }
 
+    candidate_keys = [
+        'cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope',
+        'cand_regime_age', 'cand_regime_transitions', 'cand_regime_stability', 'cand_time_since_change', 'cand_candle_quality'
+    ]
+    feature_stats = feature_debug_stats(train, valid, candidate_keys) if train and valid else {}
+    if train and valid:
+        standardize_candidates(train, valid, candidate_keys)
+
     results = []
     baseline_b = None
     if train and valid:
-        results.append(eval_model(train, valid, [], 'A_core_baseline'))
-        results.append(eval_model(train, valid, ['cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope'], 'B_core_plus_volatility_trend_momentum'))
-        results.append(eval_model(train, valid, ['cand_regime_age', 'cand_regime_transitions', 'cand_regime_stability', 'cand_time_since_change'], 'C_core_plus_regime_age_stability'))
-        results.append(eval_model(train, valid, ['cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope', 'cand_regime_age', 'cand_regime_transitions', 'cand_regime_stability', 'cand_time_since_change', 'cand_candle_quality'], 'D_core_plus_combined_top_groups'))
-        baseline_b = results[0]['brier']
+        base = eval_model(train, valid, [], 'A_core_baseline', baseline_brier=None)
+        results.append(base)
+        baseline_b = base['brier']
+        results.append(eval_model(train, valid, ['cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope'], 'B_core_plus_volatility_trend_momentum', baseline_brier=baseline_b))
+        results.append(eval_model(train, valid, ['cand_regime_age', 'cand_regime_transitions', 'cand_regime_stability', 'cand_time_since_change'], 'C_core_plus_regime_age_stability', baseline_brier=baseline_b))
+        results.append(eval_model(train, valid, ['cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope', 'cand_regime_age', 'cand_regime_transitions', 'cand_regime_stability', 'cand_time_since_change', 'cand_candle_quality'], 'D_core_plus_combined_top_groups', baseline_brier=baseline_b))
 
     best = min(results, key=lambda x: x['brier']) if results else None
     report = {
@@ -244,7 +297,13 @@ def main():
         'feature_sources_detected': detected,
         'feature_sources_missing': missing,
         'leakage_checks': leakage_checks,
-        'recommendation': 'promote_best_candidate_group_for_next_read_only_review' if best else 'missing_or_insufficient_input_data',
+        'feature_debug_stats': feature_stats,
+        'phase2c_status': 'REVIEW_NOT_PASSED',
+        'phase3_status': 'LOCKED',
+        'candidates_rejected': bool(best and best.get('model') == 'A_core_baseline'),
+        'rejection_reason': 'best_candidate_is_baseline_candidate_proxies_harmful_or_noisy' if best and best.get('model') == 'A_core_baseline' else None,
+        'degraded_models': [r['model'] for r in results if r.get('degraded_vs_baseline_gt_0_01')],
+        'recommendation': ('reject_candidate_feature_sources_keep_phase2c_blocked' if best and best.get('model') == 'A_core_baseline' else ('promote_best_candidate_group_for_next_read_only_review' if best else 'missing_or_insufficient_input_data')),
         'context_logs_loaded': load_context_logs(),
         'db_inspection': inspect_db_read_only(),
         'safety': {
