@@ -14,3 +14,21 @@ shadow_comparison.csv
 logs/
 mamuyy_hunter.db
 db_backups/
+
+# Runtime logs / generated telemetry
+execution_log.csv
+flow_log.csv
+orchestrator_log.csv
+regime_history.csv
+signals_log.csv
+nohup.out
+
+# Runtime / audit generated artifacts
+manual_audit_backups/
+data/
+*.db-journal
+ml_quality_audit.json
+
+# Local helper artifacts
+backup_hunter.sh
+regime_audit.sql

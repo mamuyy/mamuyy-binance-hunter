@@ -1,2 +1,0 @@
-timestamp,symbol,execution_profile,expected_fill_price,slippage_percent,execution_cost,fill_probability,latency_risk,liquidity_risk,execution_quality_score,pnl_before_execution,execution_adjusted_pnl
-2026-05-15T08:41:14.850614+00:00,CLUSDT,STRESSED,100.74813244,0.3867,0.4267,89.67,30.32,5.0,87.76,0,-0.4267
