@@ -143,10 +143,41 @@ def main():
     ]
 
     LOGS.mkdir(parents=True, exist_ok=True)
+    objective = {
+        'baseline_brier': BASELINE_BRIER,
+        'target_brier': TARGET_BRIER,
+        'required_improvement': round(BASELINE_BRIER - TARGET_BRIER, 6),
+    }
+    analysis = {
+        'unused_columns': {
+            'csv_unused_vs_current_feature_set': unused_csv_cols,
+            'db_columns_catalog_count': len(set(all_db_cols)),
+        },
+        'pre_signal_safe_features': leakage_safe,
+        'weak_separation_features_smallest_gaps_first': weak_sep[:20],
+        'candidate_feature_groups_available_columns': grouped,
+        'brier_improvement_estimates': estimates,
+    }
+    recommended_compact_next_pr = {
+        'title': 'Phase2C: add read-only feature candidate extraction + validation harness (paper only)',
+        'scope': [
+            'Add offline extractor that computes pre-signal-only candidate features for top 2 groups: volatility_trend_momentum + regime_age_stability.',
+            'Add validator that joins candidates with existing calibration labels and reports leakage checks + univariate separation + simple logistic delta Brier.',
+            'Write outputs to logs only; no DB writes; no production scoring path changes.'
+        ],
+        'expected_result': 'Fastest realistic path to close >=0.007747 Brier gap is additive gains from volatility/trend/momentum plus regime stability features before any execution changes.',
+        'safety': {'paper_only': True, 'db_write': False, 'production_scoring_change': False, 'execution_change': False},
+    }
+    final_recommendation = {
+        'phase_2c_status': 'REVIEW_NOT_PASSED',
+        'phase_3_status': 'LOCKED',
+        'real_execution': 'BLOCKED',
+    }
+
     report = {
         'build_time_utc': datetime.now(timezone.utc).isoformat(),
         'mode': 'READ_ONLY_PHASE2C_FEATURE_SOURCE_GAP_ANALYSIS',
-        'objective': {'baseline_brier': BASELINE_BRIER, 'target_brier': TARGET_BRIER, 'required_improvement': round(BASELINE_BRIER-TARGET_BRIER, 6)},
+        'objective': objective,
         'inputs': {
             'csv_used': csv_info['path'] if csv_info else None,
             'csv_rows': len(csv_info['rows']) if csv_info else 0,
@@ -154,28 +185,22 @@ def main():
             'db_files': [d['path'] for d in db_info],
             'context_logs_present': context_logs,
         },
-        'analysis': {
-            'unused_columns': {'csv_unused_vs_current_feature_set': unused_csv_cols, 'db_columns_catalog_count': len(set(all_db_cols))},
-            'pre_signal_safe_features': leakage_safe,
-            'weak_separation_features_smallest_gaps_first': weak_sep[:20],
-            'candidate_feature_groups_available_columns': grouped,
-            'brier_improvement_estimates': estimates,
-        },
-        'recommended_compact_next_pr': {
-            'title': 'Phase2C: add read-only feature candidate extraction + validation harness (paper only)',
-            'scope': [
-                'Add offline extractor that computes pre-signal-only candidate features for top 2 groups: volatility_trend_momentum + regime_age_stability.',
-                'Add validator that joins candidates with existing calibration labels and reports leakage checks + univariate separation + simple logistic delta Brier.',
-                'Write outputs to logs only; no DB writes; no production scoring path changes.'
-            ],
-            'expected_result': 'Fastest realistic path to close >=0.007747 Brier gap is additive gains from volatility/trend/momentum plus regime stability features before any execution changes.',
-            'safety': {'paper_only': True, 'db_write': False, 'production_scoring_change': False, 'execution_change': False},
-        },
-        'final_recommendation': {
-            'phase_2c_status': 'REVIEW_NOT_PASSED',
-            'phase_3_status': 'LOCKED',
-            'real_execution': 'BLOCKED'
-        }
+        'analysis': analysis,
+        'recommended_compact_next_pr': recommended_compact_next_pr,
+        'final_recommendation': final_recommendation,
+
+        # Review-friendly top-level aliases (preserve nested schema above).
+        'phase2c_status': final_recommendation['phase_2c_status'],
+        'phase3_status': final_recommendation['phase_3_status'],
+        'real_execution_status': final_recommendation['real_execution'],
+        'baseline_brier': objective['baseline_brier'],
+        'target_brier': objective['target_brier'],
+        'brier_gap': objective['required_improvement'],
+        'recommended_next_pr': recommended_compact_next_pr['title'],
+        'safety': recommended_compact_next_pr['safety'],
+        'feature_group_priorities': analysis['brier_improvement_estimates'],
+        'existing_unused_columns': analysis['unused_columns'],
+        'leakage_safe_columns': analysis['pre_signal_safe_features'],
     }
     OUT.write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(str(OUT))
