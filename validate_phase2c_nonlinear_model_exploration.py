@@ -34,6 +34,14 @@ def to_float(v):
         return None
 
 
+def sigmoid(z):
+    if z >= 0:
+        ez = math.exp(-z)
+        return 1.0 / (1.0 + ez)
+    ez = math.exp(z)
+    return ez / (1.0 + ez)
+
+
 def brier(p, y):
     return sum((pp - yy) ** 2 for pp, yy in zip(p, y)) / len(y) if y else None
 
@@ -117,22 +125,81 @@ def leakage_safe_numeric_fields(fields):
 
 
 def build_matrix(rows, features):
-    return [[float(r.get(k, 0.0)) for k in features] for r in rows], [r['y'] for r in rows]
+    x = [[float(r.get(k, 0.0)) for k in features] for r in rows]
+    y = [r['y'] for r in rows]
+    return x, y
 
 
-def run_model(name, model, train_rows, valid_rows, features, baseline):
-    xtr, ytr = build_matrix(train_rows, features)
-    xva, yva = build_matrix(valid_rows, features)
-    model.fit(xtr, ytr)
-    p_tr = [float(p[1]) for p in model.predict_proba(xtr)]
-    p_va = [float(p[1]) for p in model.predict_proba(xva)]
-    b_tr, b_va = brier(p_tr, ytr), brier(p_va, yva)
+def fit_logistic(x, y, lr=0.05, epochs=1400, l2=0.05):
+    if not x:
+        return []
+    m = len(x[0])
+    w = [0.0] * (m + 1)
+    n = len(y)
+    for _ in range(epochs):
+        g = [0.0] * (m + 1)
+        for row, yy in zip(x, y):
+            z = w[0] + sum(w[j + 1] * row[j] for j in range(m))
+            p = sigmoid(z)
+            e = p - yy
+            g[0] += e
+            for j in range(m):
+                g[j + 1] += e * row[j]
+        w[0] -= lr * (g[0] / n)
+        for j in range(1, m + 1):
+            w[j] -= lr * ((g[j] / n) + l2 * w[j])
+    return w
+
+
+def predict_logistic(weights, x):
+    if not x:
+        return []
+    m = len(x[0])
+    out = []
+    for row in x:
+        z = weights[0] + sum(weights[j + 1] * row[j] for j in range(m))
+        p = sigmoid(z)
+        out.append(min(0.99, max(0.01, p)))
+    return out
+
+
+def fit_stump(x, y):
+    if not x or not x[0]:
+        return None
+    best = None
+    for j in range(len(x[0])):
+        vals = sorted(set(row[j] for row in x))
+        if len(vals) == 1:
+            thresholds = vals
+        else:
+            thresholds = [(vals[i] + vals[i + 1]) / 2.0 for i in range(len(vals) - 1)]
+        for t in thresholds[:64]:
+            left_idx = [i for i, row in enumerate(x) if row[j] <= t]
+            right_idx = [i for i, row in enumerate(x) if row[j] > t]
+            lp = (sum(y[i] for i in left_idx) / len(left_idx)) if left_idx else 0.5
+            rp = (sum(y[i] for i in right_idx) / len(right_idx)) if right_idx else 0.5
+            preds = [lp if row[j] <= t else rp for row in x]
+            b = brier(preds, y)
+            if best is None or b < best['brier']:
+                best = {'feature_idx': j, 'threshold': t, 'left_p': min(0.99, max(0.01, lp)), 'right_p': min(0.99, max(0.01, rp)), 'brier': b}
+    return best
+
+
+def predict_stump(stump, x):
+    if not stump:
+        return [0.5 for _ in x]
+    j = stump['feature_idx']
+    t = stump['threshold']
+    return [stump['left_p'] if row[j] <= t else stump['right_p'] for row in x]
+
+
+def summarize_result(model_name, feature_set, train_rows, valid_rows, p_tr, y_tr, p_va, y_va, baseline, feature_importance=None):
+    b_tr = brier(p_tr, y_tr)
+    b_va = brier(p_va, y_va)
     st = stats(p_va)
-    fi = None
-    if hasattr(model, 'feature_importances_'):
-        fi = sorted([{'feature': f, 'importance': round(float(i), 6)} for f, i in zip(features, model.feature_importances_)], key=lambda x: x['importance'], reverse=True)[:12]
     return {
-        'model_name': name,
+        'model_name': model_name,
+        'feature_set': feature_set,
         'train_rows': len(train_rows),
         'validation_rows': len(valid_rows),
         'brier': round(b_va, 6),
@@ -145,7 +212,7 @@ def run_model(name, model, train_rows, valid_rows, features, baseline):
         'prediction_std': st['std'],
         'saturation_flag': bool((st['max'] is not None and st['max'] >= 0.99) or (st['min'] is not None and st['min'] <= 0.01) or (st['std'] is not None and st['std'] < 0.03)),
         'overfit_flag': bool((b_va - b_tr) > 0.015),
-        'feature_importance': fi,
+        'feature_importance': feature_importance,
     }
 
 
@@ -154,9 +221,40 @@ def main():
     train = [r for r in rows if TRAIN_START <= r['dt'] < TRAIN_END]
     valid = [r for r in rows if r['dt'] >= VALID_START]
     results = []
+    skipped = []
+
+    # optional dependencies
+    sklearn_available = False
+    xgboost_available = False
+    sklearn_models = []
+    xgb_ctor = None
+
+    try:
+        from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestClassifier
+        sklearn_available = True
+        sklearn_models = [
+            ('RandomForestClassifier', lambda: RandomForestClassifier(n_estimators=300, max_depth=6, min_samples_leaf=8, random_state=42)),
+            ('GradientBoostingClassifier', lambda: GradientBoostingClassifier(random_state=42)),
+            ('HistGradientBoostingClassifier', lambda: HistGradientBoostingClassifier(max_depth=4, learning_rate=0.05, random_state=42)),
+        ]
+    except Exception:
+        skipped.extend([
+            {'model_name': 'RandomForestClassifier', 'reason': 'sklearn_not_installed'},
+            {'model_name': 'GradientBoostingClassifier', 'reason': 'sklearn_not_installed'},
+            {'model_name': 'HistGradientBoostingClassifier', 'reason': 'sklearn_not_installed'},
+        ])
+
+    try:
+        import xgboost as xgb
+        xgboost_available = True
+        xgb_ctor = lambda: xgb.XGBClassifier(n_estimators=250, max_depth=4, learning_rate=0.05, subsample=0.9, colsample_bytree=0.9, objective='binary:logistic', eval_metric='logloss', random_state=42)
+    except Exception:
+        skipped.append({'model_name': 'XGBoostClassifier', 'reason': 'xgboost_not_installed'})
 
     report = {
         'mode': 'READ_ONLY_PHASE2C_NONLINEAR_MODEL_EXPLORATION',
+        'dependency_status': {'sklearn_available': sklearn_available, 'xgboost_available': xgboost_available},
+        'skipped_models': skipped,
         'baseline_brier': None,
         'model_results': [],
         'best_model': None,
@@ -177,59 +275,88 @@ def main():
         print(str(OUT_PATH))
         return
 
-    from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier, RandomForestClassifier
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.tree import DecisionTreeClassifier
-
     core = ['score_norm', 'regime_score_norm', 'delta_norm', 'holding_norm', 'sl_dist', 'tp1_dist', 'tp2_dist', 'rr1', 'rr2']
     cand = ['cand_score_mom', 'cand_regime_score_mom', 'cand_rolling_return', 'cand_atr_like', 'cand_trend_slope']
     all_safe = sorted(set(core + cand + leakage_safe_numeric_fields(fields)))
     feature_sets = [('A_core', core), ('B_core_plus_proxy', sorted(set(core + cand))), ('C_all_numeric_pre_signal', all_safe)]
 
-    # baseline
-    bmodel = LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42)
-    base = run_model('LogisticBaseline', bmodel, train, valid, core, baseline=0.0)
-    base['feature_set'] = 'A_core'
+    # dependency-free baseline logistic on A_core
+    xtr, ytr = build_matrix(train, core)
+    xva, yva = build_matrix(valid, core)
+    w = fit_logistic(xtr, ytr)
+    p_tr = predict_logistic(w, xtr)
+    p_va = predict_logistic(w, xva)
+    base = summarize_result('LogisticBaselineInternal', 'A_core', train, valid, p_tr, ytr, p_va, yva, baseline=0.0)
     base['improvement_vs_baseline'] = 0.0
     report['baseline_brier'] = base['brier']
     results.append(base)
 
-    constructors = [
-        ('LogisticBaseline', lambda: LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42)),
-        ('RandomForestClassifier', lambda: RandomForestClassifier(n_estimators=300, max_depth=6, min_samples_leaf=8, random_state=42)),
-        ('GradientBoostingClassifier', lambda: GradientBoostingClassifier(random_state=42)),
-        ('HistGradientBoostingClassifier', lambda: HistGradientBoostingClassifier(max_depth=4, learning_rate=0.05, random_state=42)),
-        ('DecisionTreeShallow', lambda: DecisionTreeClassifier(max_depth=3, min_samples_leaf=12, random_state=42)),
-    ]
-    try:
-        import xgboost as xgb
-        constructors.append(('XGBoostClassifier', lambda: xgb.XGBClassifier(n_estimators=250, max_depth=4, learning_rate=0.05, subsample=0.9, colsample_bytree=0.9, objective='binary:logistic', eval_metric='logloss', random_state=42)))
-    except Exception:
-        pass
-
     for fs_name, feats in feature_sets:
-        for model_name, mk in constructors:
-            if model_name == 'LogisticBaseline' and fs_name == 'A_core':
-                continue
-            res = run_model(model_name, mk(), train, valid, feats, baseline=report['baseline_brier'])
-            res['feature_set'] = fs_name
-            results.append(res)
+        xtr, ytr = build_matrix(train, feats)
+        xva, yva = build_matrix(valid, feats)
 
-    best = min(results, key=lambda x: x['brier'])
-    report['model_results'] = results
+        # dependency-free logistic for each feature set
+        w = fit_logistic(xtr, ytr)
+        results.append(summarize_result('LogisticBaselineInternal', fs_name, train, valid, predict_logistic(w, xtr), ytr, predict_logistic(w, xva), yva, report['baseline_brier']))
+
+        # dependency-free stump sanity nonlinear exploration
+        stump = fit_stump(xtr, ytr)
+        fi = None
+        if stump:
+            fi = [{'feature': feats[stump['feature_idx']], 'importance': 1.0}]
+        results.append(summarize_result('DecisionStumpThreshold', fs_name, train, valid, predict_stump(stump, xtr), ytr, predict_stump(stump, xva), yva, report['baseline_brier'], feature_importance=fi))
+
+        if sklearn_available:
+            for model_name, mk in sklearn_models:
+                model = mk()
+                model.fit(xtr, ytr)
+                p_tr = [float(p[1]) for p in model.predict_proba(xtr)]
+                p_va = [float(p[1]) for p in model.predict_proba(xva)]
+                fim = None
+                if hasattr(model, 'feature_importances_'):
+                    fim = sorted([{'feature': f, 'importance': round(float(i), 6)} for f, i in zip(feats, model.feature_importances_)], key=lambda x: x['importance'], reverse=True)[:12]
+                results.append(summarize_result(model_name, fs_name, train, valid, p_tr, ytr, p_va, yva, report['baseline_brier'], feature_importance=fim))
+
+        if xgboost_available and xgb_ctor:
+            model = xgb_ctor()
+            model.fit(xtr, ytr)
+            p_tr = [float(p) for p in model.predict_proba(xtr)[:, 1]]
+            p_va = [float(p) for p in model.predict_proba(xva)[:, 1]]
+            fim = None
+            if hasattr(model, 'feature_importances_'):
+                fim = sorted([{'feature': f, 'importance': round(float(i), 6)} for f, i in zip(feats, model.feature_importances_)], key=lambda x: x['importance'], reverse=True)[:12]
+            results.append(summarize_result('XGBoostClassifier', fs_name, train, valid, p_tr, ytr, p_va, yva, report['baseline_brier'], feature_importance=fim))
+
+    # remove duplicate A_core logistic second run by keeping first per tuple
+    dedup = []
+    seen = set()
+    for r in results:
+        key = (r['model_name'], r['feature_set'])
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append(r)
+
+    best = min(dedup, key=lambda x: x['brier']) if dedup else None
+    report['model_results'] = dedup
     report['best_model'] = best
-    report['passes_target'] = bool(best['passes_target'])
-    report['gap_to_target_0_24'] = round(best['brier'] - TARGET, 6)
+    report['passes_target'] = bool(best and best['passes_target'])
+    report['gap_to_target_0_24'] = round(best['brier'] - TARGET, 6) if best else None
     report['interpretation'] = {
-        'nonlinear_signal_found': bool(best['model_name'] != 'LogisticBaseline' and best['improvement_vs_baseline'] > 0.002),
-        'likely_data_feature_limitation': bool(best['brier'] > TARGET),
+        'nonlinear_signal_found': bool(best and best['model_name'] not in ('LogisticBaselineInternal',) and best['improvement_vs_baseline'] > 0.002),
+        'likely_data_feature_limitation': bool((best is None) or (best['brier'] > TARGET)),
     }
-    report['recommendation'] = (
-        'A) promote nonlinear model to deeper read-only validation' if best['passes_target'] else
-        'C) pivot to label/target redesign' if best['improvement_vs_baseline'] < 0.001 else
-        'B) collect more outcomes and richer feature sources'
-    )
-    report['phase2c_status'] = 'PASSED' if best['passes_target'] else 'REVIEW_NOT_PASSED'
+
+    if not sklearn_available:
+        report['recommendation'] = 'cannot_complete_full_nonlinear_test_without_optional_dependencies_collect_more_data_or_run_in_env_with_sklearn'
+    else:
+        report['recommendation'] = (
+            'A) promote nonlinear model to deeper read-only validation' if best and best['passes_target'] else
+            'C) pivot to label/target redesign' if best and best['improvement_vs_baseline'] < 0.001 else
+            'B) collect more outcomes and richer feature sources'
+        )
+
+    report['phase2c_status'] = 'PASSED' if best and best['passes_target'] else 'REVIEW_NOT_PASSED'
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(report, indent=2), encoding='utf-8')
