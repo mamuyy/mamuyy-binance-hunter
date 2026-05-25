@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Read-only Phase 4 RandomForest robustness validation on fixed temporal split."""
+"""Read-only Phase 4 RandomForest robustness validation on fixed temporal split.
+
+Research dependencies: `python -m pip install pandas scikit-learn xgboost`.
+"""
 import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import brier_score_loss, roc_auc_score
@@ -39,39 +43,42 @@ def read_optional_json(path: Path):
 
 
 def ece_score(y_true, y_prob, bins=10):
+    y_true = np.asarray(y_true, dtype=float)
+    y_prob = np.asarray(y_prob, dtype=float)
     if len(y_true) == 0:
         return None
-    y_true = pd.Series(y_true)
-    y_prob = pd.Series(y_prob)
     ece = 0.0
     n = len(y_true)
     for i in range(bins):
         lo = i / bins
         hi = (i + 1) / bins
-        mask = (y_prob >= lo) & ((y_prob < hi) if i < bins - 1 else (y_prob <= hi))
-        cnt = int(mask.sum())
+        if i < bins - 1:
+            mask = (y_prob >= lo) & (y_prob < hi)
+        else:
+            mask = (y_prob >= lo) & (y_prob <= hi)
+        cnt = int(np.sum(mask))
         if cnt == 0:
             continue
-        conf = float(y_prob[mask].mean())
-        acc = float(y_true[mask].mean())
+        conf = float(np.mean(y_prob[mask]))
+        acc = float(np.mean(y_true[mask]))
         ece += (cnt / n) * abs(acc - conf)
     return ece
 
 
 def metrics(y_true, y_prob):
-    y_true = pd.Series(y_true)
-    y_prob = pd.Series(y_prob)
+    y_true = np.asarray(y_true, dtype=float)
+    y_prob = np.asarray(y_prob, dtype=float)
     auc = None
-    if y_true.nunique() > 1:
+    if np.unique(y_true).size > 1:
         auc = float(roc_auc_score(y_true, y_prob))
     return {
         "brier": float(brier_score_loss(y_true, y_prob)) if len(y_true) else None,
         "AUC": auc,
         "ECE": ece_score(y_true, y_prob, bins=10),
-        "prediction_min": float(y_prob.min()) if len(y_prob) else None,
-        "prediction_max": float(y_prob.max()) if len(y_prob) else None,
-        "prediction_mean": float(y_prob.mean()) if len(y_prob) else None,
-        "prediction_std": float(y_prob.std(ddof=0)) if len(y_prob) else None,
+        "prediction_min": float(np.min(y_prob)) if len(y_prob) else None,
+        "prediction_max": float(np.max(y_prob)) if len(y_prob) else None,
+        "prediction_mean": float(np.mean(y_prob)) if len(y_prob) else None,
+        "prediction_std": float(np.std(y_prob, ddof=0)) if len(y_prob) else None,
     }
 
 
@@ -114,8 +121,8 @@ def main():
 
     train_mask = (df["signal_timestamp"] >= TRAIN_START) & (df["signal_timestamp"] < TRAIN_END)
     valid_mask = df["signal_timestamp"] >= VALID_START
-    train_df = df[train_mask].copy()
-    valid_df = df[valid_mask].copy()
+    train_df = df[train_mask].copy().reset_index(drop=True)
+    valid_df = df[valid_mask].copy().reset_index(drop=True)
 
     fixed = fit_eval(train_df, valid_df, seed=42)
     fixed_brier = fixed["validation_metrics"]["brier"]
@@ -133,8 +140,8 @@ def main():
     idx = df.index.to_list()
     for i in range(3):
         split = int(len(idx) * (0.55 + i * 0.1))
-        tr = df.iloc[:split]
-        va = df.iloc[split : min(len(df), split + max(20, int(len(df) * 0.15)))]
+        tr = df.iloc[:split].copy().reset_index(drop=True)
+        va = df.iloc[split : min(len(df), split + max(20, int(len(df) * 0.15)))].copy().reset_index(drop=True)
         if len(tr) < 50 or len(va) < 20:
             continue
         out = fit_eval(tr, va, seed=42)
@@ -147,8 +154,8 @@ def main():
     for i in range(3):
         tr_end = base + i * step
         va_end = min(len(df), tr_end + step)
-        tr = df.iloc[:tr_end]
-        va = df.iloc[tr_end:va_end]
+        tr = df.iloc[:tr_end].copy().reset_index(drop=True)
+        va = df.iloc[tr_end:va_end].copy().reset_index(drop=True)
         if len(tr) < 50 or len(va) < 20:
             continue
         out = fit_eval(tr, va, seed=42)
