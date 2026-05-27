@@ -218,6 +218,9 @@ def _warnings(report: Dict[str, Any]) -> List[str]:
         warnings.append("health guardian status HALT")
     if str(report.get("latest_telegram_send_status")).upper() == "FAILED":
         warnings.append("latest Telegram send failed")
+    telegram_result = report.get("telegram_result", {})
+    if str(telegram_result.get("log_status", "")).upper() == "DEGRADED":
+        warnings.append("telegram event logging degraded")
     return warnings[:8]
 
 
@@ -395,13 +398,24 @@ def generate_daily_ops_report(
     with open(json_path, "w", encoding="utf-8") as json_file:
         json.dump(report, json_file, indent=2, default=str)
 
-    telegram = {"send_status": "SKIPPED", "enabled": config.telegram_enabled}
+    telegram = {"send_status": "SKIPPED", "enabled": config.telegram_enabled, "log_status": "SKIPPED", "log_warning": ""}
     if send_telegram:
-        telegram = send_or_preview("DAILY_OPS_REPORT", _telegram_message(report), db_path)
+        try:
+            telegram = send_or_preview("DAILY_OPS_REPORT", _telegram_message(report), db_path)
+        except Exception as exc:
+            telegram = {
+                "send_status": "DEGRADED",
+                "enabled": config.telegram_enabled,
+                "error_message": str(exc),
+                "log_status": "DEGRADED",
+                "log_warning": f"telegram reporting degraded: {exc}",
+            }
     report["telegram_result"] = {
         "send_status": telegram.get("send_status"),
         "enabled": telegram.get("enabled"),
         "error_message": telegram.get("error_message", ""),
+        "log_status": telegram.get("log_status", "UNKNOWN"),
+        "log_warning": telegram.get("log_warning", ""),
     }
     report["markdown_path"] = markdown_path
     report["json_path"] = json_path
