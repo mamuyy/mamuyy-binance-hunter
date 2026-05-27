@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
@@ -57,18 +58,48 @@ def log_telegram_event(
     send_status: str,
     error_message: str = "",
     db_path: str = "mamuyy_hunter.db",
-) -> None:
+    retries: int = 3,
+    base_backoff_seconds: float = 0.1,
+) -> Dict[str, Any]:
     init_db(db_path)
-    with sqlite3.connect(db_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO telegram_events
-                (timestamp, event_type, message, send_status, error_message)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (_now(), event_type, message, send_status, error_message),
-        )
-        connection.commit()
+    attempts = max(1, retries)
+    for attempt in range(attempts):
+        try:
+            with sqlite3.connect(db_path, timeout=5.0) as connection:
+                connection.execute("PRAGMA busy_timeout = 5000")
+                connection.execute(
+                    """
+                    INSERT INTO telegram_events
+                        (timestamp, event_type, message, send_status, error_message)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (_now(), event_type, message, send_status, error_message),
+                )
+                connection.commit()
+            return {"ok": True, "status": "LOGGED", "attempts": attempt + 1, "warning": ""}
+        except sqlite3.OperationalError as exc:
+            lock_error = "database is locked" in str(exc).lower()
+            if not lock_error or attempt >= attempts - 1:
+                return {
+                    "ok": False,
+                    "status": "DEGRADED",
+                    "attempts": attempt + 1,
+                    "warning": f"telegram event logging failed: {exc}",
+                }
+            time.sleep(base_backoff_seconds * (attempt + 1))
+        except sqlite3.Error as exc:
+            return {
+                "ok": False,
+                "status": "DEGRADED",
+                "attempts": attempt + 1,
+                "warning": f"telegram event logging failed: {exc}",
+            }
+    return {
+        "ok": False,
+        "status": "DEGRADED",
+        "attempts": attempts,
+        "warning": "telegram event logging failed: retry loop exhausted",
+    }
 
 
 def _send_to_telegram(message: str) -> tuple[str, str]:
@@ -96,13 +127,16 @@ def send_or_preview(
     db_path: str = "mamuyy_hunter.db",
 ) -> Dict[str, Any]:
     status, error = _send_to_telegram(message)
-    log_telegram_event(event_type, message, status, error, db_path)
+    log_result = log_telegram_event(event_type, message, status, error, db_path)
     return {
         "event_type": event_type,
         "enabled": config.telegram_enabled,
         "send_status": status,
         "error_message": error,
         "message": message,
+        "log_status": log_result.get("status", "UNKNOWN"),
+        "log_warning": log_result.get("warning", ""),
+        "log_attempts": log_result.get("attempts", 0),
     }
 
 
