@@ -32,3 +32,6 @@ ml_quality_audit.json
 # Local helper artifacts
 backup_hunter.sh
 regime_audit.sql
+
+.venv_phase4_research/
+orchestrator_log.csv.*
