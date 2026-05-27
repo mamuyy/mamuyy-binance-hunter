@@ -289,12 +289,58 @@ def _telegram_message(report: Dict[str, Any]) -> str:
             f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
             f"Telegram: {report.get('latest_telegram_send_status')}",
             f"Guardian: {report.get('latest_guardian_status')} via {report.get('latest_guardian_source')}",
+            f"Incidents: {len(report.get('incident_log', []))}",
             f"Warnings: {' | '.join(map(str, warnings[:3]))}",
             f"Next: {report.get('recommended_next_action')}",
         ]
     )
 
 
+
+
+def _db_lock_incident_summary(log_path: str = "orchestrator_log.csv") -> Dict[str, Any]:
+    summary: Dict[str, Any] = {
+        "incident_type": "DB_LOCK",
+        "affected_module": "runtime_heartbeats",
+        "first_seen_utc": "",
+        "last_seen_utc": "",
+        "occurrence_count": 0,
+        "auto_recovered": False,
+        "severity": "LOW",
+        "recommended_action": "observe",
+        "governance_impact": "monitoring_only",
+    }
+    if not os.path.exists(log_path):
+        return summary
+
+    failures: List[str] = []
+    successes: List[str] = []
+    with open(log_path, newline="", encoding="utf-8") as file:
+        for row in csv.DictReader(file):
+            if row.get("engine") != "heartbeat_db":
+                continue
+            message = str(row.get("message") or "")
+            ts = str(row.get("timestamp") or "")
+            if "runtime_heartbeats write failed" in message and "database is locked" in message:
+                failures.append(ts)
+            elif "runtime_heartbeats write success" in message:
+                successes.append(ts)
+
+    if not failures:
+        return summary
+
+    summary["first_seen_utc"] = failures[0]
+    summary["last_seen_utc"] = failures[-1]
+    summary["occurrence_count"] = len(failures)
+    summary["auto_recovered"] = bool(successes and successes[-1] >= failures[-1])
+    if summary["occurrence_count"] >= 5:
+        summary["severity"] = "MEDIUM"
+    if summary["occurrence_count"] >= 20:
+        summary["severity"] = "HIGH"
+    if summary["severity"] != "LOW" or not summary["auto_recovered"]:
+        summary["recommended_action"] = "increase sqlite busy_timeout/retry, audit concurrent writers, verify WAL mode"
+        summary["governance_impact"] = "promotion_hold_until_stable"
+    return summary
 def generate_daily_ops_report(
     db_path: str = "mamuyy_hunter.db",
     markdown_path: str = "logs/daily_ops_report.md",
@@ -310,6 +356,7 @@ def generate_daily_ops_report(
     metrics = portfolio.get("metrics", {})
     broadcast = _broadcast_counts(db_path)
     guardian = _latest_guardian_status(db_path, bool(db_health.get("ok")), heartbeat)
+    db_lock_incident = _db_lock_incident_summary("orchestrator_log.csv")
 
     report = {
         "timestamp": _now(),
@@ -334,6 +381,7 @@ def generate_daily_ops_report(
         "latest_guardian_source": guardian.get("source", "-"),
         "hunter_session": guardian.get("hunter_session", "-"),
         "dashboard_session": guardian.get("dashboard_session", "-"),
+        "incident_log": [db_lock_incident] if db_lock_incident.get("occurrence_count", 0) > 0 else [],
     }
     warning_reasons = _warnings(report)
     report["top_warning_reasons"] = warning_reasons or ["none"]
