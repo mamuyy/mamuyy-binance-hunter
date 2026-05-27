@@ -224,6 +224,70 @@ def _warnings(report: Dict[str, Any]) -> List[str]:
     return warnings[:8]
 
 
+def _warning_category(reason: str) -> str:
+    text = str(reason or "").lower()
+    if "database" in text or "db lock" in text or "locked" in text:
+        return "DB_LOCK"
+    if "heartbeat stale" in text:
+        return "HEARTBEAT_STALE"
+    if "broadcast" in text and ("reject" in text or "skip" in text):
+        return "BROADCAST_REJECTION"
+    if "macro stress" in text or "cross-market stress" in text:
+        return "REGIME_STRESS"
+    if "telegram" in text and ("degraded" in text or "failed" in text):
+        return "TELEMETRY_DEGRADED"
+    if "guardian" in text and ("halt" in text or "missing" in text):
+        return "GUARDIAN_RECOVERY"
+    if "freshness" in text or "stale" in text:
+        return "DATA_FRESHNESS"
+    if "drawdown" in text:
+        return "RESOURCE_PRESSURE"
+    return "TELEMETRY_DEGRADED"
+
+
+def _warning_reason_aggregation(report: Dict[str, Any], incidents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    aggregated: Dict[str, Dict[str, Any]] = {}
+    for reason in report.get("top_warning_reasons", []):
+        key = str(reason)
+        item = aggregated.setdefault(
+            key,
+            {"warning_reason": key, "category": _warning_category(key), "occurrence_count": 0},
+        )
+        item["occurrence_count"] += 1
+
+    for incident in incidents:
+        reason = str(incident.get("incident_type") or "incident")
+        key = f"incident:{reason}"
+        item = aggregated.setdefault(
+            key,
+            {"warning_reason": key, "category": str(incident.get("incident_type") or "TELEMETRY_DEGRADED"), "occurrence_count": 0},
+        )
+        item["occurrence_count"] += int(incident.get("occurrence_count") or 0)
+
+    return sorted(aggregated.values(), key=lambda x: x["occurrence_count"], reverse=True)[:8]
+
+
+def _regime_summary(report: Dict[str, Any]) -> Dict[str, Any]:
+    macro_state = str(report.get("macro_state") or "UNKNOWN")
+    cross_state = str(report.get("cross_market_state") or "UNKNOWN")
+    stress_score = max(_num(report.get("macro_risk_score")), _num(report.get("cross_market_stress_score")))
+    stress_regime = macro_state if macro_state in {"HIGH_STRESS", "PANIC"} else cross_state
+    transition = macro_state != "UNKNOWN" and cross_state != "UNKNOWN" and macro_state != cross_state
+    confidence = "HIGH" if stress_score < 0.4 else "MEDIUM" if stress_score < 0.7 else "LOW"
+    warning_reason = "none"
+    if stress_score >= 0.7:
+        warning_reason = f"stress score elevated: {stress_score}"
+    elif transition:
+        warning_reason = f"regime transition observed: macro={macro_state} cross={cross_state}"
+    return {
+        "dominant_regime": macro_state if macro_state != "UNKNOWN" else cross_state,
+        "stress_regime": stress_regime,
+        "regime_transition_detected": transition,
+        "regime_confidence": confidence,
+        "regime_warning_reason": warning_reason,
+    }
+
+
 def _recommended_action(warnings: List[str], report: Dict[str, Any]) -> str:
     if any("heartbeat stale" in warning for warning in warnings):
         return "Check hunter tmux session and run python main.py --health-guardian-once."
@@ -257,6 +321,13 @@ def _markdown(report: Dict[str, Any]) -> str:
             f"- Cross Market State: `{report.get('cross_market_state')}`",
             f"- Cross Market Stress Score: `{report.get('cross_market_stress_score')}`",
             "",
+            "## Regime Summary",
+            f"- Dominant Regime: `{report.get('regime_summary', {}).get('dominant_regime')}`",
+            f"- Stress Regime: `{report.get('regime_summary', {}).get('stress_regime')}`",
+            f"- Regime Transition Detected: `{report.get('regime_summary', {}).get('regime_transition_detected')}`",
+            f"- Regime Confidence: `{report.get('regime_summary', {}).get('regime_confidence')}`",
+            f"- Regime Warning Reason: `{report.get('regime_summary', {}).get('regime_warning_reason')}`",
+            "",
             "## Paper Trading",
             f"- Internal Paper Trade Count: `{report.get('internal_paper_trade_count')}`",
             f"- Internal Paper Total PnL: `{report.get('internal_paper_total_pnl')}`",
@@ -272,6 +343,12 @@ def _markdown(report: Dict[str, Any]) -> str:
             "",
             "## Warnings",
             *[f"- {warning}" for warning in warnings],
+            "",
+            "## Warning Reason Aggregation",
+            *[
+                f"- [{item.get('category')}] {item.get('warning_reason')} (count={item.get('occurrence_count')})"
+                for item in report.get("warning_reason_aggregation", [])
+            ],
             "",
             "## Recommended Next Action",
             report.get("recommended_next_action", "-"),
@@ -386,9 +463,21 @@ def generate_daily_ops_report(
         "hunter_session": guardian.get("hunter_session", "-"),
         "dashboard_session": guardian.get("dashboard_session", "-"),
         "incident_log": [db_lock_incident] if db_lock_incident.get("occurrence_count", 0) > 0 else [],
+        "warning_taxonomy_codes": [
+            "DB_LOCK",
+            "HEARTBEAT_STALE",
+            "BROADCAST_REJECTION",
+            "REGIME_STRESS",
+            "TELEMETRY_DEGRADED",
+            "GUARDIAN_RECOVERY",
+            "DATA_FRESHNESS",
+            "RESOURCE_PRESSURE",
+        ],
     }
     warning_reasons = _warnings(report)
     report["top_warning_reasons"] = warning_reasons or ["none"]
+    report["regime_summary"] = _regime_summary(report)
+    report["warning_reason_aggregation"] = _warning_reason_aggregation(report, report.get("incident_log", []))
     report["recommended_next_action"] = _recommended_action(warning_reasons, report)
 
     os.makedirs(os.path.dirname(markdown_path) or ".", exist_ok=True)
