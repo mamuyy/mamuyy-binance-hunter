@@ -20,6 +20,8 @@ from risk_manager import RiskConfig, check_execution_safety
 
 DB_PATH = config.database_url or config.database_path
 REFRESH_SECONDS = 60
+TRANSITION_WARNING_TAIL_ROWS = 500
+EMERGENCY_BRAKE_EVENTS_TAIL_ROWS = 200
 
 
 st.set_page_config(
@@ -316,11 +318,13 @@ def read_json_report(path: str) -> dict[str, Any]:
 
 
 @st.cache_data(ttl=REFRESH_SECONDS)
-def read_optional_csv(path: str) -> pd.DataFrame:
+def read_optional_csv(path: str, tail_rows: int | None = None) -> pd.DataFrame:
     if not os.path.exists(path):
         return _empty_df()
     try:
-        return pd.read_csv(path)
+        if tail_rows is None:
+            return pd.read_csv(path)
+        return pd.read_csv(path).tail(tail_rows).reset_index(drop=True)
     except Exception:
         return _empty_df()
 
@@ -485,8 +489,8 @@ def render_governance_risk_intelligence() -> None:
 
     regime_matrix = read_optional_csv("reports/regime_transition_matrix.csv")
     robustness_split = read_optional_csv("reports/robustness_time_split.csv")
-    brake_events = read_optional_csv("reports/emergency_brake_events.csv")
-    warning_timeseries = read_optional_csv("reports/transition_warning_timeseries.csv")
+    brake_events = read_optional_csv("reports/emergency_brake_events.csv", tail_rows=EMERGENCY_BRAKE_EVENTS_TAIL_ROWS)
+    warning_timeseries = read_optional_csv("reports/transition_warning_timeseries.csv", tail_rows=TRANSITION_WARNING_TAIL_ROWS)
 
     st.subheader("Optional Governance Artifacts")
     if research_summary_exists:
@@ -494,28 +498,38 @@ def render_governance_risk_intelligence() -> None:
     else:
         st.info("Research summary markdown not found.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Regime Transition Matrix**")
-        show_dataframe_or_info(regime_matrix, "regime_transition_matrix.csv not found.")
-        if not regime_matrix.empty and len(regime_matrix.columns) > 1:
-            matrix = regime_matrix.set_index(regime_matrix.columns[0]).apply(pd.to_numeric, errors="coerce")
-            st.plotly_chart(px.imshow(matrix.fillna(0), text_auto=True, aspect="auto"), use_container_width=True)
-    with col2:
-        st.markdown("**Robustness Time Split**")
-        show_dataframe_or_info(robustness_split, "robustness_time_split.csv not found.")
+    with st.expander("Regime Matrix / Robustness Artifacts", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Regime Transition Matrix**")
+            show_dataframe_or_info(regime_matrix, "regime_transition_matrix.csv not found.")
+            if not regime_matrix.empty and len(regime_matrix.columns) > 1:
+                matrix = regime_matrix.set_index(regime_matrix.columns[0]).apply(pd.to_numeric, errors="coerce")
+                st.plotly_chart(px.imshow(matrix.fillna(0), text_auto=True, aspect="auto"), use_container_width=True)
+        with col2:
+            st.markdown("**Robustness Time Split**")
+            show_dataframe_or_info(robustness_split, "robustness_time_split.csv not found.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Emergency Brake Events**")
-        show_dataframe_or_info(brake_events, "emergency_brake_events.csv not found.")
-    with col2:
-        st.markdown("**Transition Warning Timeseries**")
-        show_dataframe_or_info(warning_timeseries, "transition_warning_timeseries.csv not found.")
-        if not warning_timeseries.empty and len(warning_timeseries.columns) >= 2:
-            x_col = "timestamp" if "timestamp" in warning_timeseries.columns else warning_timeseries.columns[0]
-            y_col = "early_warning_score" if "early_warning_score" in warning_timeseries.columns else warning_timeseries.columns[1]
-            safe_plot_line(warning_timeseries, x_col, y_col, "Transition Early Warning Timeseries")
+    with st.expander("Emergency Brake / Transition Warning (tail)", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Emergency Brake Events (last {EMERGENCY_BRAKE_EVENTS_TAIL_ROWS})**")
+            show_dataframe_or_info(brake_events, "emergency_brake_events.csv not found.")
+        with col2:
+            st.markdown(f"**Transition Warning Timeseries (last {TRANSITION_WARNING_TAIL_ROWS})**")
+            show_dataframe_or_info(warning_timeseries, "transition_warning_timeseries.csv not found.")
+            if not warning_timeseries.empty and len(warning_timeseries.columns) >= 2:
+                x_col = "timestamp" if "timestamp" in warning_timeseries.columns else warning_timeseries.columns[0]
+                y_col = (
+                    "early_warning_score"
+                    if "early_warning_score" in warning_timeseries.columns
+                    else warning_timeseries.columns[1]
+                )
+                safe_plot_line(warning_timeseries, x_col, y_col, "Transition Early Warning Timeseries")
+
+    with st.expander("Drift Rolling Metrics (optional heavy)", expanded=False):
+        drift_rolling_metrics = read_optional_csv("reports/drift_rolling_metrics.csv")
+        show_dataframe_or_info(drift_rolling_metrics, "drift_rolling_metrics.csv not found.")
 
 
 def status_badge(label: str, status: str, detail: str = "") -> None:
