@@ -13,6 +13,7 @@ from database import (
     db_health_check,
     init_db,
 )
+from governance_audit import run_governance_audit
 from portfolio_analytics import calculate_portfolio_analytics
 from portfolio_observer import observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget
@@ -1082,6 +1083,75 @@ def read_promotion_scorecard() -> dict[str, Any]:
             },
             "warnings": [f"Promotion scorecard unavailable: {exc}"],
         }
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_governance_audit() -> dict[str, Any]:
+    report = read_json_report("reports/governance_audit.json")
+    if report:
+        return report
+    try:
+        return run_governance_audit(
+            output_path=None,
+            write_report=False,
+        )
+    except Exception as exc:
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "paper_only": True,
+            "consistency_score": 0,
+            "governance_health": "UNKNOWN",
+            "conflicts": [],
+            "stale_reports": [],
+            "missing_reports": [],
+            "policy_violations": [{"report": "governance_audit", "policy": "audit_available", "detail": str(exc)}],
+            "audit_severity": "CRITICAL",
+            "recommendations": ["Governance audit unavailable; keep PAPER_ONLY constraints active."],
+            "governance_constraints": {
+                "paper_only": "PAPER_ONLY",
+                "read_only_analytics": True,
+                "no_execution": True,
+                "no_deployment": True,
+                "no_live_trading": True,
+            },
+        }
+
+
+def render_governance_audit(audit: dict[str, Any]) -> None:
+    st.header("12. Governance Audit")
+    st.caption("Self-auditing PAPER_ONLY governance layer. Cached, summary-first, read-only analytics only.")
+
+    conflicts = audit.get("conflicts", []) if isinstance(audit, dict) else []
+    stale_reports = audit.get("stale_reports", []) if isinstance(audit, dict) else []
+    violations = audit.get("policy_violations", []) if isinstance(audit, dict) else []
+    severity = str(audit.get("audit_severity", "UNKNOWN")).upper()
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Consistency Score", f"{int(audit.get('consistency_score', 0))}%")
+    col2.metric("Governance Health", audit.get("governance_health", "UNKNOWN"))
+    col3.metric("Conflicts", len(conflicts))
+    col4.metric("Stale Reports", len(stale_reports))
+    col5.metric("Policy Violations", len(violations))
+
+    if severity == "CRITICAL":
+        st.error(f"Audit Severity: {severity}")
+    elif severity in {"HIGH", "MEDIUM"}:
+        st.warning(f"Audit Severity: {severity}")
+    elif severity == "LOW":
+        st.info(f"Audit Severity: {severity}")
+    else:
+        st.success(f"Audit Severity: {severity}")
+
+    if stale_reports:
+        st.warning(f"Stale report warnings: {len(stale_reports)} artifact(s) exceeded the audit freshness threshold.")
+    if conflicts:
+        with st.expander("Governance conflicts", expanded=False):
+            st.dataframe(pd.DataFrame(conflicts), use_container_width=True, hide_index=True)
+    if violations:
+        with st.expander("Policy violations", expanded=False):
+            st.dataframe(pd.DataFrame(violations), use_container_width=True, hide_index=True)
+
+    st.caption("Constraints: PAPER_ONLY, read-only analytics, no execution, no deployment, no live trading, no model retraining, no Phase 3 promotion.")
 
 
 def render_promotion_scorecard(scorecard: dict[str, Any]) -> None:
@@ -2241,6 +2311,7 @@ def main() -> None:
     anomaly_report, incident_report = read_incident_anomaly_report()
     orchestrator_diagnostics = read_orchestrator_diagnostics()
     promotion_scorecard = read_promotion_scorecard()
+    governance_audit = read_governance_audit()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -2277,6 +2348,7 @@ def main() -> None:
     render_portfolio_observability(portfolio_observability)
     render_portfolio_risk_budget(portfolio_risk_budget)
     render_promotion_scorecard(promotion_scorecard)
+    render_governance_audit(governance_audit)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])

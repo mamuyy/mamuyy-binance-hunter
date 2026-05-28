@@ -387,6 +387,19 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
         "Mode: PAPER_ONLY read-only, no auto deployment."
     )
 
+
+def format_governance_audit_message(report: Dict[str, Any] | None = None) -> str:
+    audit = report if isinstance(report, dict) else _read_json_report("reports/governance_audit.json")
+    conflicts = audit.get("conflicts", []) if isinstance(audit, dict) else []
+    violations = audit.get("policy_violations", []) if isinstance(audit, dict) else []
+    return (
+        "🧠 GOVERNANCE AUDIT\n\n"
+        f"Consistency: {int(audit.get('consistency_score', 0))}%\n"
+        f"Conflicts: {len(conflicts)}\n"
+        f"Violations: {'none' if not violations else len(violations)}\n"
+        f"Status: {audit.get('governance_health', 'UNKNOWN')}"
+    )
+
 def send_telegram_message(
     bot_token: str,
     chat_id: str,

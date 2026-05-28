@@ -1,0 +1,62 @@
+{
+  "artifact_health": {
+    "drift_detection": {
+      "path": "reports/drift_detection_report.json",
+      "present": false
+    },
+    "emergency_brake": {
+      "path": "reports/emergency_brake_simulation.json",
+      "present": false
+    },
+    "portfolio_risk_budget": {
+      "path": "reports/portfolio_risk_budget.json",
+      "present": true
+    },
+    "promotion_scorecard": {
+      "path": "reports/promotion_scorecard.json",
+      "present": true
+    },
+    "transition_prediction": {
+      "path": "reports/transition_prediction_report.json",
+      "present": false
+    }
+  },
+  "audit_severity": "MEDIUM",
+  "conflicts": [],
+  "consistency_score": 76,
+  "generated_at": "2026-05-28T14:40:35.024583+00:00",
+  "governance_constraints": {
+    "no_broker_order_routing": true,
+    "no_deployment": true,
+    "no_execution": true,
+    "no_execution_mutation": true,
+    "no_live_trading": true,
+    "no_model_retraining": true,
+    "no_phase_3_promotion": true,
+    "no_strategy_deployment": true,
+    "paper_only": "PAPER_ONLY",
+    "read_only_analytics": true
+  },
+  "governance_health": "WATCH",
+  "missing_reports": [
+    {
+      "path": "reports/drift_detection_report.json",
+      "report": "drift_detection"
+    },
+    {
+      "path": "reports/emergency_brake_simulation.json",
+      "report": "emergency_brake"
+    },
+    {
+      "path": "reports/transition_prediction_report.json",
+      "report": "transition_prediction"
+    }
+  ],
+  "paper_only": true,
+  "policy_violations": [],
+  "recommendations": [
+    "Generate missing governance artifacts before trusting promotion/risk summaries.",
+    "Do not execute trades, deploy strategies, retrain models, or promote Phase 3 from this audit."
+  ],
+  "stale_reports": []
+}

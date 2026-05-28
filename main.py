@@ -284,6 +284,7 @@ from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diag
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
+from governance_audit import format_governance_audit, run_governance_audit
 from promotion_scorecard import format_promotion_scorecard, generate_promotion_scorecard
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
@@ -298,6 +299,7 @@ from telegram_notifier import format_notification_result, notify_summary, telegr
 from telegram import (
     format_execution_message,
     format_governance_intelligence_message,
+    format_governance_audit_message,
     format_market_regime_message,
     format_ml_analysis_message,
     format_orchestrator_message,
@@ -589,6 +591,16 @@ def run_promotion_scorecard() -> Dict[str, Any]:
     )
     print(format_promotion_scorecard(result))
     send_message_if_enabled(format_promotion_scorecard_message(result))
+    return result
+
+
+def run_governance_audit_command() -> Dict[str, Any]:
+    result = run_governance_audit(
+        output_path="reports/governance_audit.json",
+        write_report=True,
+    )
+    print(format_governance_audit(result))
+    send_message_if_enabled(format_governance_audit_message(result))
     return result
 
 
@@ -1157,6 +1169,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate portfolio risk budget governance report read-only.",
     )
     parser.add_argument(
+        "--governance-audit",
+        action="store_true",
+        help="Generate Governance Audit report PAPER_ONLY read-only.",
+    )
+    parser.add_argument(
         "--allocate",
         action="store_true",
         help="Jalankan Opportunity Allocation Engine analytics-only.",
@@ -1269,6 +1286,8 @@ if __name__ == "__main__":
         run_portfolio_risk_budget()
     elif args.promotion_scorecard:
         run_promotion_scorecard()
+    elif args.governance_audit:
+        run_governance_audit_command()
     elif args.portfolio_observer:
         run_portfolio_observer()
     elif args.portfolio:
