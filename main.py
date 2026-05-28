@@ -295,6 +295,7 @@ from strategy_genome import format_strategy_genome_result, run_strategy_genome, 
 from telegram_notifier import format_notification_result, notify_summary, telegram_test
 from telegram import (
     format_execution_message,
+    format_governance_intelligence_message,
     format_market_regime_message,
     format_ml_analysis_message,
     format_orchestrator_message,
@@ -455,6 +456,7 @@ def run_strategy_ranking() -> Dict[str, Any]:
 def run_daily_ops_report() -> Dict[str, Any]:
     result = generate_daily_ops_report(db_path=config.database_path)
     print(format_daily_ops_report(result))
+    send_message_if_enabled(format_governance_intelligence_message())
     return result
 
 
