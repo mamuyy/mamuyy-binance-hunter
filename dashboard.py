@@ -325,6 +325,54 @@ def read_optional_csv(path: str) -> pd.DataFrame:
         return _empty_df()
 
 
+def _nested_get(payload: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+    return current
+
+
+def derive_market_action(
+    *,
+    paper_only_status: str,
+    early_warning_score: float,
+    early_warning_label: str,
+    brake_trigger_count: int,
+    holding_candles_mean_after: float | None,
+    collapse_timestamp: str | None,
+) -> dict[str, Any]:
+    reasons: list[str] = [
+        f"Early Warning: score={early_warning_score:.2f}, label={early_warning_label}",
+        f"Brake trigger count: {brake_trigger_count}",
+    ]
+
+    if holding_candles_mean_after is not None:
+        reasons.append(f"Holding compression mean(after): {holding_candles_mean_after:.2f}")
+    if collapse_timestamp and collapse_timestamp != "-":
+        reasons.append(f"Drift collapse timestamp: {collapse_timestamp}")
+    reasons.append(f"PAPER_ONLY enforced: {paper_only_status == 'PAPER_ONLY'}")
+
+    label_upper = early_warning_label.upper()
+
+    if paper_only_status != "PAPER_ONLY":
+        return {"action": "CRITICAL GOVERNANCE ERROR", "severity": "CRITICAL", "reasons": reasons}
+    if label_upper == "BRAKE_CANDIDATE":
+        return {"action": "NO TRADE / BRAKE REVIEW", "severity": "CRITICAL", "reasons": reasons}
+    if label_upper == "RISK_ELEVATED":
+        return {"action": "DEFENSIVE / HOLD", "severity": "WARNING", "reasons": reasons}
+    if brake_trigger_count >= 50:
+        return {"action": "DEFENSIVE / HOLD", "severity": "WARNING", "reasons": reasons}
+    if holding_candles_mean_after is not None and holding_candles_mean_after < 10:
+        return {"action": "WATCH / HOLD", "severity": "WARNING", "reasons": reasons}
+    if early_warning_score <= 30 and brake_trigger_count == 0:
+        return {"action": "NORMAL / PAPER ONLY", "severity": "OK", "reasons": reasons}
+    return {"action": "OBSERVE / PAPER ONLY", "severity": "INFO", "reasons": reasons}
+
+
 def render_governance_risk_intelligence() -> None:
     st.header("9. Governance / Risk Intelligence")
     st.caption("Read-only governance intelligence. Execution mode remains PAPER_ONLY.")
@@ -337,37 +385,52 @@ def render_governance_risk_intelligence() -> None:
     backtest = read_json_report("reports/backtest_filtered_results.json")
 
     early_warning_score = float(
-        transition.get("early_warning_score")
+        _nested_get(transition, "latest_early_warning", "score", default=None)
+        or transition.get("early_warning_score")
         or transition.get("warning_score")
         or transition.get("score")
         or 0.0
     )
     early_warning_label = str(
-        transition.get("early_warning_label")
+        _nested_get(transition, "latest_early_warning", "label", default=None)
+        or transition.get("early_warning_label")
         or transition.get("label")
         or transition.get("warning_label")
         or "UNKNOWN"
     ).upper()
     paper_only_status = str(backtest.get("mode") or "PAPER_ONLY").upper()
-    if paper_only_status != "PAPER_ONLY":
-        paper_only_status = "PAPER_ONLY"
 
     brake_active = bool(brake.get("brake_active") or brake.get("active") or False)
-    trigger_count = int(brake.get("high_trigger_count") or brake.get("trigger_count") or 0)
-    collapse_ts = drift.get("collapse_timestamp") or drift.get("drift_collapse_timestamp") or "-"
+    trigger_count = int(
+        _nested_get(brake, "summary", "brake_trigger_count", default=None)
+        or brake.get("high_trigger_count")
+        or brake.get("trigger_count")
+        or 0
+    )
+    collapse_ts = (
+        _nested_get(drift, "collapse", "selected_collapse_timestamp", default=None)
+        or drift.get("collapse_timestamp")
+        or drift.get("drift_collapse_timestamp")
+        or "-"
+    )
+    holding_candles_mean_after_raw = _nested_get(drift, "before_vs_after", "after", "holding_candles_mean", default=None)
+    holding_candles_mean_after = (
+        float(holding_candles_mean_after_raw) if holding_candles_mean_after_raw is not None else None
+    )
     regime_summary = (
         transition.get("regime_market_risk_summary")
         or transition.get("market_risk_summary")
         or robustness.get("regime_risk_summary")
         or "No regime / market risk summary available."
     )
-
-    recommendation = "OBSERVE / PAPER_ONLY"
-    warning_upper = early_warning_label.upper()
-    if warning_upper in {"RISK_ELEVATED", "BRAKE_CANDIDATE"}:
-        recommendation = "DEFENSIVE / WATCH"
-    if brake_active or trigger_count >= 3:
-        recommendation = "NO TRADE / BRAKE REVIEW"
+    market_action = derive_market_action(
+        paper_only_status=paper_only_status,
+        early_warning_score=early_warning_score,
+        early_warning_label=early_warning_label,
+        brake_trigger_count=trigger_count,
+        holding_candles_mean_after=holding_candles_mean_after,
+        collapse_timestamp=str(collapse_ts),
+    )
 
     col1, col2, col3 = st.columns(3)
     col1.metric("PAPER_ONLY Status", paper_only_status)
@@ -385,13 +448,40 @@ def render_governance_risk_intelligence() -> None:
     st.subheader("Regime / Market Risk Summary")
     st.warning(str(regime_summary))
 
-    st.subheader("Defensive Recommendation")
-    if recommendation == "NO TRADE / BRAKE REVIEW":
-        st.error(recommendation)
-    elif recommendation == "DEFENSIVE / WATCH":
-        st.warning(recommendation)
+    st.subheader("Suggested Market Action")
+    action_col, severity_col = st.columns([3, 2])
+    action_col.metric("Suggested Market Action", str(market_action["action"]))
+    severity_col.metric("Severity", str(market_action["severity"]))
+
+    severity = str(market_action["severity"]).upper()
+    if severity == "CRITICAL":
+        st.error(f"Severity: {severity}")
+    elif severity == "WARNING":
+        st.warning(f"Severity: {severity}")
+    elif severity == "OK":
+        st.success(f"Severity: {severity}")
     else:
-        st.info(recommendation)
+        st.info(f"Severity: {severity}")
+
+    st.markdown("**Reasoning**")
+    for reason in market_action.get("reasons", []):
+        st.markdown(f"- {reason}")
+
+    st.caption("This is a read-only governance recommendation, not a live trading command.")
+
+    decision_inputs = pd.DataFrame(
+        [
+            {
+                "early_warning_score": early_warning_score,
+                "early_warning_label": early_warning_label,
+                "brake_trigger_count": trigger_count,
+                "holding_candles_mean_after": holding_candles_mean_after,
+                "collapse_timestamp": collapse_ts,
+            }
+        ]
+    )
+    st.markdown("**Decision Inputs**")
+    st.dataframe(decision_inputs, use_container_width=True)
 
     regime_matrix = read_optional_csv("reports/regime_transition_matrix.csv")
     robustness_split = read_optional_csv("reports/robustness_time_split.csv")
