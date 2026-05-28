@@ -106,3 +106,43 @@ Sebelum policy filtering dipertimbangkan untuk tahap lanjutan, perlu dilakukan s
 ### Governance conclusion
 - Deployment/live execution **tidak diperbolehkan** dari hasil Week 2B saja.
 - Output Week 2B bersifat recommendation-only dan digunakan sebagai evidence untuk review governance lanjutan.
+
+## Week 2C Adaptive Regime-Aware Threshold Simulation
+
+Week 2B menunjukkan policy statis dapat meningkatkan winrate dan rata-rata PnL secara agregat, namun stabilitas tidak konsisten terutama di split `late`. Karena itu, policy belum layak dipromosikan dan perlu diuji dengan threshold `holding_candles` yang adaptif per regime.
+
+### Why static filter is not enough
+- Rule `holding_candles <= 3` yang seragam lintas regime berpotensi terlalu kasar.
+- Karakteristik noise/reversal pada `SIDEWAYS/CHOPPY` dan continuation pada `TRENDING BULL` bisa membutuhkan cutoff berbeda.
+- Robustness yang tidak stabil menandakan kebutuhan policy yang lebih kontekstual, bukan satu threshold global.
+
+### Why late split matters
+- Split `late` merepresentasikan periode paling mendekati kondisi operasional terbaru pada dataset.
+- Jika policy gagal mempertahankan kualitas di `late`, risiko degradasi saat forward period meningkat.
+- Evaluasi Week 2C memprioritaskan apakah adaptive threshold memperbaiki stabilitas khususnya di `late`.
+
+### Candidate policies (simulation only)
+- **Baseline static**:
+  - block `matched_regime == "RISK OFF"`
+  - block `score_norm < 0.2`
+  - block `holding_candles <= 3`
+- **Conservative**:
+  - `SIDEWAYS/CHOPPY`: block `holding_candles <= 2`
+  - `TRENDING BULL`: block `holding_candles <= 3`
+  - `RISK OFF`: block all / alert all
+- **Balanced**:
+  - `SIDEWAYS/CHOPPY`: block `holding_candles <= 3`
+  - `TRENDING BULL`: block `holding_candles <= 2`
+  - `RISK OFF`: block all / alert all
+- **Trend-Favoring**:
+  - `SIDEWAYS/CHOPPY`: block `holding_candles <= 4`
+  - `TRENDING BULL`: block `holding_candles <= 2`
+  - `RISK OFF`: block all / alert all
+
+### Output and governance status
+- Output diagnosis:
+  - `reports/adaptive_filtering_results.json`
+  - `reports/adaptive_filtering_time_split.csv`
+- Hasil hanya untuk evidence governance dan komparasi policy; **no deployment allowed**.
+- Tidak ada perubahan engine/eksekusi/live strategy dari simulasi ini.
+- Result bersifat recommendation-only dan harus melalui review manual lanjutan.
