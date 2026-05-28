@@ -284,6 +284,7 @@ from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diag
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
+from promotion_scorecard import format_promotion_scorecard, generate_promotion_scorecard
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
@@ -303,6 +304,7 @@ from telegram import (
     format_paper_summary_message,
     format_performance_report_message,
     format_portfolio_message,
+    format_promotion_scorecard_message,
     format_regime_model_message,
     format_signal_message,
     format_shadow_message,
@@ -576,6 +578,17 @@ def run_portfolio_risk_budget() -> Dict[str, Any]:
         write_report=True,
     )
     print(format_portfolio_risk_budget(result))
+    return result
+
+
+def run_promotion_scorecard() -> Dict[str, Any]:
+    result = generate_promotion_scorecard(
+        db_path=config.database_path,
+        output_path="reports/promotion_scorecard.json",
+        write_report=True,
+    )
+    print(format_promotion_scorecard(result))
+    send_message_if_enabled(format_promotion_scorecard_message(result))
     return result
 
 
@@ -1134,6 +1147,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan portfolio observability analytics read-only.",
     )
     parser.add_argument(
+        "--promotion-scorecard",
+        action="store_true",
+        help="Generate Promotion Scorecard Engine report PAPER_ONLY read-only.",
+    )
+    parser.add_argument(
         "--portfolio-risk-budget",
         action="store_true",
         help="Generate portfolio risk budget governance report read-only.",
@@ -1249,6 +1267,8 @@ if __name__ == "__main__":
         run_allocate()
     elif args.portfolio_risk_budget:
         run_portfolio_risk_budget()
+    elif args.promotion_scorecard:
+        run_promotion_scorecard()
     elif args.portfolio_observer:
         run_portfolio_observer()
     elif args.portfolio:
