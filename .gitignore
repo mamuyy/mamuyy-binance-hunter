@@ -35,3 +35,4 @@ regime_audit.sql
 
 .venv_phase4_research/
 orchestrator_log.csv.*
+reports/
