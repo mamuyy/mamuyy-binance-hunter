@@ -146,3 +146,32 @@ Week 2B menunjukkan policy statis dapat meningkatkan winrate dan rata-rata PnL s
 - Hasil hanya untuk evidence governance dan komparasi policy; **no deployment allowed**.
 - Tidak ada perubahan engine/eksekusi/live strategy dari simulasi ini.
 - Result bersifat recommendation-only dan harus melalui review manual lanjutan.
+
+## Week 2D Market Drift & Regime Transition Analysis
+
+Simulasi adaptive threshold pada Week 2C belum cukup untuk menstabilkan performa pada split `late`. Hipotesis kerja Week 2D adalah adanya **market drift / regime transition** yang mengubah karakter pasar, sehingga degradasi tidak bisa diselesaikan hanya dengan tuning threshold `holding_candles`.
+
+### Tujuan diagnosis drift
+- Mendeteksi sinyal awal perubahan regime yang berpotensi merusak winrate dan expectancy.
+- Mengidentifikasi titik collapse berbasis rolling winrate dan rolling rata-rata PnL.
+- Membandingkan karakteristik before-vs-after collapse untuk evidence transisi pasar.
+- Mengkuantifikasi statistik transisi regime (`A -> B`) dan outcome setelah transisi.
+
+### Early warning signal candidates
+- Kenaikan proporsi `RISK OFF`.
+- Penurunan rolling winrate keseluruhan.
+- Penurunan rolling rata-rata PnL keseluruhan.
+- Kompresi `holding_candles` (mean/median menurun).
+- Pergeseran distribusi `score` (mean/median dan profil sampel).
+- Lonjakan frekuensi transisi regime.
+
+### Output diagnosis Week 2D
+- `reports/drift_detection_report.json`
+- `reports/regime_transition_stats.csv`
+- `reports/drift_rolling_metrics.csv` (opsional)
+
+### Governance status (strict)
+- Hasil Week 2D adalah **governance evidence only** untuk review manual.
+- Hasil tidak boleh dipakai untuk live promotion langsung.
+- Tetap berlaku: PAPER_ONLY, read-only, recommendation-only.
+- Tidak ada perubahan engine, eksekusi broker/order, mutasi strategi, atau deployment live.
