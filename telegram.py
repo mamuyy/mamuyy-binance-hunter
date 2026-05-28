@@ -232,30 +232,45 @@ def _derive_market_action(
 
     label_upper = early_warning_label.upper()
     if paper_only_status != "PAPER_ONLY":
-        return {"action": "CRITICAL GOVERNANCE ERROR", "reasons": reasons}
+        return {"action": "DEFENSIVE / HOLD", "severity": "CRITICAL", "reasons": reasons}
     if label_upper == "BRAKE_CANDIDATE":
-        return {"action": "NO TRADE / BRAKE REVIEW", "reasons": reasons}
+        return {"action": "DEFENSIVE / HOLD", "severity": "CRITICAL", "reasons": reasons}
     if label_upper == "RISK_ELEVATED":
-        return {"action": "DEFENSIVE / HOLD", "reasons": reasons}
+        return {"action": "DEFENSIVE / HOLD", "severity": "WARNING", "reasons": reasons}
     if brake_trigger_count >= 50:
-        return {"action": "DEFENSIVE / HOLD", "reasons": reasons}
+        return {"action": "DEFENSIVE / HOLD", "severity": "WARNING", "reasons": reasons}
     if holding_candles_mean_after is not None and holding_candles_mean_after < 10:
-        return {"action": "WATCH / HOLD", "reasons": reasons}
+        return {"action": "HOLD", "severity": "WARNING", "reasons": reasons}
     if early_warning_score <= 30 and brake_trigger_count == 0:
-        return {"action": "NORMAL / PAPER ONLY", "reasons": reasons}
-    return {"action": "OBSERVE / PAPER ONLY", "reasons": reasons}
+        return {"action": "HOLD", "severity": "OK", "reasons": reasons}
+    return {"action": "HOLD", "severity": "INFO", "reasons": reasons}
+
+
+def _severity_emoji(severity: str) -> str:
+    severity_upper = str(severity).upper()
+    if severity_upper == "OK":
+        return "🟢"
+    if severity_upper in {"INFO", "OBSERVE"}:
+        return "🔵"
+    if severity_upper in {"WARNING", "RISK_ELEVATED"}:
+        return "🟠"
+    if severity_upper in {"CRITICAL", "BRAKE_CANDIDATE"}:
+        return "🔴"
+    return "🔵"
+
+
+def _brake_display(brake_trigger_count: int) -> str:
+    if brake_trigger_count == 0:
+        return "OFF"
+    if brake_trigger_count < 50:
+        return "WATCH"
+    return "ACTIVE / REVIEW"
 
 
 def format_governance_intelligence_message() -> str:
     transition = _read_json_report("reports/transition_prediction_report.json")
     brake = _read_json_report("reports/emergency_brake_simulation.json")
     drift = _read_json_report("reports/drift_detection_report.json")
-    if not transition and not brake and not drift:
-        return (
-            "🛡 GOVERNANCE INTELLIGENCE\n\n"
-            "Governance report unavailable, PAPER_ONLY still active."
-        )
-
     paper_only_status = "PAPER_ONLY"
     early_warning_score = float(
         _nested_get(transition, "latest_early_warning", "score", default=None)
@@ -274,7 +289,6 @@ def format_governance_intelligence_message() -> str:
         or _nested_get(brake, "summary", "trigger_count", default=0)
         or 0
     )
-    brake_status = str(brake.get("status") or _nested_get(brake, "summary", "status", default="UNKNOWN"))
     collapse_timestamp = str(
         _nested_get(drift, "collapse_risk", "collapse_timestamp", default=None)
         or drift.get("collapse_timestamp")
@@ -286,6 +300,15 @@ def format_governance_intelligence_message() -> str:
     holding_candles_mean_after = _nested_get(drift, "holding_candles", "mean_after", default=None)
     if holding_candles_mean_after is not None:
         holding_candles_mean_after = float(holding_candles_mean_after)
+    current_regime = str(
+        _nested_get(transition, "latest_early_warning", "regime_name", default=None)
+        or transition.get("current_regime")
+        or transition.get("regime_name")
+        or _nested_get(drift, "current_regime", default=None)
+        or "UNKNOWN"
+    )
+    if not current_regime.strip():
+        current_regime = "UNKNOWN"
 
     decision = _derive_market_action(
         paper_only_status=paper_only_status,
@@ -295,20 +318,28 @@ def format_governance_intelligence_message() -> str:
         holding_candles_mean_after=holding_candles_mean_after,
         collapse_timestamp=collapse_timestamp,
     )
+    severity = str(decision.get("severity", "INFO")).upper()
+    severity_emoji = _severity_emoji(severity)
+    emergency_brake = _brake_display(brake_trigger_count)
     reasons = "\n".join(f"- {reason}" for reason in decision["reasons"])
+    transition_status = "loaded" if transition else "missing"
+    brake_status = "loaded" if brake else "missing"
+    drift_status = "loaded" if drift else "missing"
 
     return (
         "🛡 GOVERNANCE INTELLIGENCE\n\n"
         "PAPER_ONLY: ACTIVE\n"
-        f"Suggested Action: {decision['action']}\n"
+        f"{severity_emoji} Severity: {severity}\n"
+        f"ACTION: {decision['action']}\n"
+        f"Current Regime: {current_regime}\n"
         f"Early Warning: {early_warning_score:.2f} ({early_warning_label})\n"
-        f"Emergency Brake: {brake_trigger_count} / {brake_status}\n"
+        f"Emergency Brake: {emergency_brake} (trigger_count={brake_trigger_count})\n"
         f"Drift Collapse: {collapse_timestamp}\n"
+        f"Report Health: transition {transition_status}, brake {brake_status}, drift {drift_status}\n"
         "Reason:\n"
         f"{reasons}\n"
         "Reminder: read-only governance signal, not live trading command.\n\n"
-        "Constraints: PAPER_ONLY enforced; read-only; no broker/order routing; "
-        "no execution mutation; no Phase 3 promotion; no live trading."
+        "Governance: PAPER_ONLY, read-only, no live trading."
     )
 
 
