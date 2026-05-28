@@ -23,6 +23,9 @@ REFRESH_SECONDS = 60
 TRANSITION_WARNING_TAIL_ROWS = 500
 EMERGENCY_BRAKE_EVENTS_TAIL_ROWS = 200
 DRIFT_ROLLING_METRICS_DEFAULT_ROWS = 0
+DATABASE_ANALYTICS_TTL_SECONDS = 300
+DATABASE_ANALYTICS_DISPLAY_ROWS = 50
+DATABASE_ANALYTICS_SESSION_KEY = "database_analytics_cached_result"
 
 
 st.set_page_config(
@@ -1493,8 +1496,8 @@ def _with_winrate(df: pd.DataFrame, pnl_column: str = "pnl_pct") -> pd.DataFrame
     return temp
 
 
-@st.cache_data(ttl=REFRESH_SECONDS)
-def read_symbol_performance(limit: int = 20) -> pd.DataFrame:
+@st.cache_data(ttl=DATABASE_ANALYTICS_TTL_SECONDS)
+def read_symbol_performance(limit: int = DATABASE_ANALYTICS_DISPLAY_ROWS) -> pd.DataFrame:
     try:
         with _connect() as connection:
             return pd.read_sql_query(
@@ -1517,8 +1520,8 @@ def read_symbol_performance(limit: int = 20) -> pd.DataFrame:
         return _empty_df()
 
 
-@st.cache_data(ttl=REFRESH_SECONDS)
-def read_worst_symbol_performance(limit: int = 20) -> pd.DataFrame:
+@st.cache_data(ttl=DATABASE_ANALYTICS_TTL_SECONDS)
+def read_worst_symbol_performance(limit: int = DATABASE_ANALYTICS_DISPLAY_ROWS) -> pd.DataFrame:
     try:
         with _connect() as connection:
             return pd.read_sql_query(
@@ -1541,8 +1544,8 @@ def read_worst_symbol_performance(limit: int = 20) -> pd.DataFrame:
         return _empty_df()
 
 
-@st.cache_data(ttl=REFRESH_SECONDS)
-def read_regime_performance(limit: int = 20) -> pd.DataFrame:
+@st.cache_data(ttl=DATABASE_ANALYTICS_TTL_SECONDS)
+def read_regime_performance(limit: int = DATABASE_ANALYTICS_DISPLAY_ROWS) -> pd.DataFrame:
     try:
         with _connect() as connection:
             return pd.read_sql_query(
@@ -1568,8 +1571,8 @@ def read_regime_performance(limit: int = 20) -> pd.DataFrame:
         return _empty_df()
 
 
-@st.cache_data(ttl=REFRESH_SECONDS)
-def read_feature_profitability_from_history() -> pd.DataFrame:
+@st.cache_data(ttl=DATABASE_ANALYTICS_TTL_SECONDS)
+def read_feature_profitability_from_history(limit: int = DATABASE_ANALYTICS_DISPLAY_ROWS) -> pd.DataFrame:
     try:
         with _connect() as connection:
             df = pd.read_sql_query(
@@ -1638,11 +1641,11 @@ def read_feature_profitability_from_history() -> pd.DataFrame:
                 "total_pnl": float(pnl.sum()),
             }
         )
-    return pd.DataFrame(rows).sort_values(["avg_pnl", "trades"], ascending=[False, False]).head(20)
+    return pd.DataFrame(rows).sort_values(["avg_pnl", "trades"], ascending=[False, False]).head(limit)
 
 
-@st.cache_data(ttl=REFRESH_SECONDS)
-def read_optimizer_setups(path: str = "optimizer_results.csv", limit: int = 20) -> pd.DataFrame:
+@st.cache_data(ttl=DATABASE_ANALYTICS_TTL_SECONDS)
+def read_optimizer_setups(path: str = "optimizer_results.csv", limit: int = DATABASE_ANALYTICS_DISPLAY_ROWS) -> pd.DataFrame:
     if not os.path.exists(path):
         return _empty_df()
     try:
@@ -1912,6 +1915,134 @@ def render_alerts(signals: pd.DataFrame, trades: pd.DataFrame, ml_results: pd.Da
             st.warning(text)
 
 
+
+def _limit_database_analytics_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    return df.head(DATABASE_ANALYTICS_DISPLAY_ROWS)
+
+
+def _database_analytics_cached_summary(analytics: dict[str, Any]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "generated_at_utc": analytics.get("generated_at_utc", "-"),
+                "top_symbols_rows": len(analytics.get("symbol_perf", _empty_df())),
+                "worst_symbols_rows": len(analytics.get("worst_symbol_perf", _empty_df())),
+                "regime_rows": len(analytics.get("regime_perf", _empty_df())),
+                "feature_rows": len(analytics.get("feature_profit", _empty_df())),
+                "optimizer_rows": len(analytics.get("optimizer_setups", _empty_df())),
+            }
+        ]
+    )
+
+
+def collect_database_analytics() -> dict[str, Any]:
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "symbol_perf": read_symbol_performance(),
+        "worst_symbol_perf": read_worst_symbol_performance(),
+        "regime_perf": read_regime_performance(),
+        "feature_profit": read_feature_profitability_from_history(),
+        "optimizer_setups": read_optimizer_setups(),
+    }
+
+
+def render_database_analytics_result(analytics: dict[str, Any], ml_results: pd.DataFrame) -> None:
+    symbol_perf = _limit_database_analytics_rows(analytics.get("symbol_perf", _empty_df()))
+    worst_symbol_perf = _limit_database_analytics_rows(analytics.get("worst_symbol_perf", _empty_df()))
+    regime_perf = _limit_database_analytics_rows(analytics.get("regime_perf", _empty_df()))
+    feature_profit = _limit_database_analytics_rows(analytics.get("feature_profit", _empty_df()))
+    optimizer_setups = _limit_database_analytics_rows(analytics.get("optimizer_setups", _empty_df()))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Top Symbols")
+        show_dataframe_or_info(
+            symbol_perf,
+            "No symbol performance yet. Run historical backfill and outcome labeling first.",
+        )
+
+        st.subheader("Top Profitable Setup")
+        if optimizer_setups.empty and not regime_perf.empty:
+            fallback_setup = regime_perf.head(10).copy()
+            fallback_setup["setup"] = "regime=" + fallback_setup["regime_name"].astype(str)
+            optimizer_fallback_cols = ["setup", "winrate", "trades", "avg_pnl", "total_pnl"]
+            show_dataframe_or_info(fallback_setup[optimizer_fallback_cols], "No optimizer setup data yet.")
+        else:
+            show_dataframe_or_info(
+                optimizer_setups,
+                "No optimizer setup data yet. Run python main.py --optimize-filters.",
+            )
+
+        st.subheader("Best Regime")
+        show_dataframe_or_info(
+            regime_perf,
+            "No regime performance yet. Run python main.py --fix-regime-labels after historical labeling.",
+        )
+
+    with col2:
+        st.subheader("Best / Worst Symbol")
+        if symbol_perf.empty and worst_symbol_perf.empty:
+            st.info("No symbol PnL ranking yet.")
+        else:
+            best_worst = pd.concat(
+                [
+                    symbol_perf.head(5).assign(side="BEST"),
+                    worst_symbol_perf.head(5).assign(side="WORST"),
+                ],
+                ignore_index=True,
+            )
+            st.dataframe(best_worst, use_container_width=True)
+
+        st.subheader("Feature Profitability")
+        if feature_profit.empty:
+            importance_fallback = load_feature_importance(ml_results).head(DATABASE_ANALYTICS_DISPLAY_ROWS)
+            show_dataframe_or_info(
+                importance_fallback,
+                "No historical feature profitability yet. Run outcome labeling and ML analysis.",
+            )
+        else:
+            st.dataframe(feature_profit, use_container_width=True)
+
+        st.subheader("Regime Profitability")
+        if not regime_perf.empty:
+            safe_plot_bar(regime_perf, "regime_name", "avg_pnl", "Regime Profitability")
+        else:
+            st.info("No regime profitability data yet.")
+
+
+def render_database_analytics(counts: dict[str, int], ml_results: pd.DataFrame) -> None:
+    st.header("8. DATABASE ANALYTICS")
+    st.warning("Database analytics is optional and may be CPU intensive.")
+    st.caption(
+        "Default view is lightweight and read-only. Click the opt-in button below to run cached database analytics."
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Historical Outcomes Rows", counts.get("historical_outcomes", 0))
+    col2.metric("Signal Rows", counts.get("signals", 0))
+    col3.metric("Flow Log Rows", counts.get("flow_logs", 0))
+
+    with st.expander("Optional Database Analytics", expanded=False):
+        st.caption(
+            f"Runs heavy SQLite analytics only on demand. Results are cached for {DATABASE_ANALYTICS_TTL_SECONDS} seconds "
+            f"and displayed with a default limit of {DATABASE_ANALYTICS_DISPLAY_ROWS} rows."
+        )
+        if st.button("Run Database Analytics", key="run_database_analytics"):
+            with st.spinner("Running cached database analytics..."):
+                st.session_state[DATABASE_ANALYTICS_SESSION_KEY] = collect_database_analytics()
+
+    cached_analytics = st.session_state.get(DATABASE_ANALYTICS_SESSION_KEY)
+    if not cached_analytics:
+        st.info("Database analytics has not been run in this dashboard session. Section 9 remains available below.")
+        return
+
+    st.success("Showing previous cached database analytics summary.")
+    st.dataframe(_database_analytics_cached_summary(cached_analytics), use_container_width=True, hide_index=True)
+    with st.expander("Show cached database analytics details", expanded=False):
+        render_database_analytics_result(cached_analytics, ml_results)
+
 def main() -> None:
     signals = read_table("signals")
     trades = read_table("paper_trades")
@@ -2057,68 +2188,7 @@ def main() -> None:
     if not walkforward.empty and "best_regime" in walkforward.columns:
         st.dataframe(walkforward[["fold", "best_regime", "worst_regime"]].head(50), use_container_width=True)
 
-    st.header("8. DATABASE ANALYTICS")
-    symbol_perf = read_symbol_performance()
-    worst_symbol_perf = read_worst_symbol_performance()
-    regime_perf = read_regime_performance()
-    feature_profit = read_feature_profitability_from_history()
-    optimizer_setups = read_optimizer_setups()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Top Symbols")
-        show_dataframe_or_info(
-            symbol_perf,
-            "No symbol performance yet. Run historical backfill and outcome labeling first.",
-        )
-
-        st.subheader("Top Profitable Setup")
-        if optimizer_setups.empty and not regime_perf.empty:
-            fallback_setup = regime_perf.head(10).copy()
-            fallback_setup["setup"] = "regime=" + fallback_setup["regime_name"].astype(str)
-            optimizer_fallback_cols = ["setup", "winrate", "trades", "avg_pnl", "total_pnl"]
-            show_dataframe_or_info(fallback_setup[optimizer_fallback_cols], "No optimizer setup data yet.")
-        else:
-            show_dataframe_or_info(
-                optimizer_setups,
-                "No optimizer setup data yet. Run python main.py --optimize-filters.",
-            )
-
-        st.subheader("Best Regime")
-        show_dataframe_or_info(
-            regime_perf.head(10),
-            "No regime performance yet. Run python main.py --fix-regime-labels after historical labeling.",
-        )
-
-    with col2:
-        st.subheader("Best / Worst Symbol")
-        if symbol_perf.empty and worst_symbol_perf.empty:
-            st.info("No symbol PnL ranking yet.")
-        else:
-            best_worst = pd.concat(
-                [
-                    symbol_perf.head(5).assign(side="BEST"),
-                    worst_symbol_perf.head(5).assign(side="WORST"),
-                ],
-                ignore_index=True,
-            )
-            st.dataframe(best_worst, use_container_width=True)
-
-        st.subheader("Feature Profitability")
-        if feature_profit.empty:
-            importance_fallback = load_feature_importance(ml_results).head(20)
-            show_dataframe_or_info(
-                importance_fallback,
-                "No historical feature profitability yet. Run outcome labeling and ML analysis.",
-            )
-        else:
-            st.dataframe(feature_profit, use_container_width=True)
-
-        st.subheader("Regime Profitability")
-        if not regime_perf.empty:
-            safe_plot_bar(regime_perf, "regime_name", "avg_pnl", "Regime Profitability")
-        else:
-            st.info("No regime profitability data yet.")
+    render_database_analytics(counts, ml_results)
 
     render_opportunity_allocation(opportunity_allocation)
     render_webhook_paper_engine(internal_paper_trades, webhook_payload)
