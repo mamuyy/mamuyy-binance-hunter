@@ -283,6 +283,7 @@ from opportunity_allocator import allocate_opportunities, format_allocation_summ
 from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diagnostics, run_orchestrator, runtime_keepalive, uptime_seconds
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
+from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
 from report_generator import generate_performance_report
@@ -565,6 +566,16 @@ def run_portfolio() -> Dict[str, Any]:
     print(message)
     print(f"Charts: {result.get('charts', {})}")
     send_message_if_enabled(message)
+    return result
+
+
+def run_portfolio_risk_budget() -> Dict[str, Any]:
+    result = calculate_portfolio_risk_budget(
+        db_path=config.database_path,
+        output_path="reports/portfolio_risk_budget.json",
+        write_report=True,
+    )
+    print(format_portfolio_risk_budget(result))
     return result
 
 
@@ -1123,6 +1134,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan portfolio observability analytics read-only.",
     )
     parser.add_argument(
+        "--portfolio-risk-budget",
+        action="store_true",
+        help="Generate portfolio risk budget governance report read-only.",
+    )
+    parser.add_argument(
         "--allocate",
         action="store_true",
         help="Jalankan Opportunity Allocation Engine analytics-only.",
@@ -1231,6 +1247,8 @@ if __name__ == "__main__":
         run_execution()
     elif args.allocate:
         run_allocate()
+    elif args.portfolio_risk_budget:
+        run_portfolio_risk_budget()
     elif args.portfolio_observer:
         run_portfolio_observer()
     elif args.portfolio:
