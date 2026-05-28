@@ -31,6 +31,8 @@ def _normalize_win(value: object) -> float:
         return 1.0
     if s in {"LOSS", "FALSE", "0"}:
         return 0.0
+    if s == "FLAT":
+        return float("nan")
     try:
         f = float(value)
         if f in (0.0, 1.0):
@@ -92,12 +94,12 @@ def main() -> None:
     df = pd.read_csv(input_csv)
     cols = set(df.columns)
 
-    ts_col = _find_col(cols, ["signal_timestamp", "timestamp", "ts", "datetime"])
+    ts_col = _find_col(cols, ["timestamp", "signal_timestamp", "ts", "datetime"])
     regime_col = _find_col(cols, ["matched_regime", "regime", "market_regime"])
-    pnl_col = _find_col(cols, ["pnl", "realized_pnl", "pnl_usdt", "profit", "result_pnl"])
+    pnl_col = _find_col(cols, ["pnl", "pnl_pct", "realized_pnl", "pnl_usdt", "profit", "result_pnl"])
     hold_col = _find_col(cols, ["holding_candles", "hold_candles"])
     score_col = _find_col(cols, ["score", "raw_prob", "prob", "probability", "score_norm"])
-    outcome_col = _find_col(cols, ["outcome", "result", "label", "target", "y", "win"])
+    outcome_col = _find_col(cols, ["outcome", "result", "label", "win_loss", "target", "y", "win"])
 
     if not ts_col or not regime_col or not pnl_col or not hold_col or not score_col or not outcome_col:
         raise ValueError(
@@ -115,11 +117,14 @@ def main() -> None:
     df["pnl"] = _num(df[pnl_col])
     df["holding_candles"] = _num(df[hold_col])
     df["score"] = _num(df[score_col])
+    outcome_norm = df[outcome_col].astype(str).str.strip().str.upper()
     df["is_win"] = df[outcome_col].map(_normalize_win)
 
-    flat_mask = df["matched_regime"].str.upper().eq("FLAT")
-    excluded_flat_count = int(flat_mask.sum())
-    metric_df = df[~flat_mask].copy()
+    regime_flat_mask = df["matched_regime"].str.upper().eq("FLAT")
+    outcome_flat_mask = outcome_norm.eq("FLAT")
+    excluded_flat_count = int((regime_flat_mask | outcome_flat_mask).sum())
+    print(f"[governance] excluded FLAT rows from winrate metrics: {excluded_flat_count}")
+    metric_df = df[~(regime_flat_mask | outcome_flat_mask)].copy()
     metric_df = metric_df[(metric_df["is_win"].notna()) & (metric_df["pnl"].notna())].reset_index(drop=True)
     if len(metric_df) < max(20, args.rolling_window):
         raise RuntimeError("Insufficient non-FLAT valid rows for drift diagnosis.")
