@@ -45,6 +45,8 @@ def parse_label(raw: str) -> int:
         return 1
     if v in {"LOSS", "FALSE"}:
         return 0
+    if v == "FLAT":
+        raise ValueError("flat_label")
     y = int(float(raw))
     if y not in (0, 1):
         raise ValueError("label must be binary")
@@ -66,11 +68,13 @@ def pick_col(cols: set[str], options: List[str], required: bool = True) -> Optio
     return col
 
 
-def load_rows(csv_path: Path) -> List[TradeRow]:
+def load_rows(csv_path: Path) -> Tuple[List[TradeRow], int, int]:
     if not csv_path.exists():
         raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
     out: List[TradeRow] = []
+    flat_count = 0
+    total_rows = 0
     with csv_path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames or [])
@@ -79,10 +83,11 @@ def load_rows(csv_path: Path) -> List[TradeRow]:
         regime_col = pick_col(cols, ["matched_regime", "regime", "market_regime"])
         score_col = pick_col(cols, ["score", "raw_prob", "prob", "probability", "score_prob"])
         pnl_col = pick_col(cols, ["pnl_pct", "pnl", "realized_pnl", "ret"])
-        label_col = pick_col(cols, ["y", "label", "target", "win"]) 
+        label_col = pick_col(cols, ["y", "label", "target", "win", "win_loss"])
         hold_col = pick_col(cols, ["holding_candles", "holding_period", "hold_candles"])
 
         for row in reader:
+            total_rows += 1
             try:
                 regime = str(row[regime_col]).strip() if row[regime_col] is not None else "UNKNOWN"
                 if not regime:
@@ -97,13 +102,18 @@ def load_rows(csv_path: Path) -> List[TradeRow]:
                         holding_candles=safe_int(str(row[hold_col])),
                     )
                 )
+            except ValueError as exc:
+                if str(exc) == "flat_label":
+                    flat_count += 1
+                    continue
+                continue
             except Exception:
                 continue
 
     if not out:
         raise ValueError("No valid rows parsed from CSV.")
     out.sort(key=lambda x: x.timestamp)
-    return out
+    return out, total_rows, flat_count
 
 
 def quantile_bucket(score: float) -> str:
@@ -200,7 +210,16 @@ def main() -> None:
     ap.add_argument("--min-samples", type=int, default=30)
     args = ap.parse_args()
 
-    rows = load_rows(Path(args.input))
+    rows, total_rows, excluded_flat_count = load_rows(Path(args.input))
+    if excluded_flat_count > 0:
+        print(
+            f"[WARN] Governance-safe filtering: excluded {excluded_flat_count} FLAT rows "
+            "from diagnosis (non-binary outcome)."
+        )
+    print(
+        f"[INFO] Sample counts after FLAT filtering: "
+        f"kept_rows={len(rows)}, excluded_flat_rows={excluded_flat_count}, input_rows={total_rows}"
+    )
     regime_summary, hold_summary, interaction_summary = summarize(rows)
     recommendations = recommend(regime_summary, min_samples=args.min_samples)
 
@@ -214,6 +233,11 @@ def main() -> None:
             "note": "diagnosis and recommendation only",
         },
         "input": args.input,
+        "sample_counts": {
+            "input_rows": total_rows,
+            "rows_after_flat_filtering": len(rows),
+            "excluded_flat_count": excluded_flat_count,
+        },
         "rows": len(rows),
         "analysis": {
             "by_matched_regime": regime_summary,
