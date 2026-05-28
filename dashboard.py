@@ -478,10 +478,20 @@ def render_governance_risk_intelligence() -> None:
     col2.metric("Early Warning Score", f"{early_warning_score:.2f}")
     col3.metric("Early Warning Label", early_warning_label)
 
+    brake_review_active = brake_active or trigger_count >= 50
+    brake_source = str(
+        brake.get("brake_source")
+        or brake.get("source")
+        or _nested_get(brake, "summary", "brake_source", default=None)
+        or _nested_get(brake, "summary", "source", default=None)
+        or ("SIMULATION_RESEARCH" if brake else "NONE")
+    ).upper()
     col1, col2, col3 = st.columns(3)
-    col1.metric("Emergency Brake Active", "YES" if brake_active else "NO")
+    col1.metric("Emergency Brake", "ACTIVE / REVIEW" if brake_review_active else "NO")
     col2.metric("Brake Trigger Count", trigger_count)
     col3.metric("Drift Collapse Timestamp", str(collapse_ts))
+    if trigger_count >= 50 and brake_source == "SIMULATION_RESEARCH":
+        st.warning("Brake source: simulation research / review required")
 
     st.subheader("Emergency Brake Summary")
     st.info(str(brake.get("summary") or brake.get("status") or "No emergency brake summary available."))
@@ -742,6 +752,13 @@ def render_portfolio_risk_budget(result: dict[str, Any]) -> None:
     col1.progress(min(1.0, max(0.0, float(result.get("utilization_ratio", 0.0)))), text="Exposure budget utilization")
     col2.metric("Concentration", f"{result.get('concentration_label', 'UNKNOWN')} ({float(result.get('concentration_score', 0.0)):.2f}/100)")
     col3.metric("Diversification", f"{float(result.get('diversification_score', 0.0)):.2f}/100")
+
+    brake_context = result.get("brake_context") if isinstance(result.get("brake_context"), dict) else {}
+    if brake_context:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Brake Trigger Count", int(brake_context.get("trigger_count") or 0))
+        col2.metric("Brake Risk Level", brake_context.get("brake_risk_level", "NONE"))
+        col3.metric("Brake Source", brake_context.get("source", "NONE"))
 
     for warning in (result.get("warnings") or [])[:3]:
         if str(result.get("concentration_label", "")).upper() == "HIGH" or recommendation in {"REDUCE EXPOSURE", "FREEZE NEW ALLOCATION"}:
@@ -1144,6 +1161,14 @@ def render_governance_audit(audit: dict[str, Any]) -> None:
 
     if stale_reports:
         st.warning(f"Stale report warnings: {len(stale_reports)} artifact(s) exceeded the audit freshness threshold.")
+    brake_context = audit.get("brake_context") if isinstance(audit.get("brake_context"), dict) else {}
+    if brake_context:
+        st.subheader("Emergency Brake Context")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Brake Trigger Count", int(brake_context.get("trigger_count") or 0))
+        col2.metric("Brake Risk Level", brake_context.get("brake_risk_level", "NONE"))
+        col3.metric("Brake Source", brake_context.get("brake_source", "NONE"))
+
     if conflicts:
         with st.expander("Governance conflicts", expanded=False):
             st.dataframe(pd.DataFrame(conflicts), use_container_width=True, hide_index=True)

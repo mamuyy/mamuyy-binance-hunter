@@ -311,9 +311,23 @@ def format_governance_intelligence_message() -> str:
         or "UNKNOWN"
     )
     brake_trigger_count = int(
-        brake.get("trigger_count")
-        or _nested_get(brake, "summary", "trigger_count", default=0)
+        _nested_get(brake, "summary", "brake_trigger_count", default=None)
+        or _nested_get(brake, "summary", "trigger_count", default=None)
+        or brake.get("high_trigger_count")
+        or brake.get("trigger_count")
         or 0
+    )
+    brake_source = str(
+        brake.get("brake_source")
+        or brake.get("source")
+        or _nested_get(brake, "summary", "brake_source", default=None)
+        or _nested_get(brake, "summary", "source", default=None)
+        or ("SIMULATION_RESEARCH" if brake else "NONE")
+    ).upper()
+    brake_source_note = (
+        "Brake source: simulation research / review required"
+        if brake_trigger_count >= 50 and brake_source == "SIMULATION_RESEARCH"
+        else f"Brake source: {brake_source.lower()}"
     )
     collapse_timestamp = str(
         _nested_get(drift, "collapse_risk", "collapse_timestamp", default=None)
@@ -362,6 +376,7 @@ def format_governance_intelligence_message() -> str:
         f"Current Regime: {current_regime}\n"
         f"Early Warning: {early_warning_score:.2f} ({early_warning_label})\n"
         f"Emergency Brake: {emergency_brake} (trigger_count={brake_trigger_count})\n"
+        f"{brake_source_note}\n"
         f"Drift Collapse: {collapse_timestamp}\n"
         f"Report Health: transition {transition_status}, brake {brake_status}, drift {drift_status}, risk_budget {risk_budget_status}\n"
         f"{risk_budget_summary}\n"

@@ -41,6 +41,9 @@ PROMOTION_POSITIVE = {"PROMOTE_CANDIDATE", "PASS"}
 RISK_FREEZE = {"FREEZE", "FREEZE NEW ALLOCATION", "HALT", "BLOCK", "NO_NEW_ALLOCATION"}
 GOVERNANCE_PASS = {"PASS", "SAFE", "HEALTHY", "OK", "GREEN"}
 DRIFT_HIGH = {"HIGH", "CRITICAL", "RED", "UNSTABLE", "ELEVATED"}
+BRAKE_HIGH_TRIGGER_THRESHOLD = 50
+RISK_BRAKE_ALIGNED = RISK_FREEZE | {"DEFENSIVE", "REDUCE EXPOSURE"}
+GOVERNANCE_BRAKE_ALIGNED_MARKERS = ("DEFENSIVE", "HOLD", "NO TRADE", "NO_TRADE")
 
 
 def _utc_now() -> datetime:
@@ -113,6 +116,37 @@ def _nested_get(payload: Dict[str, Any], *keys: str, default: Any = None) -> Any
     return current
 
 
+
+def _brake_source(brake: Dict[str, Any]) -> str:
+    source = _upper(
+        brake.get("brake_source")
+        or brake.get("source")
+        or _nested_get(brake, "summary", "brake_source")
+        or _nested_get(brake, "summary", "source"),
+        "",
+    )
+    if source:
+        return source
+    return "SIMULATION_RESEARCH" if brake else "NONE"
+
+
+def _brake_trigger_count(brake: Dict[str, Any]) -> int:
+    return int(_number(
+        _nested_get(brake, "summary", "brake_trigger_count", default=None)
+        or _nested_get(brake, "summary", "trigger_count", default=None)
+        or brake.get("high_trigger_count")
+        or brake.get("trigger_count"),
+        0.0,
+    ))
+
+
+def _governance_brake_aligned(*values: Any) -> bool:
+    for value in values:
+        text = _upper(value, "")
+        if any(marker in text for marker in GOVERNANCE_BRAKE_ALIGNED_MARKERS):
+            return True
+    return False
+
 def _top_candidate(scorecard: Dict[str, Any]) -> Dict[str, Any]:
     candidates = scorecard.get("candidates")
     if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict):
@@ -129,6 +163,15 @@ def _artifact_health(reports: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         for name in REQUIRED_REPORTS
     }
 
+
+
+def _audit_brake_context(brake: Dict[str, Any]) -> Dict[str, Any]:
+    trigger_count = _brake_trigger_count(brake)
+    return {
+        "trigger_count": trigger_count,
+        "brake_risk_level": "HIGH" if trigger_count >= BRAKE_HIGH_TRIGGER_THRESHOLD else "LOW" if trigger_count > 0 else "NONE",
+        "brake_source": _brake_source(brake),
+    }
 
 def _find_missing_reports(reports: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]:
     missing: List[Dict[str, str]] = []
@@ -251,18 +294,37 @@ def _check_conflicts(reports: Dict[str, Dict[str, Any]]) -> List[Dict[str, str]]
         })
 
     brake_active = bool(brake.get("brake_active") or brake.get("active") or brake.get("emergency_brake_active"))
-    trigger_count = int(_number(_nested_get(brake, "summary", "brake_trigger_count") or brake.get("trigger_count"), 0.0))
-    if (brake_active or trigger_count > 0) and risk_recommendation == "NORMAL":
+    trigger_count = _brake_trigger_count(brake)
+    brake_source = _brake_source(brake)
+    brake_risk_high = brake_active or trigger_count >= BRAKE_HIGH_TRIGGER_THRESHOLD
+    governance_aligned = _governance_brake_aligned(
+        summary.get("governance_action"),
+        summary.get("governance_message"),
+        summary.get("message"),
+        summary.get("action"),
+        top.get("governance_action"),
+        top.get("governance_message"),
+        top.get("message"),
+        top.get("action"),
+        top.get("recommendation") or summary.get("top_recommendation"),
+    )
+    if brake_risk_high and risk_recommendation not in RISK_BRAKE_ALIGNED:
         conflicts.append({
             "type": "EMERGENCY_BRAKE_RISK_BUDGET_MISMATCH",
             "severity": "HIGH",
-            "detail": f"Emergency brake activity detected (active={brake_active}, triggers={trigger_count}) while risk budget is NORMAL.",
+            "detail": (
+                f"High emergency brake risk detected (active={brake_active}, triggers={trigger_count}, "
+                f"source={brake_source}) while risk budget is {risk_recommendation}."
+            ),
         })
-    if (brake_active or trigger_count > 0) and governance_status in GOVERNANCE_PASS:
+    if brake_risk_high and governance_status in GOVERNANCE_PASS and not governance_aligned:
         conflicts.append({
             "type": "EMERGENCY_BRAKE_GOVERNANCE_MISMATCH",
             "severity": "HIGH",
-            "detail": f"Emergency brake activity detected while governance is {governance_status}.",
+            "detail": (
+                f"High emergency brake risk detected (active={brake_active}, triggers={trigger_count}, "
+                f"source={brake_source}) while governance is {governance_status}."
+            ),
         })
 
     if risk_recommendation == "NORMAL" and _number(risk_budget.get("risk_budget_utilization"), 0.0) >= 100.0:
@@ -336,6 +398,7 @@ def run_governance_audit(
     stale_reports = _find_stale_reports(reports, now=now, stale_hours=stale_hours)
     policy_violations = _check_policy_violations(reports)
     conflicts = _check_conflicts(reports)
+    brake_context = _audit_brake_context(reports.get("emergency_brake", {}))
     severity = _severity(conflicts, stale_reports, missing_reports, policy_violations)
     consistency_score = _score(conflicts, stale_reports, missing_reports, policy_violations)
     health = _health(consistency_score, severity)
@@ -346,6 +409,7 @@ def run_governance_audit(
         "consistency_score": consistency_score,
         "governance_health": health,
         "conflicts": conflicts,
+        "brake_context": brake_context,
         "stale_reports": stale_reports,
         "missing_reports": missing_reports,
         "policy_violations": policy_violations,
@@ -366,6 +430,9 @@ def format_governance_audit(result: Dict[str, Any]) -> str:
         f"Consistency: {int(result.get('consistency_score', 0))}%\n"
         f"Health: {result.get('governance_health', 'UNKNOWN')}\n"
         f"Conflicts: {len(result.get('conflicts') or [])}\n"
+        f"Brake Context: {(result.get('brake_context') or {}).get('brake_risk_level', 'NONE')} "
+        f"(triggers={(result.get('brake_context') or {}).get('trigger_count', 0)}, "
+        f"source={(result.get('brake_context') or {}).get('brake_source', 'NONE')})\n"
         f"Stale Reports: {len(result.get('stale_reports') or [])}\n"
         f"Violations: {'none' if not violations else len(violations)}\n"
         f"Status: {result.get('audit_severity', 'UNKNOWN')}\n"
