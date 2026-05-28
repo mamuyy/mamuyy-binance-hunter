@@ -39,3 +39,30 @@ Dokumen ini menetapkan **diagnosis-only workflow** untuk menyusun rekomendasi fi
 
 ## Next Step (manual)
 Hasil diagnosis dipakai untuk menyiapkan proposal parameter filtering/alokasi di fase berikutnya dengan review manual dan paper validation tambahan.
+
+## Read-Only Filtering Simulation Policy
+
+Policy ini berlaku **hanya** untuk simulasi Week 2 dan bersifat recommendation-only.
+
+### Policy rules
+1. **BLOCK/ALERT** jika `matched_regime == "RISK OFF"`.
+2. **BLOCK/ALERT** jika normalized score `< 0.2`.
+   - Jika score berada di rentang `0–100`, normalisasi: `score_norm = score / 100`.
+   - Jika score sudah di rentang `0–1`, gunakan langsung.
+3. **BLOCK/ALERT** jika `holding_candles <= 3`.
+4. Baris `FLAT` dikeluarkan dari metrik winrate default, namun tetap dilaporkan sebagai `excluded_flat_count`.
+
+### Why RISK OFF is reduced
+Regime **RISK OFF** secara historis cenderung memiliki profil risk/reward yang lebih lemah untuk setup ini, sehingga ditandai untuk reduce exposure dalam simulasi kebijakan (bukan auto-eksekusi).
+
+### Why score < 0.2 is alert-only
+Skor model pada fase ini belum diperlakukan sebagai probabilitas terkalibrasi penuh; karena itu threshold `< 0.2` dipakai sebagai sinyal kehati-hatian untuk alert/block simulasi, bukan klaim probabilistik final.
+
+### Why holding_candles <= 3 is weak zone
+Holding yang sangat pendek (`<=3`) diperlakukan sebagai weak zone karena noise mikrostruktur dan ketidakstabilan sinyal jangka sangat pendek dapat meningkatkan variasi outcome.
+
+### Execution governance (strict)
+- **No execution changes**: tidak ada perubahan broker/order routing/execution engine/strategy logic/live connector.
+- **No live trading changes**: tidak ada perubahan perilaku trading utama.
+- **No auto-promotion**: hasil simulasi tidak boleh memicu promotion otomatis.
+- **PAPER_ONLY remains enforced**: semua hasil hanya diagnosis/log/alert dan recommendation-only.
