@@ -205,3 +205,45 @@ Kompresi durasi holding dapat merefleksikan perubahan mikrostruktur (trend susta
 - Hasil hanya untuk **recommendation-only governance evidence**.
 - **No deployment allowed** dari hasil Week 2D.1 saja.
 - Tetap berlaku larangan: no live execution, no engine changes, no strategy deployment.
+
+## Week 2E Regime Transition Prediction & Early Warning
+
+Week 2D.1 Emergency Brake Simulation terbukti membantu menahan drawdown secara reaktif. Week 2E menambahkan layer **proaktif**: diagnosis risiko transisi regime sebelum performa benar-benar collapse.
+
+### Tujuan: dari reaktif ke proaktif
+- Mengubah sinyal drift yang sebelumnya baru dipakai setelah degradasi terlihat, menjadi sinyal warning dini berbasis pola transisi regime.
+- Memberikan evidence apakah warning score sudah meningkat sebelum titik collapse (jika timestamp collapse tersedia dari drift report).
+- Tetap bersifat diagnosis-only: tidak ada perubahan logic eksekusi strategi.
+
+### Transition Instability Score (0-100)
+Skor ini merangkum ketidakstabilan struktur regime dengan komponen rolling:
+1. frekuensi transisi regime,
+2. entropy/churn regime,
+3. proporsi transisi menuju `RISK OFF`,
+4. proporsi regime change vs regime stable.
+
+Semua komponen dinormalisasi ke skala 0-100 agar bisa dibandingkan lintas metrik.
+
+### Early Warning Score (0-100)
+Early warning menggabungkan:
+- transition instability,
+- volatility cluster proxy,
+- holding time compression,
+- score distribution shift,
+- performance decay (winrate + avg PnL).
+
+Kategori warning:
+- `0-30`: **STABLE**
+- `31-60`: **WATCH**
+- `61-80`: **RISK_ELEVATED**
+- `81-100`: **BRAKE_CANDIDATE**
+
+### Output Week 2E
+- `reports/transition_prediction_report.json`
+- `reports/regime_transition_matrix.csv`
+- `reports/transition_warning_timeseries.csv`
+
+### Governance usage (strict)
+- Output Week 2E adalah **evidence-only governance artifact** untuk manual review.
+- Hasil **tidak boleh** dipakai langsung untuk deployment, auto-promotion, atau perubahan position sizing real-time.
+- Tetap berlaku: PAPER_ONLY, read-only, recommendation-only, no live execution, no engine changes, no strategy deployment.
