@@ -372,6 +372,21 @@ def format_governance_intelligence_message() -> str:
     )
 
 
+
+def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> str:
+    scorecard = report if isinstance(report, dict) else _read_json_report("reports/promotion_scorecard.json")
+    candidates = scorecard.get("candidates", []) if isinstance(scorecard, dict) else []
+    summary = scorecard.get("summary", {}) if isinstance(scorecard, dict) else {}
+    top = candidates[0] if candidates else {}
+    return (
+        "🏆 PROMOTION SCORECARD\n\n"
+        f"Top Candidate: {top.get('strategy_setup_name', summary.get('top_candidate', '-'))}\n"
+        f"Readiness: {top.get('recommendation', summary.get('top_recommendation', 'HOLD'))}\n"
+        f"Governance: {top.get('governance_compatibility', 'PASS' if summary.get('governance_status') == 'SAFE' else 'WATCH')}\n"
+        f"Drift: {top.get('drift_risk', summary.get('drift_label', 'UNKNOWN'))}\n"
+        "Mode: PAPER_ONLY read-only, no auto deployment."
+    )
+
 def send_telegram_message(
     bot_token: str,
     chat_id: str,

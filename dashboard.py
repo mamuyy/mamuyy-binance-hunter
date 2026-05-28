@@ -16,6 +16,7 @@ from database import (
 from portfolio_analytics import calculate_portfolio_analytics
 from portfolio_observer import observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget
+from promotion_scorecard import generate_promotion_scorecard
 from risk_manager import RiskConfig, check_execution_safety
 
 
@@ -1052,6 +1053,102 @@ def render_broadcast_control_center(broadcasts: pd.DataFrame, paper_trades: pd.D
             )
             st.dataframe(performance, use_container_width=True, hide_index=True)
 
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_promotion_scorecard() -> dict[str, Any]:
+    report = read_json_report("reports/promotion_scorecard.json")
+    if report:
+        return report
+    try:
+        return generate_promotion_scorecard(
+            db_path=config.database_path,
+            output_path=None,
+            write_report=False,
+            top_n=10,
+        )
+    except Exception as exc:
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "paper_only": True,
+            "candidates": [],
+            "summary": {"candidate_count": 0, "top_recommendation": "HOLD"},
+            "governance_constraints": {
+                "paper_only": "PAPER_ONLY",
+                "read_only_analytics": True,
+                "no_real_execution": True,
+                "no_auto_deployment": True,
+                "no_phase_3_promotion": True,
+            },
+            "warnings": [f"Promotion scorecard unavailable: {exc}"],
+        }
+
+
+def render_promotion_scorecard(scorecard: dict[str, Any]) -> None:
+    st.header("11. Promotion Scorecard")
+    st.caption("PAPER_ONLY governance intelligence: read-only analytics, no broker routing, no order placement, no live trading, no auto deployment, no Phase 3 promotion.")
+
+    candidates = scorecard.get("candidates", []) if isinstance(scorecard, dict) else []
+    summary = scorecard.get("summary", {}) if isinstance(scorecard, dict) else {}
+    constraints = scorecard.get("governance_constraints", {}) if isinstance(scorecard, dict) else {}
+    top = candidates[0] if candidates else {}
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Top Candidate", top.get("strategy_setup_name", summary.get("top_candidate", "-")))
+    col2.metric("Readiness", top.get("recommendation", summary.get("top_recommendation", "HOLD")))
+    col3.metric("Governance", top.get("governance_compatibility", "-"))
+    col4.metric("Drift", top.get("drift_risk", summary.get("drift_label", "UNKNOWN")))
+
+    st.subheader("Top Candidate Table")
+    if candidates:
+        candidate_df = pd.DataFrame(candidates)
+        display_columns = [
+            "strategy_setup_name",
+            "health_score",
+            "recommendation",
+            "promotion_readiness",
+            "governance_compatibility",
+            "risk_budget_compatibility",
+            "drift_risk",
+            "regime_stability",
+            "walkforward_quality",
+        ]
+        st.dataframe(candidate_df[[column for column in display_columns if column in candidate_df.columns]].head(10), use_container_width=True, hide_index=True)
+
+        freeze_reject = candidate_df[candidate_df.get("recommendation", pd.Series(dtype=str)).isin(["FREEZE", "REJECT"])]
+        if not freeze_reject.empty:
+            st.warning("Freeze/reject warnings are active for one or more setups. Promotion remains blocked pending manual PAPER_ONLY review.")
+            warning_cols = ["strategy_setup_name", "recommendation", "recommendation_reason"]
+            st.dataframe(freeze_reject[[column for column in warning_cols if column in freeze_reject.columns]].head(10), use_container_width=True, hide_index=True)
+        else:
+            st.success("No FREEZE/REJECT recommendation in cached top-N candidates.")
+    else:
+        st.info("No promotion scorecard candidates available yet. Run python main.py --promotion-scorecard.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Recommendation Badges")
+        recommendation_distribution = summary.get("recommendation_distribution", {}) or {}
+        show_dataframe_or_info(
+            pd.DataFrame([{"recommendation": key, "count": value} for key, value in recommendation_distribution.items()]),
+            "No recommendation distribution available.",
+        )
+    with col2:
+        st.subheader("Readiness Distribution")
+        readiness_distribution = summary.get("readiness_distribution", {}) or {}
+        show_dataframe_or_info(
+            pd.DataFrame([{"readiness": key, "count": value} for key, value in readiness_distribution.items()]),
+            "No readiness distribution available.",
+        )
+
+    st.subheader("Governance Constraints")
+    st.json({
+        "PAPER_ONLY": constraints.get("paper_only", "PAPER_ONLY"),
+        "read_only_analytics": constraints.get("read_only_analytics", True),
+        "no_real_execution": constraints.get("no_real_execution", True),
+        "no_auto_deployment": constraints.get("no_auto_deployment", True),
+        "no_phase_3_promotion": constraints.get("no_phase_3_promotion", True),
+    })
 
 def render_telegram_notification_center(events: pd.DataFrame) -> None:
     st.header("Telegram Notification Center")
@@ -2143,6 +2240,7 @@ def main() -> None:
     daily_ops_report = read_daily_ops_report()
     anomaly_report, incident_report = read_incident_anomaly_report()
     orchestrator_diagnostics = read_orchestrator_diagnostics()
+    promotion_scorecard = read_promotion_scorecard()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -2178,6 +2276,7 @@ def main() -> None:
     render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)
     render_portfolio_observability(portfolio_observability)
     render_portfolio_risk_budget(portfolio_risk_budget)
+    render_promotion_scorecard(promotion_scorecard)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
