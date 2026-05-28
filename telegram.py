@@ -1,3 +1,5 @@
+import json
+import os
 from typing import Dict, Any
 
 import requests
@@ -184,6 +186,129 @@ def format_orchestrator_message(result: Dict[str, Any]) -> str:
         f"Failed Engines: {', '.join(result.get('failed_engines', [])) or '-'}\n"
         f"Recovery Actions: {', '.join(result.get('recovery_actions', []))}\n"
         f"Scheduler Mode: {result.get('scheduler_mode', 'NORMAL')}"
+    )
+
+
+def _read_json_report(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as file:
+            payload = json.load(file)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _nested_get(payload: Dict[str, Any], *keys: str, default: Any = None) -> Any:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+    return current
+
+
+def _derive_market_action(
+    *,
+    paper_only_status: str,
+    early_warning_score: float,
+    early_warning_label: str,
+    brake_trigger_count: int,
+    holding_candles_mean_after: float | None,
+    collapse_timestamp: str | None,
+) -> Dict[str, Any]:
+    reasons = [
+        f"Early Warning: score={early_warning_score:.2f}, label={early_warning_label}",
+        f"Brake trigger count: {brake_trigger_count}",
+        f"PAPER_ONLY enforced: {paper_only_status == 'PAPER_ONLY'}",
+    ]
+    if holding_candles_mean_after is not None:
+        reasons.append(f"Holding compression mean(after): {holding_candles_mean_after:.2f}")
+    if collapse_timestamp and collapse_timestamp != "-":
+        reasons.append(f"Drift collapse timestamp: {collapse_timestamp}")
+
+    label_upper = early_warning_label.upper()
+    if paper_only_status != "PAPER_ONLY":
+        return {"action": "CRITICAL GOVERNANCE ERROR", "reasons": reasons}
+    if label_upper == "BRAKE_CANDIDATE":
+        return {"action": "NO TRADE / BRAKE REVIEW", "reasons": reasons}
+    if label_upper == "RISK_ELEVATED":
+        return {"action": "DEFENSIVE / HOLD", "reasons": reasons}
+    if brake_trigger_count >= 50:
+        return {"action": "DEFENSIVE / HOLD", "reasons": reasons}
+    if holding_candles_mean_after is not None and holding_candles_mean_after < 10:
+        return {"action": "WATCH / HOLD", "reasons": reasons}
+    if early_warning_score <= 30 and brake_trigger_count == 0:
+        return {"action": "NORMAL / PAPER ONLY", "reasons": reasons}
+    return {"action": "OBSERVE / PAPER ONLY", "reasons": reasons}
+
+
+def format_governance_intelligence_message() -> str:
+    transition = _read_json_report("reports/transition_prediction_report.json")
+    brake = _read_json_report("reports/emergency_brake_simulation.json")
+    drift = _read_json_report("reports/drift_detection_report.json")
+    if not transition and not brake and not drift:
+        return (
+            "🛡 GOVERNANCE INTELLIGENCE\n\n"
+            "Governance report unavailable, PAPER_ONLY still active."
+        )
+
+    paper_only_status = "PAPER_ONLY"
+    early_warning_score = float(
+        _nested_get(transition, "latest_early_warning", "score", default=None)
+        or transition.get("early_warning_score")
+        or transition.get("warning_score")
+        or 0.0
+    )
+    early_warning_label = str(
+        _nested_get(transition, "latest_early_warning", "label", default=None)
+        or transition.get("early_warning_label")
+        or transition.get("warning_label")
+        or "UNKNOWN"
+    )
+    brake_trigger_count = int(
+        brake.get("trigger_count")
+        or _nested_get(brake, "summary", "trigger_count", default=0)
+        or 0
+    )
+    brake_status = str(brake.get("status") or _nested_get(brake, "summary", "status", default="UNKNOWN"))
+    collapse_timestamp = str(
+        _nested_get(drift, "collapse_risk", "collapse_timestamp", default=None)
+        or drift.get("collapse_timestamp")
+        or drift.get("drift_collapse_timestamp")
+        or "-"
+    )
+    if not collapse_timestamp.strip():
+        collapse_timestamp = "-"
+    holding_candles_mean_after = _nested_get(drift, "holding_candles", "mean_after", default=None)
+    if holding_candles_mean_after is not None:
+        holding_candles_mean_after = float(holding_candles_mean_after)
+
+    decision = _derive_market_action(
+        paper_only_status=paper_only_status,
+        early_warning_score=early_warning_score,
+        early_warning_label=early_warning_label,
+        brake_trigger_count=brake_trigger_count,
+        holding_candles_mean_after=holding_candles_mean_after,
+        collapse_timestamp=collapse_timestamp,
+    )
+    reasons = "\n".join(f"- {reason}" for reason in decision["reasons"])
+
+    return (
+        "🛡 GOVERNANCE INTELLIGENCE\n\n"
+        "PAPER_ONLY: ACTIVE\n"
+        f"Suggested Action: {decision['action']}\n"
+        f"Early Warning: {early_warning_score:.2f} ({early_warning_label})\n"
+        f"Emergency Brake: {brake_trigger_count} / {brake_status}\n"
+        f"Drift Collapse: {collapse_timestamp}\n"
+        "Reason:\n"
+        f"{reasons}\n"
+        "Reminder: read-only governance signal, not live trading command.\n\n"
+        "Constraints: PAPER_ONLY enforced; read-only; no broker/order routing; "
+        "no execution mutation; no Phase 3 promotion; no live trading."
     )
 
 
