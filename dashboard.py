@@ -303,6 +303,131 @@ def read_orchestrator_diagnostics(path: str = "logs/orchestrator_diagnostics.jso
         return {}
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_json_report(path: str) -> dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as report_file:
+            payload = json.load(report_file)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_optional_csv(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return _empty_df()
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return _empty_df()
+
+
+def render_governance_risk_intelligence() -> None:
+    st.header("9. Governance / Risk Intelligence")
+    st.caption("Read-only governance intelligence. Execution mode remains PAPER_ONLY.")
+
+    research_summary_exists = os.path.exists("docs/RESEARCH_SUMMARY_FINAL.md")
+    drift = read_json_report("reports/drift_detection_report.json")
+    brake = read_json_report("reports/emergency_brake_simulation.json")
+    transition = read_json_report("reports/transition_prediction_report.json")
+    robustness = read_json_report("reports/robustness_test_results.json")
+    backtest = read_json_report("reports/backtest_filtered_results.json")
+
+    early_warning_score = float(
+        transition.get("early_warning_score")
+        or transition.get("warning_score")
+        or transition.get("score")
+        or 0.0
+    )
+    early_warning_label = str(
+        transition.get("early_warning_label")
+        or transition.get("label")
+        or transition.get("warning_label")
+        or "UNKNOWN"
+    ).upper()
+    paper_only_status = str(backtest.get("mode") or "PAPER_ONLY").upper()
+    if paper_only_status != "PAPER_ONLY":
+        paper_only_status = "PAPER_ONLY"
+
+    brake_active = bool(brake.get("brake_active") or brake.get("active") or False)
+    trigger_count = int(brake.get("high_trigger_count") or brake.get("trigger_count") or 0)
+    collapse_ts = drift.get("collapse_timestamp") or drift.get("drift_collapse_timestamp") or "-"
+    regime_summary = (
+        transition.get("regime_market_risk_summary")
+        or transition.get("market_risk_summary")
+        or robustness.get("regime_risk_summary")
+        or "No regime / market risk summary available."
+    )
+
+    recommendation = "OBSERVE / PAPER_ONLY"
+    warning_upper = early_warning_label.upper()
+    if warning_upper in {"RISK_ELEVATED", "BRAKE_CANDIDATE"}:
+        recommendation = "DEFENSIVE / WATCH"
+    if brake_active or trigger_count >= 3:
+        recommendation = "NO TRADE / BRAKE REVIEW"
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("PAPER_ONLY Status", paper_only_status)
+    col2.metric("Early Warning Score", f"{early_warning_score:.2f}")
+    col3.metric("Early Warning Label", early_warning_label)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Emergency Brake Active", "YES" if brake_active else "NO")
+    col2.metric("Brake Trigger Count", trigger_count)
+    col3.metric("Drift Collapse Timestamp", str(collapse_ts))
+
+    st.subheader("Emergency Brake Summary")
+    st.info(str(brake.get("summary") or brake.get("status") or "No emergency brake summary available."))
+
+    st.subheader("Regime / Market Risk Summary")
+    st.warning(str(regime_summary))
+
+    st.subheader("Defensive Recommendation")
+    if recommendation == "NO TRADE / BRAKE REVIEW":
+        st.error(recommendation)
+    elif recommendation == "DEFENSIVE / WATCH":
+        st.warning(recommendation)
+    else:
+        st.info(recommendation)
+
+    regime_matrix = read_optional_csv("reports/regime_transition_matrix.csv")
+    robustness_split = read_optional_csv("reports/robustness_time_split.csv")
+    brake_events = read_optional_csv("reports/emergency_brake_events.csv")
+    warning_timeseries = read_optional_csv("reports/transition_warning_timeseries.csv")
+
+    st.subheader("Optional Governance Artifacts")
+    if research_summary_exists:
+        st.success("Research summary detected: docs/RESEARCH_SUMMARY_FINAL.md")
+    else:
+        st.info("Research summary markdown not found.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Regime Transition Matrix**")
+        show_dataframe_or_info(regime_matrix, "regime_transition_matrix.csv not found.")
+        if not regime_matrix.empty and len(regime_matrix.columns) > 1:
+            matrix = regime_matrix.set_index(regime_matrix.columns[0]).apply(pd.to_numeric, errors="coerce")
+            st.plotly_chart(px.imshow(matrix.fillna(0), text_auto=True, aspect="auto"), use_container_width=True)
+    with col2:
+        st.markdown("**Robustness Time Split**")
+        show_dataframe_or_info(robustness_split, "robustness_time_split.csv not found.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Emergency Brake Events**")
+        show_dataframe_or_info(brake_events, "emergency_brake_events.csv not found.")
+    with col2:
+        st.markdown("**Transition Warning Timeseries**")
+        show_dataframe_or_info(warning_timeseries, "transition_warning_timeseries.csv not found.")
+        if not warning_timeseries.empty and len(warning_timeseries.columns) >= 2:
+            x_col = "timestamp" if "timestamp" in warning_timeseries.columns else warning_timeseries.columns[0]
+            y_col = "early_warning_score" if "early_warning_score" in warning_timeseries.columns else warning_timeseries.columns[1]
+            safe_plot_line(warning_timeseries, x_col, y_col, "Transition Early Warning Timeseries")
+
+
 def status_badge(label: str, status: str, detail: str = "") -> None:
     colors = {
         "GREEN": "#15803d",
@@ -1868,6 +1993,7 @@ def main() -> None:
     render_webhook_paper_engine(internal_paper_trades, webhook_payload)
     render_broadcast_control_center(broadcast_events, internal_paper_trades)
     render_telegram_notification_center(telegram_events)
+    render_governance_risk_intelligence()
 
 
 if __name__ == "__main__":
