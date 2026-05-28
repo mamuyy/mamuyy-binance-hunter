@@ -211,6 +211,31 @@ def _nested_get(payload: Dict[str, Any], *keys: str, default: Any = None) -> Any
     return current
 
 
+
+def _format_percent(value: Any) -> str:
+    try:
+        return f"{float(value):.0f}%"
+    except (TypeError, ValueError):
+        return "0%"
+
+
+def format_portfolio_risk_budget_summary(report: Dict[str, Any] | None = None) -> str:
+    risk_budget = report if isinstance(report, dict) else _read_json_report("reports/portfolio_risk_budget.json")
+    if not risk_budget:
+        return (
+            "📦 RISK BUDGET\n"
+            "Exposure: 0%\n"
+            "Concentration: UNKNOWN\n"
+            "Recommendation: NORMAL"
+        )
+    return (
+        "📦 RISK BUDGET\n"
+        f"Exposure: {_format_percent(risk_budget.get('total_exposure', 0.0))}\n"
+        f"Concentration: {str(risk_budget.get('concentration_label', 'UNKNOWN')).upper()}\n"
+        f"Recommendation: {str(risk_budget.get('recommendation', 'NORMAL')).upper()}"
+    )
+
+
 def _derive_market_action(
     *,
     paper_only_status: str,
@@ -271,6 +296,7 @@ def format_governance_intelligence_message() -> str:
     transition = _read_json_report("reports/transition_prediction_report.json")
     brake = _read_json_report("reports/emergency_brake_simulation.json")
     drift = _read_json_report("reports/drift_detection_report.json")
+    risk_budget = _read_json_report("reports/portfolio_risk_budget.json")
     paper_only_status = "PAPER_ONLY"
     early_warning_score = float(
         _nested_get(transition, "latest_early_warning", "score", default=None)
@@ -325,6 +351,8 @@ def format_governance_intelligence_message() -> str:
     transition_status = "loaded" if transition else "missing"
     brake_status = "loaded" if brake else "missing"
     drift_status = "loaded" if drift else "missing"
+    risk_budget_status = "loaded" if risk_budget else "missing"
+    risk_budget_summary = format_portfolio_risk_budget_summary(risk_budget)
 
     return (
         "🛡 GOVERNANCE INTELLIGENCE\n\n"
@@ -335,7 +363,8 @@ def format_governance_intelligence_message() -> str:
         f"Early Warning: {early_warning_score:.2f} ({early_warning_label})\n"
         f"Emergency Brake: {emergency_brake} (trigger_count={brake_trigger_count})\n"
         f"Drift Collapse: {collapse_timestamp}\n"
-        f"Report Health: transition {transition_status}, brake {brake_status}, drift {drift_status}\n"
+        f"Report Health: transition {transition_status}, brake {brake_status}, drift {drift_status}, risk_budget {risk_budget_status}\n"
+        f"{risk_budget_summary}\n"
         "Reason:\n"
         f"{reasons}\n"
         "Reminder: read-only governance signal, not live trading command.\n\n"

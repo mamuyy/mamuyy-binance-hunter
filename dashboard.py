@@ -15,6 +15,7 @@ from database import (
 )
 from portfolio_analytics import calculate_portfolio_analytics
 from portfolio_observer import observe_portfolio
+from portfolio_risk_budget import calculate_portfolio_risk_budget
 from risk_manager import RiskConfig, check_execution_safety
 
 
@@ -138,6 +139,36 @@ def read_portfolio_observability() -> dict[str, Any]:
             "market_type_exposure": [],
             "top_correlated_symbols": [],
             "warnings": [f"Portfolio observer unavailable: {exc}"],
+        }
+
+
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_portfolio_risk_budget() -> dict[str, Any]:
+    try:
+        return calculate_portfolio_risk_budget(
+            config.database_path,
+            output_path="reports/portfolio_risk_budget.json",
+            write_report=True,
+        )
+    except Exception as exc:
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "paper_only": True,
+            "governance_layer": "PAPER_ONLY_READ_ONLY_PORTFOLIO_RISK_BUDGET",
+            "execution_enabled": False,
+            "live_trading_enabled": False,
+            "regime": "UNKNOWN",
+            "total_exposure": 0.0,
+            "max_allowed_exposure": 0.0,
+            "utilization_ratio": 0.0,
+            "risk_budget_utilization": 0.0,
+            "concentration_score": 0.0,
+            "concentration_label": "UNKNOWN",
+            "diversification_score": 0.0,
+            "recommendation": "NORMAL",
+            "symbol_breakdown": [],
+            "exposure_by_regime": [],
+            "warnings": [f"Portfolio risk budget unavailable: {exc}"],
         }
 
 
@@ -689,6 +720,49 @@ def _metric_text(value: Any, suffix: str = "") -> str:
         return f"{float(value):.2f}{suffix}"
     except (TypeError, ValueError):
         return f"0.00{suffix}"
+
+
+
+def render_portfolio_risk_budget(result: dict[str, Any]) -> None:
+    st.header("10. Portfolio Risk Budget")
+    st.caption("PAPER_ONLY governance layer: read-only analytics, no broker routing, no order placement, no live trading.")
+    recommendation = str(result.get("recommendation", "NORMAL")).upper()
+    badge_color = "GREEN" if recommendation == "NORMAL" else "YELLOW" if recommendation == "DEFENSIVE" else "RED"
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Exposure", f"{float(result.get('total_exposure', 0.0)):.2f}%")
+    col2.metric("Regime-Aware Cap", f"{float(result.get('max_allowed_exposure', 0.0)):.2f}%")
+    col3.metric("Utilization", f"{float(result.get('risk_budget_utilization', 0.0)):.2f}%")
+    with col4:
+        status_badge("Recommendation", badge_color, f" {recommendation}")
+
+    col1, col2, col3 = st.columns(3)
+    col1.progress(min(1.0, max(0.0, float(result.get("utilization_ratio", 0.0)))), text="Exposure budget utilization")
+    col2.metric("Concentration", f"{result.get('concentration_label', 'UNKNOWN')} ({float(result.get('concentration_score', 0.0)):.2f}/100)")
+    col3.metric("Diversification", f"{float(result.get('diversification_score', 0.0)):.2f}/100")
+
+    for warning in (result.get("warnings") or [])[:3]:
+        if str(result.get("concentration_label", "")).upper() == "HIGH" or recommendation in {"REDUCE EXPOSURE", "FREEZE NEW ALLOCATION"}:
+            st.warning(warning)
+        else:
+            st.info(warning)
+
+    st.info(str(result.get("defensive_scaling_recommendation", "Read-only risk budget analytics only.")))
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Exposure by Symbol")
+        show_dataframe_or_info(pd.DataFrame(result.get("symbol_breakdown", [])), "No symbol risk budget exposure yet.")
+    with col2:
+        st.subheader("Exposure by Regime")
+        show_dataframe_or_info(pd.DataFrame(result.get("exposure_by_regime", [])), "No regime risk budget exposure yet.")
+
+    with st.expander("Governance safety flags", expanded=False):
+        st.json({
+            "paper_only": result.get("paper_only", True),
+            "execution_enabled": result.get("execution_enabled", False),
+            "live_trading_enabled": result.get("live_trading_enabled", False),
+            "safety": result.get("safety", []),
+        })
 
 
 def render_portfolio_equity_analytics(result: dict[str, Any]) -> None:
@@ -2055,6 +2129,7 @@ def main() -> None:
     counts = table_counts()
     risk_status = read_risk_status()
     portfolio_observability = read_portfolio_observability()
+    portfolio_risk_budget = read_portfolio_risk_budget()
     portfolio_analytics = read_portfolio_analytics()
     opportunity_allocation = read_opportunity_allocation()
     model_registry = read_model_registry()
@@ -2102,6 +2177,7 @@ def main() -> None:
     render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
     render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)
     render_portfolio_observability(portfolio_observability)
+    render_portfolio_risk_budget(portfolio_risk_budget)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
