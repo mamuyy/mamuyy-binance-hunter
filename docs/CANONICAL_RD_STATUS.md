@@ -13,6 +13,42 @@ This document is the single source of truth for current R&D status after auditin
 - `reports/` is intentionally not a tracked source-of-truth directory in this checkout; it is ignored as generated/local research output. Treat missing tracked reports as normal unless a specific runtime artifact is required for a review.
 - The previous source-of-truth doc still points future sessions to GitHub `main` as technical truth, but this status file is now the canonical R&D interpretation for what should and should not be repeated.
 
+
+## 2026-05-28 Update — Phase 2.5 Governance Stack
+
+Phase 2.5 governance hardening is complete and remains bounded to `PAPER_ONLY` operations. The completed governance work added the canonical R&D status, portfolio risk-budget governance, promotion scorecard governance, governance self-auditing, and emergency-brake context alignment. The final governance audit reports **100% consistency**, **HEALTHY** status, **0 conflicts**, and **no violations**.
+
+### Completed
+
+- Portfolio Risk Budget Layer.
+- Promotion Scorecard Engine.
+- Governance Audit Layer.
+- Brake Context Alignment.
+
+### Current governance stack
+
+| Layer | Current state | Interpretation |
+| --- | --- | --- |
+| Risk Budget | `FREEZE NEW ALLOCATION` | No new allocation increases while the paper-only governance stack observes stability. |
+| Promotion Scorecard | `FREEZE` | No strategy promotion is allowed. |
+| Governance Audit | `HEALTHY` / `100%` consistency | Current canonical governance conflicts are reduced to `0` with no violations. |
+
+### Decision
+
+- Continue `PAPER_ONLY`.
+- No allocation increase.
+- No strategy promotion.
+- No Phase 3.
+- No real execution.
+- No broker routing.
+
+### Next
+
+- Run the Daily Governance Ops Window.
+- Observe stability over multiple days.
+- Track whether governance conflicts remain `0`.
+- Track whether the risk budget improves naturally from `FREEZE` toward `DEFENSIVE` or `NORMAL` without forced promotion.
+
 ## Canonical status taxonomy
 
 | Status | Meaning |
@@ -42,6 +78,10 @@ This document is the single source of truth for current R&D status after auditin
 | Telegram governance intelligence | `DONE` | Telegram formatter reports PAPER_ONLY, severity, action, report health, and read-only/no-live-trading reminder. |
 | Report-generation scripts | `DONE` as tooling | Scripts exist for regime filtering, robustness, drift, emergency brake, transition prediction, duplicate detection, warning summaries, and ops reports. |
 | Runtime report tracking policy | `DONE` | Generated `reports/`, `logs/`, database files, and data inputs are local/runtime artifacts, not tracked source-of-truth evidence in Git. |
+| Portfolio Risk Budget Layer | `DONE` / `LIVE` | Phase 2.5 portfolio risk-budget governance is implemented as a paper-only allocation control layer; current state is `FREEZE NEW ALLOCATION`. |
+| Promotion Scorecard Engine | `DONE` / `LIVE` | Phase 2.5 promotion scorecard governance is implemented as a paper-only promotion control engine; current state is `FREEZE`. |
+| Governance Audit Layer | `DONE` / `LIVE` | Phase 2.5 self-auditing governance is implemented; latest result is `HEALTHY`, `100%` consistency, `0` conflicts, and no violations. |
+| Brake Context Alignment | `DONE` | Emergency-brake context is aligned with risk-budget and promotion-scorecard governance boundaries. |
 
 ## Active items (`LIVE`, paper/observability only)
 
@@ -51,6 +91,9 @@ This document is the single source of truth for current R&D status after auditin
 | Governance / Risk Intelligence panel | `LIVE` | Read-only dashboard surface. It may recommend `OBSERVE`, `HOLD`, `DEFENSIVE`, or `BRAKE REVIEW`, but it is not a command router. |
 | Telegram governance intelligence message | `LIVE` | Read-only notification. It must remain explicit that governance signals are not live trading commands. |
 | Daily/ops reporting scripts | `LIVE` if runtime reports exist; otherwise `OBSERVATION` | They summarize runtime artifacts and warning categories; they do not mutate strategy or place orders. |
+| Portfolio Risk Budget governance | `LIVE` | Paper-only allocation guardrail; current state is `FREEZE NEW ALLOCATION` and does not route orders. |
+| Promotion Scorecard governance | `LIVE` | Paper-only promotion guardrail; current state is `FREEZE` and does not auto-promote strategies. |
+| Governance Audit self-audit | `LIVE` | Paper-only consistency audit; latest status is `HEALTHY` with `100%` consistency and `0` conflicts. |
 | Resource monitoring | `OBSERVATION` | Host/database/log visibility only. It does not throttle, schedule, pause, trade, or deploy. |
 | Dashboard/database analytics | `OBSERVATION` | UI/reporting layer only; expensive analytics are opt-in/cached and must not become execution gates without separate review. |
 
@@ -58,10 +101,8 @@ This document is the single source of truth for current R&D status after auditin
 
 | Item | Review decision needed | Current answer |
 | --- | --- | --- |
-| Emergency brake promotion | Decide whether the brake becomes a paper-only safety-layer candidate with explicit gate criteria. | Candidate only; no live deployment. |
+| Emergency brake promotion | Continue observing the aligned paper-only brake context against the risk budget and promotion scorecard. | Alignment complete; candidate remains paper-only with no live deployment. |
 | Early Warning Score | Decide whether there is enough pre-collapse predictive evidence for paper-only defensive review triggers. | Monitoring signal only; not autonomous. |
-| Promotion scorecard | Fill candidate-level stability/calibration/risk/ops fields for active candidates. | Required next governance artifact. |
-| Portfolio-level risk budget | Define per-regime exposure ceilings, concentration rules, and daily budget breach summary. | Correct next phase, paper-only. |
 | Adaptive threshold governance | If thresholds move, require bounded ranges, reason logging, and freeze during instability. | Governance-only continuation, not fresh alpha search. |
 | Runtime report completeness | Confirm whether VPS/local runtime has current `reports/*.json` and `logs/*.json/csv`. | Not resolved from tracked Git because generated reports are ignored. |
 
@@ -104,10 +145,10 @@ The correct next phase is **Governance Continuation / Paper-Only Defensive Risk 
 
 Priority order:
 
-1. Create or fill candidate promotion scorecards for any active paper/shadow candidates.
-2. Produce daily paper-only ops summaries for a consecutive observation window.
-3. Add/verify portfolio-level risk budget reporting: exposure ceilings, concentration rules, and breach summaries.
-4. Convert Emergency Brake into a paper-only reviewed safety-layer candidate with explicit acceptance/rejection gates.
+1. Run the Daily Governance Ops Window.
+2. Observe paper-only governance stability over multiple days.
+3. Track whether governance conflicts remain `0`.
+4. Track whether the risk budget improves naturally from `FREEZE` toward `DEFENSIVE` or `NORMAL`.
 5. Use Early Warning Score only to trigger manual defensive review, not autonomous transitions.
 6. Keep dashboard and Telegram governance intelligence aligned with this canonical status.
 7. Update this file when status changes; do not fork competing roadmap docs.
@@ -136,4 +177,4 @@ Forbidden:
 
 ## Canonical conclusion
 
-R&D has moved past alpha/calibration repetition and into paper-only governance hardening. Phase 2 should remain closed as an evidence package. The next valid work is defensive risk governance, promotion scorecards, paper-only operational monitoring, and portfolio risk-budget review. No Phase 3 and no real execution are permitted from the current repository state.
+R&D has moved past alpha/calibration repetition and completed the Phase 2.5 paper-only governance stack. Phase 2 remains closed as an evidence package. The next valid work is daily governance operations, multi-day stability observation, conflict tracking, and natural risk-budget recovery review. No Phase 3, no real execution, and no broker routing are permitted from the current repository state.
