@@ -131,9 +131,9 @@ def main() -> None:
     minp = max(10, w // 3)
 
     df["prev_regime"] = df["matched_regime"].shift(1)
-    df["is_transition"] = (df["matched_regime"] != df["prev_regime"]).astype(float)
-    df.loc[df["prev_regime"].isna(), "is_transition"] = np.nan
-    df["to_risk_off"] = df["matched_regime"].str.upper().eq("RISK OFF").astype(float)
+    df["regime_changed"] = df["matched_regime"] != df["prev_regime"]
+    df.loc[df["prev_regime"].isna(), "regime_changed"] = np.nan
+    df["to_risk_off"] = df["matched_regime"].str.upper().eq("RISK OFF")
 
     transition_df = df[df["prev_regime"].notna()].copy()
     transition_counts = (
@@ -143,15 +143,21 @@ def main() -> None:
     transition_counts["transition_probability"] = (transition_counts["transition_count"] / total_by_prev).round(6)
     transition_counts = transition_counts.sort_values(["prev_regime", "transition_count"], ascending=[True, False])
 
-    rolling_transition_freq = df["is_transition"].rolling(w, min_periods=minp).mean()
-    regime_entropy = (
-        df["matched_regime"].rolling(w, min_periods=minp).apply(
-            lambda s: float(-(pd.Series(s).value_counts(normalize=True) * np.log2(pd.Series(s).value_counts(normalize=True))).sum()),
-            raw=False,
-        )
-    )
-    rolling_risk_off_share = df["to_risk_off"].rolling(w, min_periods=minp).mean()
-    rolling_change_share = rolling_transition_freq.copy()
+    rolling_transition_freq = df["regime_changed"].astype(float).rolling(w, min_periods=minp).mean()
+
+    entropy_values = np.full(len(df), np.nan, dtype=float)
+    regimes = df["matched_regime"].to_numpy(dtype=object)
+    for i in range(len(df)):
+        start = max(0, i - w + 1)
+        window_vals = regimes[start : i + 1]
+        if len(window_vals) < minp:
+            continue
+        counts = pd.Series(window_vals).value_counts(normalize=True)
+        entropy_values[i] = float(-(counts * np.log2(counts)).sum())
+    regime_entropy = pd.Series(entropy_values, index=df.index)
+
+    rolling_risk_off_share = df["to_risk_off"].astype(float).rolling(w, min_periods=minp).mean()
+    rolling_change_share = df["regime_changed"].astype(float).rolling(w, min_periods=minp).mean()
 
     # Predictive features
     vol_std = df["pnl_pct"].rolling(w, min_periods=minp).std()
