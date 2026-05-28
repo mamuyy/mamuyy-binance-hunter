@@ -227,10 +227,21 @@ def _walkforward_quality(db_path: str) -> Dict[str, Any]:
 
 def _risk_budget_assessment(risk_budget: Dict[str, Any]) -> Dict[str, Any]:
     if not risk_budget:
-        return {"score": 50.0, "compatible": False, "recommendation": "UNKNOWN", "reason": "risk budget missing"}
+        return {
+            "score": 50.0,
+            "compatible": False,
+            "recommendation": "UNKNOWN",
+            "reason": "risk budget missing",
+            "utilization_ratio": 0.0,
+            "brake_context": {},
+            "brake_risk_level": "NONE",
+        }
     recommendation = str(risk_budget.get("recommendation", "NORMAL")).upper()
     utilization = _number(risk_budget.get("risk_budget_utilization"), 0.0)
+    utilization_ratio = _number(risk_budget.get("utilization_ratio"), utilization / 100.0 if utilization > 1.0 else utilization)
     concentration = _number(risk_budget.get("concentration_score"), 0.0)
+    brake_context = risk_budget.get("brake_context") if isinstance(risk_budget.get("brake_context"), dict) else {}
+    brake_risk_level = str(brake_context.get("brake_risk_level", "NONE")).upper()
     if recommendation == "NORMAL":
         base = 90.0
         compatible = True
@@ -252,7 +263,10 @@ def _risk_budget_assessment(risk_budget: Dict[str, Any]) -> Dict[str, Any]:
         "compatible": compatible,
         "recommendation": recommendation,
         "utilization": round(utilization, 2),
+        "utilization_ratio": round(utilization_ratio, 4),
         "concentration_score": round(concentration, 2),
+        "brake_context": brake_context,
+        "brake_risk_level": brake_risk_level,
     }
 
 
@@ -321,7 +335,9 @@ def _candidate_local_quality(candidate: Dict[str, Any]) -> float:
 
 
 def _recommendation(health: float, governance: Dict[str, Any], drift: Dict[str, Any], risk_budget: Dict[str, Any]) -> tuple[str, str]:
-    if governance.get("emergency_escalated") or risk_budget.get("recommendation") == "FREEZE NEW ALLOCATION":
+    if risk_budget.get("recommendation") == "FREEZE NEW ALLOCATION":
+        return "FREEZE", "Risk budget freeze overrides promotion readiness."
+    if governance.get("emergency_escalated"):
         return "FREEZE", "Emergency brake/risk freeze constraint is active."
     if drift.get("risk", 100.0) >= 75.0 or governance.get("score", 0.0) < 35.0:
         return "REJECT", "Drift/governance risk exceeds readiness constraints."
@@ -360,6 +376,22 @@ def generate_promotion_scorecard(
         )
         recommendation, reason = _recommendation(health_score, governance, drift, risk_budget)
         promotion_readiness = "PASS" if recommendation in {"PROMOTE_CANDIDATE", "WATCHLIST"} else "FAIL"
+        risk_budget_override = "INACTIVE"
+        if risk_budget["recommendation"] == "FREEZE NEW ALLOCATION":
+            recommendation = "FREEZE"
+            promotion_readiness = "FREEZE"
+            risk_budget_override = "ACTIVE"
+            reason = "Risk budget freeze overrides promotion readiness."
+        elif risk_budget.get("utilization_ratio", 0.0) > 1.0 and recommendation in {"PROMOTE_CANDIDATE", "WATCHLIST"}:
+            recommendation = "HOLD"
+            promotion_readiness = "HOLD"
+            risk_budget_override = "ACTIVE"
+            reason = "Risk budget utilization above 100% caps promotion readiness at HOLD."
+        elif risk_budget.get("brake_risk_level") == "HIGH" and recommendation in {"PROMOTE_CANDIDATE", "WATCHLIST"}:
+            recommendation = "HOLD"
+            promotion_readiness = "HOLD"
+            risk_budget_override = "ACTIVE"
+            reason = "High emergency brake risk caps promotion readiness at HOLD."
         candidates.append(
             {
                 "strategy_setup_name": candidate["name"],
@@ -370,7 +402,8 @@ def generate_promotion_scorecard(
                 "drift_risk_score": drift["risk"],
                 "regime_stability": regime["score"],
                 "walkforward_quality": walkforward["score"],
-                "risk_budget_compatibility": "PASS" if risk_budget["compatible"] else "FAIL",
+                "risk_budget_compatibility": "PASS" if risk_budget["compatible"] and risk_budget_override != "ACTIVE" else "FAIL",
+                "risk_budget_override": risk_budget_override,
                 "promotion_readiness": promotion_readiness,
                 "recommendation": recommendation,
                 "recommendation_reason": reason,
@@ -398,6 +431,8 @@ def generate_promotion_scorecard(
             "regime_stability": regime["score"],
             "walkforward_quality": walkforward["score"],
             "risk_budget_recommendation": risk_budget["recommendation"],
+            "risk_budget_utilization_ratio": risk_budget.get("utilization_ratio", 0.0),
+            "risk_budget_override": "ACTIVE" if any(candidate.get("risk_budget_override") == "ACTIVE" for candidate in candidates) else "INACTIVE",
         },
         "governance_constraints": GOVERNANCE_CONSTRAINTS,
     }
@@ -419,6 +454,7 @@ def format_promotion_scorecard(result: Dict[str, Any]) -> str:
         f"Top Candidate: {top.get('strategy_setup_name', '-')}",
         f"Readiness: {top.get('recommendation', summary.get('top_recommendation', 'HOLD'))}",
         f"Governance: {top.get('governance_compatibility', '-')}",
+        f"Risk Budget Override: {top.get('risk_budget_override', summary.get('risk_budget_override', 'INACTIVE'))}",
         f"Drift: {top.get('drift_risk', summary.get('drift_label', 'UNKNOWN'))}",
         f"Candidates: {summary.get('candidate_count', 0)}",
     ]
