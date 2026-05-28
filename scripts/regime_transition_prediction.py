@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict
@@ -88,6 +89,28 @@ def _load_optional_json(path: Path) -> Dict[str, object] | None:
         return None
 
 
+def rolling_regime_entropy(values: pd.Series, window: int) -> list[float]:
+    result: list[float] = []
+    values_list = list(values)
+    for i in range(len(values_list)):
+        start = max(0, i - window + 1)
+        chunk = [v for v in values_list[start : i + 1] if v is not None and str(v) != "nan"]
+        if not chunk:
+            result.append(0.0)
+            continue
+        counts: dict[object, int] = {}
+        for v in chunk:
+            counts[v] = counts.get(v, 0) + 1
+        total = len(chunk)
+        entropy = 0.0
+        for c in counts.values():
+            p = c / total
+            entropy -= p * math.log(p, 2)
+        max_entropy = math.log(max(len(counts), 1), 2) if len(counts) > 1 else 1.0
+        result.append(entropy / max_entropy if max_entropy else 0.0)
+    return result
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--input-csv", default="data/ml_calibration_matched_20260520.csv")
@@ -131,9 +154,6 @@ def main() -> None:
     minp = max(10, w // 3)
 
     df["prev_regime"] = df["matched_regime"].shift(1)
-    df["regime_changed"] = df["matched_regime"] != df["prev_regime"]
-    df.loc[df["prev_regime"].isna(), "regime_changed"] = np.nan
-    df["to_risk_off"] = df["matched_regime"].str.upper().eq("RISK OFF")
 
     transition_df = df[df["prev_regime"].notna()].copy()
     transition_counts = (
@@ -143,21 +163,12 @@ def main() -> None:
     transition_counts["transition_probability"] = (transition_counts["transition_count"] / total_by_prev).round(6)
     transition_counts = transition_counts.sort_values(["prev_regime", "transition_count"], ascending=[True, False])
 
-    rolling_transition_freq = df["regime_changed"].astype(float).rolling(w, min_periods=minp).mean()
-
-    entropy_values = np.full(len(df), np.nan, dtype=float)
-    regimes = df["matched_regime"].to_numpy(dtype=object)
-    for i in range(len(df)):
-        start = max(0, i - w + 1)
-        window_vals = regimes[start : i + 1]
-        if len(window_vals) < minp:
-            continue
-        counts = pd.Series(window_vals).value_counts(normalize=True)
-        entropy_values[i] = float(-(counts * np.log2(counts)).sum())
-    regime_entropy = pd.Series(entropy_values, index=df.index)
-
-    rolling_risk_off_share = df["to_risk_off"].astype(float).rolling(w, min_periods=minp).mean()
-    rolling_change_share = df["regime_changed"].astype(float).rolling(w, min_periods=minp).mean()
+    df["rolling_regime_entropy"] = rolling_regime_entropy(df["matched_regime"], w)
+    df["regime_changed"] = (df["matched_regime"] != df["matched_regime"].shift(1)).astype(float)
+    df["rolling_transition_frequency"] = df["regime_changed"].rolling(w, min_periods=minp).mean()
+    df["to_risk_off"] = (df["matched_regime"].str.upper() == "RISK OFF").astype(float)
+    df["rolling_risk_off_share"] = df["to_risk_off"].rolling(w, min_periods=minp).mean()
+    rolling_change_share = df["rolling_transition_frequency"]
 
     # Predictive features
     vol_std = df["pnl_pct"].rolling(w, min_periods=minp).std()
@@ -174,9 +185,9 @@ def main() -> None:
     instability_score = (
         100.0
         * (
-            0.35 * _safe_norm(rolling_transition_freq)
-            + 0.25 * _safe_norm(regime_entropy)
-            + 0.20 * _safe_norm(rolling_risk_off_share)
+            0.35 * _safe_norm(df["rolling_transition_frequency"])
+            + 0.25 * _safe_norm(df["rolling_regime_entropy"])
+            + 0.20 * _safe_norm(df["rolling_risk_off_share"])
             + 0.20 * _safe_norm(rolling_change_share)
         )
     ).clip(0, 100)
@@ -198,9 +209,9 @@ def main() -> None:
     ).clip(0, 100)
 
     df_out = df[["signal_timestamp", "matched_regime", "prev_regime", "pnl_pct", "holding_candles", "score", "is_win"]].copy()
-    df_out["rolling_transition_freq"] = rolling_transition_freq
-    df_out["rolling_regime_entropy"] = regime_entropy
-    df_out["rolling_risk_off_share"] = rolling_risk_off_share
+    df_out["rolling_transition_freq"] = df["rolling_transition_frequency"]
+    df_out["rolling_regime_entropy"] = df["rolling_regime_entropy"]
+    df_out["rolling_risk_off_share"] = df["rolling_risk_off_share"]
     df_out["rolling_change_share"] = rolling_change_share
     df_out["transition_instability_score"] = instability_score
     df_out["volatility_proxy"] = volatility_proxy
