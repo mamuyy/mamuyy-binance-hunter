@@ -12,6 +12,8 @@ import pandas as pd
 from database import init_db
 
 REPORT_PATH = "reports/portfolio_risk_budget.json"
+EMERGENCY_BRAKE_SIMULATION_PATH = "reports/emergency_brake_simulation.json"
+BRAKE_HIGH_TRIGGER_THRESHOLD = 50
 DEFAULT_MAX_TOTAL_EXPOSURE = 50.0
 REGIME_RISK_CAPS: Dict[str, Dict[str, float]] = {
     "RISK_OFF": {"max_total_exposure": 15.0, "defensive_multiplier": 0.75},
@@ -32,6 +34,58 @@ def _number(value: Any, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
 
+
+
+def _read_json(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, encoding="utf-8") as report_file:
+            payload = json.load(report_file)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _nested_get(payload: Dict[str, Any], *keys: str, default: Any = None) -> Any:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+    return current
+
+
+def _brake_context(path: str = EMERGENCY_BRAKE_SIMULATION_PATH) -> Dict[str, Any]:
+    brake = _read_json(path)
+    trigger_count = int(_number(
+        _nested_get(brake, "summary", "brake_trigger_count", default=None)
+        or _nested_get(brake, "summary", "trigger_count", default=None)
+        or brake.get("high_trigger_count")
+        or brake.get("trigger_count"),
+        0.0,
+    ))
+    if not brake:
+        source = "NONE"
+    elif "simulation" in os.path.basename(path).lower():
+        source = "SIMULATION_RESEARCH"
+    else:
+        source = "LIVE_RUNTIME"
+    brake_risk_level = "HIGH" if trigger_count >= BRAKE_HIGH_TRIGGER_THRESHOLD else "LOW" if trigger_count > 0 else "NONE"
+    return {
+        "trigger_count": trigger_count,
+        "brake_risk_level": brake_risk_level,
+        "source": source,
+    }
+
+
+def _apply_brake_recommendation_floor(recommendation: str, brake_context: Dict[str, Any]) -> str:
+    if (
+        int(_number(brake_context.get("trigger_count"), 0.0)) >= BRAKE_HIGH_TRIGGER_THRESHOLD
+        and str(recommendation).upper() == "NORMAL"
+    ):
+        return "DEFENSIVE"
+    return recommendation
 
 def _normalize_regime(regime: Any) -> str:
     text = str(regime or "UNKNOWN").strip().upper()
@@ -194,6 +248,8 @@ def calculate_portfolio_risk_budget(
     max_allowed_exposure = _number(cap.get("max_allowed_exposure"), DEFAULT_MAX_TOTAL_EXPOSURE)
     utilization_ratio = round(total_exposure / max_allowed_exposure, 4) if max_allowed_exposure > 0 else 0.0
     recommendation = _recommendation(total_exposure, max_allowed_exposure, utilization_ratio, concentration_score)
+    brake_context = _brake_context()
+    recommendation = _apply_brake_recommendation_floor(recommendation, brake_context)
     defensive_multiplier = _number(cap.get("defensive_multiplier"), 1.0)
     defensive_scaling_recommendation = (
         f"Scale new paper allocation by {defensive_multiplier:.2f}x in {current_regime}; analytics only."
@@ -207,6 +263,8 @@ def calculate_portfolio_risk_budget(
         warnings.append(f"Risk budget utilization exceeds cap: {utilization_ratio:.2f}x")
     if concentration_score >= 60.0:
         warnings.append("Portfolio concentration is HIGH.")
+    if brake_context.get("brake_risk_level") == "HIGH":
+        warnings.append("Emergency brake simulation history is HIGH; review required before new paper allocation.")
     if not warnings:
         warnings.append("No major risk budget warning from available read-only data.")
 
@@ -232,6 +290,7 @@ def calculate_portfolio_risk_budget(
         "diversification_score": diversification_score,
         "defensive_scaling_recommendation": defensive_scaling_recommendation,
         "recommendation": recommendation,
+        "brake_context": brake_context,
         "symbol_breakdown": symbol_breakdown,
         "warnings": warnings,
         "safety": [
@@ -262,6 +321,9 @@ def format_portfolio_risk_budget(result: Dict[str, Any]) -> str:
             f"Concentration: {result.get('concentration_label', 'UNKNOWN')} ({_number(result.get('concentration_score')):.2f}/100)",
             f"Diversification: {_number(result.get('diversification_score')):.2f}/100",
             f"Recommendation: {result.get('recommendation', 'NORMAL')}",
+            f"Brake Context: {result.get('brake_context', {}).get('brake_risk_level', 'NONE')} "
+            f"(triggers={int(_number(result.get('brake_context', {}).get('trigger_count')))}, "
+            f"source={result.get('brake_context', {}).get('source', 'NONE')})",
             "Safety: PAPER_ONLY, read-only analytics, no order placement, no live trading.",
         ]
     )

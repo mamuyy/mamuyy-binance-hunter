@@ -22,9 +22,14 @@
     }
   },
   "audit_severity": "MEDIUM",
+  "brake_context": {
+    "brake_risk_level": "NONE",
+    "brake_source": "NONE",
+    "trigger_count": 0
+  },
   "conflicts": [],
   "consistency_score": 76,
-  "generated_at": "2026-05-28T14:40:35.024583+00:00",
+  "generated_at": "2026-05-28T14:51:40.975110+00:00",
   "governance_constraints": {
     "no_broker_order_routing": true,
     "no_deployment": true,
