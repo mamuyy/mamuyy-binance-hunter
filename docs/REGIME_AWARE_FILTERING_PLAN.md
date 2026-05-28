@@ -175,3 +175,33 @@ Simulasi adaptive threshold pada Week 2C belum cukup untuk menstabilkan performa
 - Hasil tidak boleh dipakai untuk live promotion langsung.
 - Tetap berlaku: PAPER_ONLY, read-only, recommendation-only.
 - Tidak ada perubahan engine, eksekusi broker/order, mutasi strategi, atau deployment live.
+
+## Week 2D.1 Emergency Brake Simulation
+
+Week 2D mendeteksi indikasi collapse sekitar `2026-05-23T20:59:59.999000+00:00`, termasuk kompresi `holding_candles_mean` dari kisaran ~13.59 ke ~10.30 setelah collapse. Karena adaptive threshold Week 2C belum menstabilkan split `late`, Week 2D.1 menambahkan **simulasi emergency brake** berbasis drift warning.
+
+### Tujuan simulasi
+- Menguji secara **paper-only / read-only** apakah temporary stop-trading setelah warning drift dapat menurunkan drawdown proxy atau mengurangi degradasi PnL setelah collapse.
+- Tujuan utama **bukan** menaikkan trade count, melainkan menghindari eksposur saat struktur pasar melemah.
+
+### Trigger logic (simulation only)
+- Hitung rolling metrics terhadap `signal_timestamp`:
+  - `rolling_winrate`
+  - `rolling_avg_pnl`
+  - `rolling_holding_candles_mean`
+- Trigger `VOLATILITY_ALERT / BRAKE_ON` jika salah satu benar:
+  - `rolling_winrate < 0.45`
+  - `rolling_avg_pnl < 0.0`
+  - `rolling_holding_candles_mean < 10`
+- Saat brake aktif, block sinyal selama cooldown window (default 100 rows/candles), lalu evaluasi ulang saat cooldown selesai.
+
+### Why holding_candles compression is an early warning candidate
+Kompresi durasi holding dapat merefleksikan perubahan mikrostruktur (trend sustain melemah, reversal/noise meningkat), sehingga diperlakukan sebagai kandidat warning dini bersama metrik outcome rolling.
+
+### Output & usage
+- Output simulasi:
+  - `reports/emergency_brake_simulation.json`
+  - `reports/emergency_brake_events.csv`
+- Hasil hanya untuk **recommendation-only governance evidence**.
+- **No deployment allowed** dari hasil Week 2D.1 saja.
+- Tetap berlaku larangan: no live execution, no engine changes, no strategy deployment.
