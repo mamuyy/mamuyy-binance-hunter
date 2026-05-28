@@ -66,3 +66,43 @@ Holding yang sangat pendek (`<=3`) diperlakukan sebagai weak zone karena noise m
 - **No live trading changes**: tidak ada perubahan perilaku trading utama.
 - **No auto-promotion**: hasil simulasi tidak boleh memicu promotion otomatis.
 - **PAPER_ONLY remains enforced**: semua hasil hanya diagnosis/log/alert dan recommendation-only.
+
+## Week 2B Robustness & Stability Analysis
+
+Sebelum policy filtering dipertimbangkan untuk tahap lanjutan, perlu dilakukan stress test robustness untuk mengurangi risiko false confidence akibat luck, look-ahead bias, atau overfitting pada satu snapshot dataset.
+
+### Why stress testing is required before promotion
+- Peningkatan metrik pada satu simulasi belum cukup menjadi bukti stabilitas lintas waktu.
+- Validasi robustness membantu memastikan improvement tidak hanya terkonsentrasi pada satu segmen periode.
+- Hasil tahap ini tetap **diagnosis-only** dan **governance evidence**, bukan izin deployment.
+
+### Time-split validation
+- Dataset diurutkan berdasarkan `signal_timestamp`.
+- Metrik winrate default mengecualikan baris `FLAT`, namun `excluded_flat_count` wajib dilaporkan.
+- Dataset dibagi menjadi tiga segmen waktu: `early`, `middle`, `late`.
+- Rule policy yang diuji per split (tetap read-only):
+  1. block jika `matched_regime == "RISK OFF"`
+  2. block jika `score_norm < 0.2`
+  3. block jika `holding_candles <= 3`
+- Per split dibandingkan:
+  - rows before / after / blocked
+  - winrate before / after
+  - avg PnL before / after
+  - total PnL before / after
+  - consistency of improvement lintas split
+
+### Sensitivity analysis
+- Rule `RISK OFF` dan `score_norm < 0.2` dipertahankan.
+- Threshold `holding_candles` diuji pada: `<=1`, `<=2`, `<=3`, `<=4`, `<=5`, `<=7`.
+- Untuk setiap threshold dilaporkan:
+  - `rows_kept`
+  - `rows_blocked`
+  - `retention_rate`
+  - `winrate_after`
+  - `avg_pnl_after`
+  - `total_pnl_after`
+- Tujuan: mencari sweet spot antara peningkatan kualitas setup dan trade retention.
+
+### Governance conclusion
+- Deployment/live execution **tidak diperbolehkan** dari hasil Week 2B saja.
+- Output Week 2B bersifat recommendation-only dan digunakan sebagai evidence untuk review governance lanjutan.
