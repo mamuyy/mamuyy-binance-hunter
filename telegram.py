@@ -398,6 +398,7 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
         f"Top Candidate: {top.get('strategy_setup_name', summary.get('top_candidate', '-'))}\n"
         f"Readiness: {top.get('recommendation', summary.get('top_recommendation', 'HOLD'))}\n"
         f"Governance: {top.get('governance_compatibility', 'PASS' if summary.get('governance_status') == 'SAFE' else 'WATCH')}\n"
+        f"Risk Budget Override: {top.get('risk_budget_override', summary.get('risk_budget_override', 'INACTIVE'))}\n"
         f"Drift: {top.get('drift_risk', summary.get('drift_label', 'UNKNOWN'))}\n"
         "Mode: PAPER_ONLY read-only, no auto deployment."
     )
@@ -411,6 +412,7 @@ def format_governance_audit_message(report: Dict[str, Any] | None = None) -> str
         "🧠 GOVERNANCE AUDIT\n\n"
         f"Consistency: {int(audit.get('consistency_score', 0))}%\n"
         f"Conflicts: {len(conflicts)}\n"
+        f"Governance State: {audit.get('governance_state', 'UNKNOWN')}\n"
         f"Violations: {'none' if not violations else len(violations)}\n"
         f"Status: {audit.get('governance_health', 'UNKNOWN')}"
     )

@@ -1142,6 +1142,7 @@ def render_governance_audit(audit: dict[str, Any]) -> None:
     stale_reports = audit.get("stale_reports", []) if isinstance(audit, dict) else []
     violations = audit.get("policy_violations", []) if isinstance(audit, dict) else []
     severity = str(audit.get("audit_severity", "UNKNOWN")).upper()
+    governance_state = str(audit.get("governance_state", "UNKNOWN")).upper()
 
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Consistency Score", f"{int(audit.get('consistency_score', 0))}%")
@@ -1149,6 +1150,7 @@ def render_governance_audit(audit: dict[str, Any]) -> None:
     col3.metric("Conflicts", len(conflicts))
     col4.metric("Stale Reports", len(stale_reports))
     col5.metric("Policy Violations", len(violations))
+    st.metric("Governance State", governance_state)
 
     if severity == "CRITICAL":
         st.error(f"Audit Severity: {severity}")
@@ -1188,11 +1190,12 @@ def render_promotion_scorecard(scorecard: dict[str, Any]) -> None:
     constraints = scorecard.get("governance_constraints", {}) if isinstance(scorecard, dict) else {}
     top = candidates[0] if candidates else {}
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Top Candidate", top.get("strategy_setup_name", summary.get("top_candidate", "-")))
     col2.metric("Readiness", top.get("recommendation", summary.get("top_recommendation", "HOLD")))
     col3.metric("Governance", top.get("governance_compatibility", "-"))
-    col4.metric("Drift", top.get("drift_risk", summary.get("drift_label", "UNKNOWN")))
+    col4.metric("Risk Budget Override", top.get("risk_budget_override", summary.get("risk_budget_override", "INACTIVE")))
+    col5.metric("Drift", top.get("drift_risk", summary.get("drift_label", "UNKNOWN")))
 
     st.subheader("Top Candidate Table")
     if candidates:
@@ -1204,6 +1207,7 @@ def render_promotion_scorecard(scorecard: dict[str, Any]) -> None:
             "promotion_readiness",
             "governance_compatibility",
             "risk_budget_compatibility",
+            "risk_budget_override",
             "drift_risk",
             "regime_stability",
             "walkforward_quality",
