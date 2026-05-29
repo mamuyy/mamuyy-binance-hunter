@@ -19,6 +19,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "shadow-lifecycle-audit": "--shadow-lifecycle-audit",
     "phase3-readiness": "--phase3-readiness",
     "refresh-governance-reports": "--refresh-governance-reports",
+    "phase3-remediation": "--phase3-remediation",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -286,6 +287,9 @@ from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diag
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
+from backup_verification import generate_backup_verification, format_backup_verification
+from label_quality_audit import generate_label_quality_audit, format_label_quality_audit
+from stress_test_simulator import generate_stress_test_report, format_stress_test_report
 from phase3_readiness import calculate_phase3_readiness, format_phase3_readiness
 from governance_audit import format_governance_audit, run_governance_audit
 from governance_report_refresh import format_refresh_diagnostics, refresh_governance_reports
@@ -576,6 +580,68 @@ def run_portfolio() -> Dict[str, Any]:
     print(f"Charts: {result.get('charts', {})}")
     send_message_if_enabled(message)
     return result
+
+
+
+
+def run_backup_verification() -> Dict[str, Any]:
+    result = generate_backup_verification(
+        db_path=config.database_path,
+        backup_dir=config.database_backup_dir,
+        output_path="reports/backup_verification.json",
+        write_report=True,
+    )
+    print(format_backup_verification(result))
+    print("Report generated: reports/backup_verification.json")
+    return result
+
+
+def run_label_quality_audit() -> Dict[str, Any]:
+    result = generate_label_quality_audit(
+        db_path=config.database_path,
+        output_path="reports/label_quality_audit.json",
+        write_report=True,
+    )
+    print(format_label_quality_audit(result))
+    print("Report generated: reports/label_quality_audit.json")
+    return result
+
+
+def run_stress_test_report() -> Dict[str, Any]:
+    result = generate_stress_test_report(
+        output_path="reports/stress_test_report.json",
+        markdown_path="docs/STRESS_TEST_REPORT.md",
+        write_report=True,
+        write_markdown=True,
+    )
+    print(format_stress_test_report(result))
+    print("Report generated: reports/stress_test_report.json")
+    print("Markdown generated: docs/STRESS_TEST_REPORT.md")
+    return result
+
+
+def run_phase3_remediation() -> Dict[str, Any]:
+    print("PHASE 3 READINESS REMEDIATION PIPELINE")
+    print("Safety: PAPER_ONLY, read-only analytics, no broker routing, no order placement, no auto unlock.")
+    results: Dict[str, Any] = {}
+    print("1/8 Backup Verification")
+    results["backup_verification"] = run_backup_verification()
+    print("2/8 Label Quality Audit")
+    results["label_quality_audit"] = run_label_quality_audit()
+    print("3/8 Stress Test Report")
+    results["stress_test_report"] = run_stress_test_report()
+    print("4/8 Refresh Governance Reports")
+    results["governance_refresh"] = refresh_governance_reports()
+    print(format_refresh_diagnostics(results["governance_refresh"]))
+    print("5/8 Portfolio Risk Budget")
+    results["portfolio_risk_budget"] = run_portfolio_risk_budget()
+    print("6/8 Promotion Scorecard")
+    results["promotion_scorecard"] = run_promotion_scorecard()
+    print("7/8 Governance Audit")
+    results["governance_audit"] = run_governance_audit_command()
+    print("8/8 Phase 3 Readiness")
+    results["phase3_readiness"] = run_phase3_readiness()
+    return results
 
 
 def run_portfolio_risk_budget() -> Dict[str, Any]:
@@ -1220,6 +1286,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate Phase 3 readiness tracker report PAPER_ONLY read-only.",
     )
     parser.add_argument(
+        "--phase3-remediation",
+        action="store_true",
+        help="Run read-only Phase 3 remediation artifacts and readiness pipeline without unlocking Phase 3.",
+    )
+    parser.add_argument(
         "--allocate",
         action="store_true",
         help="Jalankan Opportunity Allocation Engine analytics-only.",
@@ -1336,6 +1407,8 @@ if __name__ == "__main__":
         run_governance_audit_command()
     elif args.refresh_governance_reports or args.command == "refresh-governance-reports":
         run_refresh_governance_reports()
+    elif args.phase3_remediation or args.command == "phase3-remediation":
+        run_phase3_remediation()
     elif args.phase3_readiness or args.command == "phase3-readiness":
         run_phase3_readiness()
     elif args.portfolio_observer:

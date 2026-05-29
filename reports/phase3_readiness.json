@@ -2,9 +2,8 @@
   "blockers": [
     "Insufficient closed PAPER trades for Phase 3 readiness evidence.",
     "Label quality audit is missing or failed.",
-    "No verified SQLite backup is available.",
-    "Passing stress test report is missing.",
-    "System health is not stable or heartbeat is stale/missing."
+    "No verified SQLite backup evidence is available.",
+    "System health is not stable, heartbeat is stale/missing, or daily ops evidence is stale/missing."
   ],
   "criteria_details": [
     {
@@ -37,37 +36,37 @@
     },
     {
       "blocker": "Label quality audit is missing or failed.",
-      "detail": "verdict=MISSING, path=missing",
+      "detail": "verdict=FAIL, path=reports/label_quality_audit.json",
       "name": "label quality audit PASS/REVIEW",
       "next_action": "Run label_quality_audit.py and remediate any FAIL verdict before Phase 3 review.",
       "passed": false
     },
     {
-      "blocker": "No verified SQLite backup is available.",
-      "detail": "no backup found",
-      "name": "backup status verified",
-      "next_action": "Run python main.py --db-check or create a verified database backup before review.",
-      "passed": false
-    },
-    {
-      "blocker": "Passing stress test report is missing.",
-      "detail": "status=MISSING, path=missing",
-      "name": "stress test report exists and passed",
-      "next_action": "Generate a PAPER_ONLY stress test report with a PASS/PASSED status before Phase 3 review.",
+      "blocker": "No verified SQLite backup evidence is available.",
+      "detail": "verdict=FAIL, db_integrity=missing, backup=missing, backup_integrity=missing, backup_age_hours=None",
+      "name": "backup verification artifact PASS",
+      "next_action": "Run python backup_verification.py or python main.py --phase3-remediation; if no backup exists, create one through the approved maintenance path before review.",
       "passed": false
     },
     {
       "blocker": "",
-      "detail": "path=docs/OPERATOR_RUNBOOK.md",
-      "name": "operator runbook exists",
+      "detail": "verdict=PASS, path=reports/stress_test_report.json, age_minutes=0.14, fresh_minutes=1440",
+      "name": "stress test report PASS/REVIEW and fresh",
       "next_action": "",
       "passed": true
     },
     {
-      "blocker": "System health is not stable or heartbeat is stale/missing.",
-      "detail": "db_readable=False, heartbeat_age_minutes=9999.00, system_health_score=0, diagnostics=UNKNOWN",
+      "blocker": "",
+      "detail": "path=docs/OPERATOR_RUNBOOK.md, missing_sections=none",
+      "name": "operator runbook complete",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "System health is not stable, heartbeat is stale/missing, or daily ops evidence is stale/missing.",
+      "detail": "db_readable=False, heartbeat_age_minutes=999999.00, system_health_score=0, diagnostics=UNKNOWN, tmux_hunter=UNAVAILABLE, tmux_dashboard=UNAVAILABLE, daily_ops_report_age_minutes=999999.00",
       "name": "system health stable",
-      "next_action": "Stabilize orchestrator heartbeat and resolve diagnostics before Phase 3 review.",
+      "next_action": "Stabilize orchestrator heartbeat, verify tmux sessions where available, refresh daily ops report, and resolve diagnostics before Phase 3 review.",
       "passed": false
     },
     {
@@ -81,11 +80,10 @@
   "failed_criteria": [
     "paper closed trades >= 100",
     "label quality audit PASS/REVIEW",
-    "backup status verified",
-    "stress test report exists and passed",
+    "backup verification artifact PASS",
     "system health stable"
   ],
-  "generated_at": "2026-05-29T10:35:57.758684+00:00",
+  "generated_at": "2026-05-29T10:51:53.627478+00:00",
   "governance_constraints": {
     "no_broker_routing": true,
     "no_execution_changes": true,
@@ -98,23 +96,26 @@
   "next_actions": [
     "Continue PAPER_ONLY collection until at least 100 closed paper trades are available.",
     "Run label_quality_audit.py and remediate any FAIL verdict before Phase 3 review.",
-    "Run python main.py --db-check or create a verified database backup before review.",
-    "Generate a PAPER_ONLY stress test report with a PASS/PASSED status before Phase 3 review.",
-    "Stabilize orchestrator heartbeat and resolve diagnostics before Phase 3 review."
+    "Run python backup_verification.py or python main.py --phase3-remediation; if no backup exists, create one through the approved maintenance path before review.",
+    "Stabilize orchestrator heartbeat, verify tmux sessions where available, refresh daily ops report, and resolve diagnostics before Phase 3 review."
   ],
   "paper_only": true,
   "passed_criteria": [
     "governance_audit consistency >= 95 and conflicts == 0",
     "portfolio_risk_budget recommendation not worse than DEFENSIVE",
     "promotion_scorecard readiness not FREEZE",
-    "operator runbook exists",
+    "stress test report PASS/REVIEW and fresh",
+    "operator runbook complete",
     "PAPER_ONLY enforced"
   ],
-  "readiness_percent": 50.0,
+  "readiness_percent": 60.0,
   "source_reports": {
+    "backup_verification": "reports/backup_verification.json",
     "governance_audit": "reports/governance_audit.json",
+    "label_quality_audit": "reports/label_quality_audit.json",
     "portfolio_risk_budget": "reports/portfolio_risk_budget.json",
-    "promotion_scorecard": "reports/promotion_scorecard.json"
+    "promotion_scorecard": "reports/promotion_scorecard.json",
+    "stress_test_report": "reports/stress_test_report.json"
   },
   "status": "LOCKED"
 }

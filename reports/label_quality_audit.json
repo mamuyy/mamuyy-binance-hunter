@@ -1,0 +1,32 @@
+{
+  "blockers": [
+    "Database not found: mamuyy_hunter.db"
+  ],
+  "database_path": "mamuyy_hunter.db",
+  "generated_at": "2026-05-29T10:51:45.349641+00:00",
+  "mode": "READ_ONLY_PAPER_ONLY_LABEL_QUALITY_AUDIT",
+  "paper_only": true,
+  "read_only": true,
+  "safety": [
+    "PAPER_ONLY enforced",
+    "Read-only SELECT queries only",
+    "No label mutation, retraining, threshold tuning, or promotion"
+  ],
+  "summary": {
+    "flat_unknown_count": 0,
+    "flat_unknown_rate": 0.0,
+    "pnl_checked_rows": 0,
+    "pnl_mismatch_count": 0,
+    "pnl_mismatch_rate": 0.0,
+    "tables_audited": [],
+    "timestamp_checked_values": 0,
+    "timestamp_issue_count": 0,
+    "timestamp_issue_rate": 0.0,
+    "total_rows_sampled": 0
+  },
+  "tables": [],
+  "verdict": "FAIL",
+  "warnings": [
+    "No PnL/profit column found for mismatch validation; audit is REVIEW at best."
+  ]
+}
