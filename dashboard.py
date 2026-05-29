@@ -355,6 +355,31 @@ def read_json_report(path: str) -> dict[str, Any]:
         return {}
 
 
+def report_freshness(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    timestamp_raw = payload.get("generated_at") or payload.get("generated_at_utc")
+    timestamp = None
+    if timestamp_raw:
+        try:
+            timestamp = datetime.fromisoformat(str(timestamp_raw).replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            timestamp = timestamp.astimezone(timezone.utc)
+        except ValueError:
+            timestamp = None
+    if timestamp is None and os.path.exists(path):
+        timestamp = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+    age_hours = None
+    if timestamp is not None:
+        age_hours = round(max(0.0, (datetime.now(timezone.utc) - timestamp).total_seconds()) / 3600.0, 2)
+    return {
+        "path": path,
+        "present": bool(payload),
+        "generated_at": timestamp.isoformat() if timestamp else "-",
+        "age_hours": age_hours,
+        "source": payload.get("source", "UNKNOWN") if payload else "MISSING",
+    }
+
+
 @st.cache_data(ttl=REFRESH_SECONDS)
 def read_optional_csv(path: str, tail_rows: int | None = None) -> pd.DataFrame:
     if not os.path.exists(path):
@@ -465,6 +490,18 @@ def render_governance_risk_intelligence() -> None:
         or robustness.get("regime_risk_summary")
         or "No regime / market risk summary available."
     )
+
+    freshness_rows = [
+        report_freshness("reports/drift_detection_report.json", drift),
+        report_freshness("reports/emergency_brake_simulation.json", brake),
+        report_freshness("reports/transition_prediction_report.json", transition),
+    ]
+    st.subheader("Governance Report Freshness")
+    st.dataframe(pd.DataFrame(freshness_rows), use_container_width=True, hide_index=True)
+    stale_rows = [row for row in freshness_rows if row.get("age_hours") is None or float(row.get("age_hours") or 0.0) > 24.0]
+    if stale_rows:
+        st.warning("One or more governance reports are missing or older than 24h. Run: python main.py --refresh-governance-reports")
+
     market_action = derive_market_action(
         paper_only_status=paper_only_status,
         early_warning_score=early_warning_score,
@@ -1198,7 +1235,16 @@ def render_governance_audit(audit: dict[str, Any]) -> None:
         st.success(f"Audit Severity: {severity}")
 
     if stale_reports:
-        st.warning(f"Stale report warnings: {len(stale_reports)} artifact(s) exceeded the audit freshness threshold.")
+        st.warning(f"Stale report warnings: {len(stale_reports)} artifact(s) exceeded the audit freshness threshold. Run: python main.py --refresh-governance-reports")
+
+    artifact_health = audit.get("artifact_health", {}) if isinstance(audit.get("artifact_health"), dict) else {}
+    if artifact_health:
+        st.subheader("Governance Artifact Freshness")
+        rows = []
+        for report_name, details in artifact_health.items():
+            path = details.get("path", "") if isinstance(details, dict) else ""
+            rows.append({"report": report_name, **report_freshness(path, read_json_report(path))})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     brake_context = audit.get("brake_context") if isinstance(audit.get("brake_context"), dict) else {}
     if brake_context:
         st.subheader("Emergency Brake Context")

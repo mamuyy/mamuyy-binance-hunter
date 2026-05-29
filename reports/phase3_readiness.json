@@ -1,20 +1,18 @@
 {
   "blockers": [
-    "Governance audit is below readiness threshold or has conflicts.",
     "Insufficient closed PAPER trades for Phase 3 readiness evidence.",
     "Label quality audit is missing or failed.",
     "No verified SQLite backup is available.",
     "Passing stress test report is missing.",
-    "Operator runbook is missing.",
     "System health is not stable or heartbeat is stale/missing."
   ],
   "criteria_details": [
     {
-      "blocker": "Governance audit is below readiness threshold or has conflicts.",
-      "detail": "consistency=76%, conflicts=0",
+      "blocker": "",
+      "detail": "consistency=100%, conflicts=0",
       "name": "governance_audit consistency >= 95 and conflicts == 0",
-      "next_action": "Run python main.py --governance-audit and resolve every conflict before manual Phase 3 review.",
-      "passed": false
+      "next_action": "",
+      "passed": true
     },
     {
       "blocker": "",
@@ -59,11 +57,11 @@
       "passed": false
     },
     {
-      "blocker": "Operator runbook is missing.",
-      "detail": "path=missing",
+      "blocker": "",
+      "detail": "path=docs/OPERATOR_RUNBOOK.md",
       "name": "operator runbook exists",
-      "next_action": "Create docs/OPERATOR_RUNBOOK.md with PAPER_ONLY operations, incident response, rollback, and escalation steps.",
-      "passed": false
+      "next_action": "",
+      "passed": true
     },
     {
       "blocker": "System health is not stable or heartbeat is stale/missing.",
@@ -81,15 +79,13 @@
     }
   ],
   "failed_criteria": [
-    "governance_audit consistency >= 95 and conflicts == 0",
     "paper closed trades >= 100",
     "label quality audit PASS/REVIEW",
     "backup status verified",
     "stress test report exists and passed",
-    "operator runbook exists",
     "system health stable"
   ],
-  "generated_at": "2026-05-29T09:51:58.559833+00:00",
+  "generated_at": "2026-05-29T10:35:57.758684+00:00",
   "governance_constraints": {
     "no_broker_routing": true,
     "no_execution_changes": true,
@@ -100,21 +96,21 @@
     "read_only_analytics": true
   },
   "next_actions": [
-    "Run python main.py --governance-audit and resolve every conflict before manual Phase 3 review.",
     "Continue PAPER_ONLY collection until at least 100 closed paper trades are available.",
     "Run label_quality_audit.py and remediate any FAIL verdict before Phase 3 review.",
     "Run python main.py --db-check or create a verified database backup before review.",
     "Generate a PAPER_ONLY stress test report with a PASS/PASSED status before Phase 3 review.",
-    "Create docs/OPERATOR_RUNBOOK.md with PAPER_ONLY operations, incident response, rollback, and escalation steps.",
     "Stabilize orchestrator heartbeat and resolve diagnostics before Phase 3 review."
   ],
   "paper_only": true,
   "passed_criteria": [
+    "governance_audit consistency >= 95 and conflicts == 0",
     "portfolio_risk_budget recommendation not worse than DEFENSIVE",
     "promotion_scorecard readiness not FREEZE",
+    "operator runbook exists",
     "PAPER_ONLY enforced"
   ],
-  "readiness_percent": 30.0,
+  "readiness_percent": 50.0,
   "source_reports": {
     "governance_audit": "reports/governance_audit.json",
     "portfolio_risk_budget": "reports/portfolio_risk_budget.json",

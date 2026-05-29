@@ -1,7 +1,7 @@
 {
   "brake_context": {
     "brake_risk_level": "NONE",
-    "source": "NONE",
+    "source": "SIMULATION_RESEARCH",
     "trigger_count": 0
   },
   "concentration_label": "LOW",
@@ -12,7 +12,7 @@
   "execution_enabled": false,
   "exposure_by_regime": [],
   "exposure_by_symbol": [],
-  "generated_at": "2026-05-28T14:51:37.804379+00:00",
+  "generated_at": "2026-05-29T10:35:52.129754+00:00",
   "governance_layer": "PAPER_ONLY_READ_ONLY_PORTFOLIO_RISK_BUDGET",
   "live_trading_enabled": false,
   "max_allowed_exposure": 50.0,
