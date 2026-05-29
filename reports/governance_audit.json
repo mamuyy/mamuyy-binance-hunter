@@ -2,11 +2,11 @@
   "artifact_health": {
     "drift_detection": {
       "path": "reports/drift_detection_report.json",
-      "present": false
+      "present": true
     },
     "emergency_brake": {
       "path": "reports/emergency_brake_simulation.json",
-      "present": false
+      "present": true
     },
     "portfolio_risk_budget": {
       "path": "reports/portfolio_risk_budget.json",
@@ -18,18 +18,18 @@
     },
     "transition_prediction": {
       "path": "reports/transition_prediction_report.json",
-      "present": false
+      "present": true
     }
   },
-  "audit_severity": "MEDIUM",
+  "audit_severity": "NONE",
   "brake_context": {
     "brake_risk_level": "NONE",
-    "brake_source": "NONE",
+    "brake_source": "READ_ONLY_REFRESH",
     "trigger_count": 0
   },
   "conflicts": [],
-  "consistency_score": 76,
-  "generated_at": "2026-05-28T14:51:40.975110+00:00",
+  "consistency_score": 100,
+  "generated_at": "2026-05-29T10:35:52.131237+00:00",
   "governance_constraints": {
     "no_broker_order_routing": true,
     "no_deployment": true,
@@ -42,25 +42,13 @@
     "paper_only": "PAPER_ONLY",
     "read_only_analytics": true
   },
-  "governance_health": "WATCH",
-  "missing_reports": [
-    {
-      "path": "reports/drift_detection_report.json",
-      "report": "drift_detection"
-    },
-    {
-      "path": "reports/emergency_brake_simulation.json",
-      "report": "emergency_brake"
-    },
-    {
-      "path": "reports/transition_prediction_report.json",
-      "report": "transition_prediction"
-    }
-  ],
+  "governance_health": "HEALTHY",
+  "governance_state": "SAFE",
+  "missing_reports": [],
   "paper_only": true,
   "policy_violations": [],
   "recommendations": [
-    "Generate missing governance artifacts before trusting promotion/risk summaries.",
+    "No governance audit action required; continue PAPER_ONLY monitoring.",
     "Do not execute trades, deploy strategies, retrain models, or promote Phase 3 from this audit."
   ],
   "stale_reports": []

@@ -18,6 +18,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "fix-regime-labels": "--fix-regime-labels",
     "shadow-lifecycle-audit": "--shadow-lifecycle-audit",
     "phase3-readiness": "--phase3-readiness",
+    "refresh-governance-reports": "--refresh-governance-reports",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -287,6 +288,7 @@ from portfolio_observer import format_portfolio_observer, observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
 from phase3_readiness import calculate_phase3_readiness, format_phase3_readiness
 from governance_audit import format_governance_audit, run_governance_audit
+from governance_report_refresh import format_refresh_diagnostics, refresh_governance_reports
 from promotion_scorecard import format_promotion_scorecard, generate_promotion_scorecard
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
 from regime_shadow import apply_adaptive_regime_shadow_penalty
@@ -594,6 +596,22 @@ def run_promotion_scorecard() -> Dict[str, Any]:
     )
     print(format_promotion_scorecard(result))
     send_message_if_enabled(format_promotion_scorecard_message(result))
+    return result
+
+
+def run_refresh_governance_reports() -> Dict[str, Any]:
+    result = refresh_governance_reports()
+    print(format_refresh_diagnostics(result))
+
+    print("\nFOLLOW-UP READINESS PIPELINE")
+    print("1/4 Portfolio Risk Budget")
+    run_portfolio_risk_budget()
+    print("2/4 Promotion Scorecard")
+    run_promotion_scorecard()
+    print("3/4 Governance Audit")
+    run_governance_audit_command()
+    print("4/4 Phase 3 Readiness")
+    run_phase3_readiness()
     return result
 
 
@@ -1192,6 +1210,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate Governance Audit report PAPER_ONLY read-only.",
     )
     parser.add_argument(
+        "--refresh-governance-reports",
+        action="store_true",
+        help="Refresh stale governance reports, then rerun readiness reports in PAPER_ONLY read-only mode.",
+    )
+    parser.add_argument(
         "--phase3-readiness",
         action="store_true",
         help="Generate Phase 3 readiness tracker report PAPER_ONLY read-only.",
@@ -1311,6 +1334,8 @@ if __name__ == "__main__":
         run_promotion_scorecard()
     elif args.governance_audit:
         run_governance_audit_command()
+    elif args.refresh_governance_reports or args.command == "refresh-governance-reports":
+        run_refresh_governance_reports()
     elif args.phase3_readiness or args.command == "phase3-readiness":
         run_phase3_readiness()
     elif args.portfolio_observer:
