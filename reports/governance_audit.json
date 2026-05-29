@@ -29,7 +29,7 @@
   },
   "conflicts": [],
   "consistency_score": 100,
-  "generated_at": "2026-05-29T10:35:52.131237+00:00",
+  "generated_at": "2026-05-29T10:51:47.620073+00:00",
   "governance_constraints": {
     "no_broker_order_routing": true,
     "no_deployment": true,

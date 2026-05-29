@@ -5,8 +5,8 @@ import json
 import math
 import os
 import sqlite3
+import subprocess
 from datetime import datetime, timezone
-from glob import glob
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
@@ -225,31 +225,58 @@ def _label_quality_criterion(paths: Iterable[str]) -> Dict[str, Any]:
     )
 
 
-def _backup_status_criterion(backup_dir: str, db_path: str) -> Dict[str, Any]:
-    backups = sorted(glob(os.path.join(backup_dir, "*.db")), key=os.path.getmtime, reverse=True) if os.path.isdir(backup_dir) else []
-    latest = backups[0] if backups else ""
-    verified = False
-    detail = "no backup found"
-    if latest and os.path.getsize(latest) > 0:
-        try:
-            with sqlite3.connect(f"file:{Path(latest).resolve()}?mode=ro", uri=True) as connection:
-                integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-            verified = integrity == "ok"
-            detail = f"latest={latest}, integrity={integrity}"
-        except sqlite3.Error as exc:
-            detail = f"latest={latest}, integrity_error={exc}"
-    elif os.path.exists(db_path):
-        detail = f"database exists at {db_path}, but verified backup is missing"
+def _backup_status_criterion(_backup_dir: str, _db_path: str) -> Dict[str, Any]:
+    report = _read_json("reports/backup_verification.json")
+    database = report.get("database", {}) if isinstance(report.get("database"), dict) else {}
+    backup = report.get("backup", {}) if isinstance(report.get("backup"), dict) else {}
+    valid = report.get("valid") is True
+    verdict = str(report.get("verdict") or "MISSING").upper()
+    backup_evidence = bool(backup.get("latest_exists") and backup.get("latest_integrity_ok"))
+    db_ok = bool(database.get("exists") and database.get("integrity_ok"))
+    passed = bool(report) and valid and db_ok and backup_evidence and verdict == "PASS"
+    detail = (
+        f"verdict={verdict}, db_integrity={database.get('integrity', 'missing')}, "
+        f"backup={backup.get('latest_path') or 'missing'}, "
+        f"backup_integrity={backup.get('latest_integrity', 'missing')}, "
+        f"backup_age_hours={backup.get('latest_age_hours')}"
+    )
     return _criterion(
-        "backup status verified",
-        verified,
+        "backup verification artifact PASS",
+        passed,
         detail,
-        "No verified SQLite backup is available.",
-        "Run python main.py --db-check or create a verified database backup before review.",
+        "No verified SQLite backup evidence is available.",
+        "Run python backup_verification.py or python main.py --phase3-remediation; if no backup exists, create one through the approved maintenance path before review.",
     )
 
 
-def _stress_test_criterion(paths: Iterable[str]) -> Dict[str, Any]:
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def _age_minutes_from_timestamp(value: Any) -> float:
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return 999999.0
+    return round((datetime.now(timezone.utc) - parsed).total_seconds() / 60, 2)
+
+
+def _file_age_minutes(path: str) -> float:
+    try:
+        modified = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc)
+        return round((datetime.now(timezone.utc) - modified).total_seconds() / 60, 2)
+    except OSError:
+        return 999999.0
+
+
+def _stress_test_criterion(paths: Iterable[str], fresh_minutes: int = 24 * 60) -> Dict[str, Any]:
     selected_path = ""
     report: Dict[str, Any] = {}
     for path in paths:
@@ -258,28 +285,64 @@ def _stress_test_criterion(paths: Iterable[str]) -> Dict[str, Any]:
             selected_path = path
             report = payload
             break
-    status = str(report.get("status") or report.get("result") or report.get("verdict") or "MISSING").upper()
-    passed_flag = report.get("passed")
-    passed = bool(report) and (passed_flag is True or status in {"PASS", "PASSED", "OK", "SUCCESS"})
+    verdict = str(report.get("verdict") or report.get("status") or report.get("result") or "MISSING").upper()
+    generated_age = _age_minutes_from_timestamp(report.get("generated_at")) if report else 999999.0
+    fresh = generated_age <= fresh_minutes
+    passed = bool(report) and verdict in {"PASS", "REVIEW"} and fresh
     return _criterion(
-        "stress test report exists and passed",
+        "stress test report PASS/REVIEW and fresh",
         passed,
-        f"status={status}, path={selected_path or 'missing'}",
-        "Passing stress test report is missing.",
-        "Generate a PAPER_ONLY stress test report with a PASS/PASSED status before Phase 3 review.",
+        f"verdict={verdict}, path={selected_path or 'missing'}, age_minutes={generated_age:.2f}, fresh_minutes={fresh_minutes}",
+        "Passing or reviewable fresh stress test report is missing.",
+        "Run python stress_test_simulator.py or python main.py --phase3-remediation; keep any true risk-budget FREEZE/HALT as a blocker.",
     )
 
 
 def _operator_runbook_criterion(paths: Iterable[str]) -> Dict[str, Any]:
-    existing = [path for path in paths if os.path.exists(path) and os.path.getsize(path) > 0]
-    passed = bool(existing)
+    required_terms = {
+        "dashboard access": ("dashboard", "access"),
+        "restart orchestrator": ("restart", "orchestrator"),
+        "restart dashboard": ("restart", "dashboard"),
+        "governance incident rule": ("governance", "incident"),
+        "git update safety": ("git", "update", "safety"),
+        "PAPER_ONLY boundary": ("paper_only", "live execution"),
+    }
+    selected = ""
+    missing: List[str] = []
+    for path in paths:
+        if not os.path.exists(path) or os.path.getsize(path) <= 0:
+            continue
+        selected = path
+        try:
+            text = Path(path).read_text(encoding="utf-8").lower()
+        except OSError:
+            text = ""
+        normalized = text.replace("-", "_")
+        missing = [label for label, terms in required_terms.items() if not all(term in normalized for term in terms)]
+        if not missing:
+            break
+    passed = bool(selected) and not missing
     return _criterion(
-        "operator runbook exists",
+        "operator runbook complete",
         passed,
-        f"path={existing[0] if existing else 'missing'}",
-        "Operator runbook is missing.",
-        "Create docs/OPERATOR_RUNBOOK.md with PAPER_ONLY operations, incident response, rollback, and escalation steps.",
+        f"path={selected or 'missing'}, missing_sections={missing or 'none'}",
+        "Operator runbook is missing or does not cover every required operations topic.",
+        "Update docs/OPERATOR_RUNBOOK.md with dashboard access, restart procedures, governance incident rules, git update safety, and PAPER_ONLY/no-live-execution boundaries.",
     )
+
+
+def _tmux_session_status(session_name: str) -> str:
+    try:
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", session_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "UNAVAILABLE"
+    return "RUNNING" if result.returncode == 0 else "MISSING"
 
 
 def _system_health_criterion(db_path: str, health_stale_minutes: int = 10) -> Dict[str, Any]:
@@ -291,9 +354,9 @@ def _system_health_criterion(db_path: str, health_stale_minutes: int = 10) -> Di
         _query_scalar(
             db_path,
             "SELECT (julianday('now') - julianday(timestamp)) * 24 * 60 FROM runtime_heartbeats ORDER BY id DESC LIMIT 1",
-            9999,
+            999999,
         ),
-        9999.0,
+        999999.0,
     )
     latest_health = _number(
         _query_scalar(db_path, "SELECT system_health_score FROM runtime_heartbeats ORDER BY id DESC LIMIT 1", 0),
@@ -302,13 +365,24 @@ def _system_health_criterion(db_path: str, health_stale_minutes: int = 10) -> Di
     diagnostics = _read_json("logs/orchestrator_diagnostics.json")
     diag_status = str(diagnostics.get("status") or diagnostics.get("event") or "UNKNOWN").upper()
     diagnostics_ok = diag_status not in {"CRASH", "FAILED", "ERROR"}
-    passed = db_readable and heartbeat_age <= health_stale_minutes and latest_health >= 70 and diagnostics_ok
+    hunter_tmux = _tmux_session_status("hunter")
+    dashboard_tmux = _tmux_session_status("dashboard")
+    daily_report_age = min(_file_age_minutes("logs/daily_ops_report.json"), _file_age_minutes("logs/daily_ops_report.md"))
+    heartbeat_fresh = heartbeat_age <= health_stale_minutes
+    daily_report_fresh = daily_report_age <= (24 * 60)
+    tmux_ok_or_unavailable = hunter_tmux in {"RUNNING", "UNAVAILABLE"} and dashboard_tmux in {"RUNNING", "UNAVAILABLE"}
+    passed = db_readable and heartbeat_fresh and latest_health >= 70 and diagnostics_ok and daily_report_fresh and tmux_ok_or_unavailable
     return _criterion(
         "system health stable",
         passed,
-        f"db_readable={db_readable}, heartbeat_age_minutes={heartbeat_age:.2f}, system_health_score={latest_health:.0f}, diagnostics={diag_status}",
-        "System health is not stable or heartbeat is stale/missing.",
-        "Stabilize orchestrator heartbeat and resolve diagnostics before Phase 3 review.",
+        (
+            f"db_readable={db_readable}, heartbeat_age_minutes={heartbeat_age:.2f}, "
+            f"system_health_score={latest_health:.0f}, diagnostics={diag_status}, "
+            f"tmux_hunter={hunter_tmux}, tmux_dashboard={dashboard_tmux}, "
+            f"daily_ops_report_age_minutes={daily_report_age:.2f}"
+        ),
+        "System health is not stable, heartbeat is stale/missing, or daily ops evidence is stale/missing.",
+        "Stabilize orchestrator heartbeat, verify tmux sessions where available, refresh daily ops report, and resolve diagnostics before Phase 3 review.",
     )
 
 
@@ -388,6 +462,9 @@ def calculate_phase3_readiness(
             "governance_audit": "reports/governance_audit.json",
             "portfolio_risk_budget": "reports/portfolio_risk_budget.json",
             "promotion_scorecard": "reports/promotion_scorecard.json",
+            "backup_verification": "reports/backup_verification.json",
+            "label_quality_audit": "reports/label_quality_audit.json",
+            "stress_test_report": "reports/stress_test_report.json",
         },
     }
     if write_report:
