@@ -404,6 +404,23 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
     )
 
 
+def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str:
+    readiness = report if isinstance(report, dict) else _read_json_report("reports/phase3_readiness.json")
+    blockers = readiness.get("blockers", []) if isinstance(readiness, dict) else []
+    top_blocker = blockers[0] if blockers else "none"
+    try:
+        readiness_percent = float(readiness.get("readiness_percent", 0.0))
+    except (TypeError, ValueError):
+        readiness_percent = 0.0
+    return (
+        "🚦 PHASE 3 READINESS\n"
+        f"Readiness: {readiness_percent:.0f}%\n"
+        f"Status: {readiness.get('status', 'LOCKED')}\n"
+        f"Top Blocker: {top_blocker}\n"
+        "PAPER_ONLY remains active."
+    )
+
+
 def format_governance_audit_message(report: Dict[str, Any] | None = None) -> str:
     audit = report if isinstance(report, dict) else _read_json_report("reports/governance_audit.json")
     conflicts = audit.get("conflicts", []) if isinstance(audit, dict) else []

@@ -17,6 +17,7 @@ from governance_audit import run_governance_audit
 from portfolio_analytics import calculate_portfolio_analytics
 from portfolio_observer import observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget
+from phase3_readiness import calculate_phase3_readiness
 from promotion_scorecard import generate_promotion_scorecard
 from risk_manager import RiskConfig, check_execution_safety
 
@@ -1134,6 +1135,41 @@ def read_governance_audit() -> dict[str, Any]:
         }
 
 
+@st.cache_data(ttl=REFRESH_SECONDS)
+def read_phase3_readiness() -> dict[str, Any]:
+    report = read_json_report("reports/phase3_readiness.json")
+    if report:
+        return report
+    try:
+        return calculate_phase3_readiness(
+            db_path=config.database_path,
+            paper_trades_path=config.paper_trades_path,
+            backup_dir=config.database_backup_dir,
+            output_path="reports/phase3_readiness.json",
+            write_report=False,
+            health_stale_minutes=config.health_guardian_stale_minutes,
+        )
+    except Exception as exc:
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "paper_only": True,
+            "readiness_percent": 0.0,
+            "status": "LOCKED",
+            "passed_criteria": [],
+            "failed_criteria": ["phase3_readiness_unavailable"],
+            "blockers": [f"Phase 3 readiness unavailable: {exc}"],
+            "next_actions": ["Keep PAPER_ONLY active and regenerate readiness when artifacts are available."],
+            "governance_constraints": {
+                "paper_only": "PAPER_ONLY",
+                "read_only_analytics": True,
+                "no_execution_changes": True,
+                "no_broker_routing": True,
+                "no_strategy_promotion": True,
+                "no_phase_3_unlock_automation": True,
+            },
+        }
+
+
 def render_governance_audit(audit: dict[str, Any]) -> None:
     st.header("12. Governance Audit")
     st.caption("Self-auditing PAPER_ONLY governance layer. Cached, summary-first, read-only analytics only.")
@@ -1248,6 +1284,52 @@ def render_promotion_scorecard(scorecard: dict[str, Any]) -> None:
         "no_auto_deployment": constraints.get("no_auto_deployment", True),
         "no_phase_3_promotion": constraints.get("no_phase_3_promotion", True),
     })
+
+
+def render_phase3_readiness(readiness: dict[str, Any]) -> None:
+    st.header("13. Phase 3 Readiness")
+    st.caption("PAPER_ONLY readiness tracker: read-only analytics, no execution changes, no broker routing, no strategy promotion, no Phase 3 unlock automation.")
+
+    status = str(readiness.get("status", "LOCKED")).upper()
+    blockers = readiness.get("blockers", []) if isinstance(readiness.get("blockers"), list) else []
+    next_actions = readiness.get("next_actions", []) if isinstance(readiness.get("next_actions"), list) else []
+    passed = readiness.get("passed_criteria", []) if isinstance(readiness.get("passed_criteria"), list) else []
+    failed = readiness.get("failed_criteria", []) if isinstance(readiness.get("failed_criteria"), list) else []
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Readiness", f"{float(readiness.get('readiness_percent', 0.0)):.0f}%")
+    col2.metric("Status", status)
+    col3.metric("Passed", len(passed))
+    col4.metric("Failed", len(failed))
+
+    if status == "READY_FOR_REVIEW":
+        st.success("READY_FOR_REVIEW means manual review can begin; it does not unlock Phase 3 automatically.")
+    elif status == "CANDIDATE":
+        st.warning("CANDIDATE requires manual review and blocker remediation before Phase 3 readiness can advance.")
+    else:
+        st.error("LOCKED: Phase 3 remains blocked by readiness criteria.")
+
+    st.markdown(f"**Top Blocker:** {blockers[0] if blockers else 'none'}")
+
+    details = readiness.get("criteria_details", [])
+    if isinstance(details, list) and details:
+        st.dataframe(pd.DataFrame(details), use_container_width=True, hide_index=True)
+    else:
+        st.info("No readiness criteria details available yet. Run python main.py --phase3-readiness.")
+
+    with st.expander("Blockers and next actions", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Blockers**")
+            for blocker in blockers or ["none"]:
+                st.markdown(f"- {blocker}")
+        with col2:
+            st.markdown("**Next Actions**")
+            for action in next_actions or ["none"]:
+                st.markdown(f"- {action}")
+
+    st.caption("PAPER_ONLY remains active. This section is not a deployment gate, broker router, strategy promoter, or unlock automation.")
+
 
 def render_telegram_notification_center(events: pd.DataFrame) -> None:
     st.header("Telegram Notification Center")
@@ -2341,6 +2423,7 @@ def main() -> None:
     orchestrator_diagnostics = read_orchestrator_diagnostics()
     promotion_scorecard = read_promotion_scorecard()
     governance_audit = read_governance_audit()
+    phase3_readiness = read_phase3_readiness()
 
     st.title("MAMUYY Binance Hunter Live Dashboard")
     st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
@@ -2378,6 +2461,7 @@ def main() -> None:
     render_portfolio_risk_budget(portfolio_risk_budget)
     render_promotion_scorecard(promotion_scorecard)
     render_governance_audit(governance_audit)
+    render_phase3_readiness(phase3_readiness)
 
     st.header("2. MARKET REGIME")
     col1, col2 = st.columns([1, 2])
