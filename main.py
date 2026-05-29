@@ -17,6 +17,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "optimize-filters": "--optimize-filters",
     "fix-regime-labels": "--fix-regime-labels",
     "shadow-lifecycle-audit": "--shadow-lifecycle-audit",
+    "phase3-readiness": "--phase3-readiness",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -284,6 +285,7 @@ from orchestrator import format_orchestrator_diagnostics, load_orchestrator_diag
 from portfolio_engine import build_portfolio
 from portfolio_observer import format_portfolio_observer, observe_portfolio
 from portfolio_risk_budget import calculate_portfolio_risk_budget, format_portfolio_risk_budget
+from phase3_readiness import calculate_phase3_readiness, format_phase3_readiness
 from governance_audit import format_governance_audit, run_governance_audit
 from promotion_scorecard import format_promotion_scorecard, generate_promotion_scorecard
 from regime_models import analyze_regime_models, apply_regime_model_to_signal
@@ -305,6 +307,7 @@ from telegram import (
     format_orchestrator_message,
     format_paper_summary_message,
     format_performance_report_message,
+    format_phase3_readiness_message,
     format_portfolio_message,
     format_promotion_scorecard_message,
     format_regime_model_message,
@@ -601,6 +604,21 @@ def run_governance_audit_command() -> Dict[str, Any]:
     )
     print(format_governance_audit(result))
     send_message_if_enabled(format_governance_audit_message(result))
+    return result
+
+
+def run_phase3_readiness() -> Dict[str, Any]:
+    result = calculate_phase3_readiness(
+        db_path=config.database_path,
+        paper_trades_path=config.paper_trades_path,
+        backup_dir=config.database_backup_dir,
+        output_path="reports/phase3_readiness.json",
+        write_report=True,
+        health_stale_minutes=config.health_guardian_stale_minutes,
+    )
+    print(format_phase3_readiness(result))
+    print("Report generated: reports/phase3_readiness.json")
+    print(format_phase3_readiness_message(result))
     return result
 
 
@@ -1174,6 +1192,11 @@ def parse_args() -> argparse.Namespace:
         help="Generate Governance Audit report PAPER_ONLY read-only.",
     )
     parser.add_argument(
+        "--phase3-readiness",
+        action="store_true",
+        help="Generate Phase 3 readiness tracker report PAPER_ONLY read-only.",
+    )
+    parser.add_argument(
         "--allocate",
         action="store_true",
         help="Jalankan Opportunity Allocation Engine analytics-only.",
@@ -1288,6 +1311,8 @@ if __name__ == "__main__":
         run_promotion_scorecard()
     elif args.governance_audit:
         run_governance_audit_command()
+    elif args.phase3_readiness or args.command == "phase3-readiness":
+        run_phase3_readiness()
     elif args.portfolio_observer:
         run_portfolio_observer()
     elif args.portfolio:
