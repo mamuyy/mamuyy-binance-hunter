@@ -1207,6 +1207,281 @@ def read_phase3_readiness() -> dict[str, Any]:
         }
 
 
+
+def _as_list(value: Any) -> list[Any]:
+    if value in (None, "", "none", "NONE"):
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _upper_value(value: Any, default: str = "UNKNOWN") -> str:
+    if value is None or value == "":
+        return default
+    return str(value).upper()
+
+
+def _percent_value(value: Any, default: float = 0.0) -> float:
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _first_existing(*values: Any, default: Any = None) -> Any:
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return default
+
+
+def _metric_display(value: Any, suffix: str = "") -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, (int, float)):
+        return f"{value:.2f}{suffix}" if isinstance(value, float) else f"{value}{suffix}"
+    return str(value)
+
+
+def _status_message(label: str, status: str, critical: set[str], warning: set[str]) -> None:
+    status_upper = _upper_value(status)
+    if status_upper in critical:
+        st.error(f"{label}: {status_upper}")
+    elif status_upper in warning:
+        st.warning(f"{label}: {status_upper}")
+    else:
+        st.success(f"{label}: {status_upper}")
+
+
+def load_dashboard_reports() -> dict[str, dict[str, Any]]:
+    """Read-only report bundle for the Streamlit dashboard.
+
+    This loader intentionally reads existing JSON artifacts from reports/ only. It does
+    not invoke report generators, shell commands, database scans, broker code, or trading
+    execution paths.
+    """
+
+    report_paths = {
+        "phase3_readiness": "reports/phase3_readiness.json",
+        "governance_audit": "reports/governance_audit.json",
+        "portfolio_risk_budget": "reports/portfolio_risk_budget.json",
+        "promotion_scorecard": "reports/promotion_scorecard.json",
+        "drift_detection": "reports/drift_detection_report.json",
+        "emergency_brake": "reports/emergency_brake_simulation.json",
+        "transition_prediction": "reports/transition_prediction_report.json",
+        "label_quality_audit": "reports/label_quality_audit.json",
+        "stress_test": "reports/stress_test_report.json",
+        "backup_verification": "reports/backup_verification.json",
+    }
+    return {name: read_json_report(path) for name, path in report_paths.items()}
+
+
+def render_read_only_banner() -> None:
+    st.info(
+        "PAPER_ONLY / READ-ONLY dashboard: hanya membaca JSON di folder reports/. "
+        "Tidak ada broker routing, order placement, live trading, execution mutation, atau auto-unlock Phase 3."
+    )
+
+
+def render_action_required_area(reports: dict[str, dict[str, Any]]) -> None:
+    st.subheader("Action Required Area")
+    audit = reports.get("governance_audit", {})
+    risk_budget = reports.get("portfolio_risk_budget", {})
+
+    stale_reports = _as_list(audit.get("stale_reports"))
+    violations = _as_list(audit.get("policy_violations") or audit.get("violations"))
+    governance_health = _upper_value(audit.get("governance_health"))
+    risk_recommendation = _upper_value(risk_budget.get("recommendation"))
+
+    reasons: list[str] = []
+    severity = "ok"
+    if stale_reports:
+        severity = "warning"
+        reasons.append(f"Stale reports terdeteksi: {len(stale_reports)} artifact.")
+    if violations:
+        severity = "error"
+        reasons.append(f"Governance violations terdeteksi: {len(violations)} item.")
+    if governance_health == "CRITICAL":
+        severity = "error"
+        reasons.append("Governance health CRITICAL.")
+    if risk_recommendation in {"FREEZE", "FREEZE NEW ALLOCATION"}:
+        severity = "error"
+        reasons.append(f"Risk budget recommendation {risk_recommendation}.")
+
+    if reasons:
+        message = "\n".join(f"- {reason}" for reason in reasons)
+        if severity == "error":
+            st.error(message)
+        else:
+            st.warning(message)
+        st.caption("Manual remediation commands — copy/paste di terminal, jangan dijalankan dari dashboard.")
+        st.code(
+            "python main.py --refresh-governance-reports\n"
+            "python main.py --phase3-remediation\n"
+            "python main.py --phase3-readiness",
+            language="bash",
+        )
+    else:
+        st.success("No immediate action required from the latest reports.")
+
+
+def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
+    phase3 = reports.get("phase3_readiness", {})
+    audit = reports.get("governance_audit", {})
+    risk_budget = reports.get("portfolio_risk_budget", {})
+    promotion = reports.get("promotion_scorecard", {})
+
+    readiness_percent = _percent_value(phase3.get("readiness_percent"))
+    closed_paper_trades = _first_existing(
+        phase3.get("closed_paper_trades"),
+        phase3.get("paper_closed_trades"),
+        _nested_get(phase3, "metrics", "closed_paper_trades", default=None),
+    )
+    if closed_paper_trades is None:
+        for detail in phase3.get("criteria_details", []) if isinstance(phase3.get("criteria_details"), list) else []:
+            if "closed trades" in str(detail.get("name", "")).lower():
+                closed_paper_trades = detail.get("detail", "-")
+                break
+
+    pnl = _first_existing(
+        _nested_get(phase3, "metrics", "shadow_paper_pnl", default=None),
+        _nested_get(promotion, "summary", "shadow_paper_pnl", default=None),
+    )
+    winrate = _first_existing(
+        _nested_get(phase3, "metrics", "winrate", default=None),
+        _nested_get(promotion, "summary", "winrate", default=None),
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Phase 3 Readiness", f"{readiness_percent:.1f}%")
+    col2.metric("Phase 3 Status", phase3.get("status", "LOCKED"))
+    col3.metric("Governance Health", audit.get("governance_health", "UNKNOWN"))
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Shadow/Paper PnL", _metric_display(pnl))
+    col5.metric("Winrate", _metric_display(winrate, "%" if isinstance(winrate, (int, float)) else ""))
+    col6.metric("Closed Paper Trades", _metric_display(closed_paper_trades))
+
+    st.caption("Phase 3 readiness progress")
+    st.progress(readiness_percent / 100.0)
+
+    closed_numeric = None
+    try:
+        closed_numeric = float(closed_paper_trades)
+    except (TypeError, ValueError):
+        closed_numeric = None
+    if closed_numeric is not None:
+        st.caption("Closed paper trades progress toward 100-trade evidence gate")
+        st.progress(max(0.0, min(100.0, closed_numeric)) / 100.0)
+
+    st.subheader("Roadmap Status")
+    roadmap = pd.DataFrame(
+        [
+            {"Phase": "Phase 1", "Status": "DONE"},
+            {"Phase": "Phase 2", "Status": "DONE"},
+            {"Phase": "Phase 2.5", "Status": "DONE"},
+            {"Phase": "Phase 3", "Status": "LOCKED"},
+        ]
+    )
+    st.dataframe(roadmap, use_container_width=True, hide_index=True)
+
+    blockers = _as_list(phase3.get("blockers"))
+    next_actions = _as_list(phase3.get("next_actions"))
+    if blockers:
+        st.warning("Phase 3 blockers: " + "; ".join(map(str, blockers[:5])))
+    if next_actions:
+        st.info("Next actions: " + "; ".join(map(str, next_actions[:5])))
+
+
+def render_governance_risk_tab(reports: dict[str, dict[str, Any]]) -> None:
+    audit = reports.get("governance_audit", {})
+    risk_budget = reports.get("portfolio_risk_budget", {})
+    promotion = reports.get("promotion_scorecard", {})
+
+    recommendation = _upper_value(risk_budget.get("recommendation"))
+    utilization = _first_existing(risk_budget.get("risk_budget_utilization"), risk_budget.get("utilization_ratio"), default=0.0)
+    health = _upper_value(audit.get("governance_health"))
+    brake_context = risk_budget.get("brake_context") or audit.get("brake_context") or {}
+    brake_level = _upper_value(brake_context.get("brake_risk_level", "NONE"), "NONE")
+    conflicts = _as_list(audit.get("conflicts"))
+    violations = _as_list(audit.get("policy_violations") or audit.get("violations"))
+    stale_reports = _as_list(audit.get("stale_reports"))
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Risk Budget Recommendation", recommendation)
+    col2.metric("Risk Budget Utilization", _metric_display(utilization))
+    col3.metric("Governance Audit Health", health)
+    col4.metric("Promotion Status", _nested_get(promotion, "summary", "top_recommendation", default="UNKNOWN"))
+
+    _status_message("Risk Budget", recommendation, {"FREEZE", "FREEZE NEW ALLOCATION"}, {"WATCH", "DEFENSIVE", "REDUCE EXPOSURE"})
+    _status_message("Governance", health, {"CRITICAL"}, {"WATCH", "STABLE_WITH_WARNINGS", "WARNING"})
+    _status_message("Brake Context", brake_level, {"CRITICAL"}, {"HIGH", "WATCH", "ELEVATED"})
+
+    if conflicts:
+        st.error(f"Conflicts detected: {len(conflicts)}")
+        st.dataframe(pd.DataFrame(conflicts), use_container_width=True)
+    else:
+        st.success("No conflicts detected.")
+
+    if violations:
+        st.error(f"Violations detected: {len(violations)}")
+        st.dataframe(pd.DataFrame(violations), use_container_width=True)
+    else:
+        st.success("No violations detected.")
+
+    if stale_reports:
+        st.warning(f"Stale reports detected: {len(stale_reports)}")
+        st.dataframe(pd.DataFrame(stale_reports), use_container_width=True)
+    else:
+        st.success("No stale reports reported by governance audit.")
+
+    with st.expander("Brake Context Details", expanded=False):
+        st.json(brake_context)
+    with st.expander("Promotion Scorecard Details", expanded=False):
+        st.json(promotion)
+    with st.expander("Risk Budget Breakdown", expanded=False):
+        for key in ("symbol_breakdown", "exposure_by_symbol", "exposure_by_regime", "warnings", "safety"):
+            value = risk_budget.get(key)
+            if value:
+                st.write(f"**{key}**")
+                if isinstance(value, list):
+                    st.dataframe(pd.DataFrame(value), use_container_width=True)
+                else:
+                    st.json(value)
+
+
+def render_ml_diagnostics_tab(reports: dict[str, dict[str, Any]]) -> None:
+    drift = reports.get("drift_detection", {})
+    transition = reports.get("transition_prediction", {})
+    brake = reports.get("emergency_brake", {})
+    label_quality = reports.get("label_quality_audit", {})
+    stress = reports.get("stress_test", {})
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Model Accuracy", _metric_display(_nested_get(label_quality, "summary", "model_accuracy", default=None)))
+    col2.metric("Walkforward Quality", _metric_display(_nested_get(reports.get("promotion_scorecard", {}), "summary", "walkforward_quality", default=None)))
+    col3.metric("Drift Label", drift.get("drift_label", _nested_get(drift, "summary", "drift_label", default="UNKNOWN")))
+    col4.metric("Brake Risk", brake.get("brake_risk_level", _nested_get(brake, "summary", "brake_risk_level", default="UNKNOWN")))
+
+    st.subheader("Walkforward / Promotion Summary")
+    st.json(reports.get("promotion_scorecard", {}).get("summary", {}))
+
+    st.subheader("Drift & Transition Diagnostics")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.json(drift.get("summary", {"drift_label": drift.get("drift_label", "UNKNOWN"), "drift_score": drift.get("drift_score", 0.0)}))
+    with col_b:
+        st.json(transition.get("latest_early_warning", {}))
+
+    with st.expander("Anomaly / incident / stress diagnostics", expanded=False):
+        st.json({"stress_test": stress, "label_quality_audit": label_quality})
+
+    with st.expander("Raw JSON reports", expanded=False):
+        selected = st.selectbox("Report", options=list(reports.keys()))
+        st.json(reports.get(selected, {}))
+
+
 def render_governance_audit(audit: dict[str, Any]) -> None:
     st.header("12. Governance Audit")
     st.caption("Self-auditing PAPER_ONLY governance layer. Cached, summary-first, read-only analytics only.")
@@ -2414,7 +2689,7 @@ def render_database_analytics(counts: dict[str, int], ml_results: pd.DataFrame) 
     st.header("8. DATABASE ANALYTICS")
     st.warning("Database analytics is optional and may be CPU intensive.")
     st.caption(
-        "Default view is lightweight and read-only. Click the opt-in button below to run cached database analytics."
+        "Default view is lightweight and read-only. Database analytics is disabled in the governance dashboard layout."
     )
 
     col1, col2, col3 = st.columns(3)
@@ -2424,12 +2699,10 @@ def render_database_analytics(counts: dict[str, int], ml_results: pd.DataFrame) 
 
     with st.expander("Optional Database Analytics", expanded=False):
         st.caption(
-            f"Runs heavy SQLite analytics only on demand. Results are cached for {DATABASE_ANALYTICS_TTL_SECONDS} seconds "
-            f"and displayed with a default limit of {DATABASE_ANALYTICS_DISPLAY_ROWS} rows."
+            "Disabled in this read-only governance dashboard. Use approved terminal commands outside Streamlit "
+            "if database analytics must be regenerated."
         )
-        if st.button("Run Database Analytics", key="run_database_analytics"):
-            with st.spinner("Running cached database analytics..."):
-                st.session_state[DATABASE_ANALYTICS_SESSION_KEY] = collect_database_analytics()
+        st.code("python main.py --refresh-governance-reports", language="bash")
 
     cached_analytics = st.session_state.get(DATABASE_ANALYTICS_SESSION_KEY)
     if not cached_analytics:
@@ -2441,166 +2714,26 @@ def render_database_analytics(counts: dict[str, int], ml_results: pd.DataFrame) 
     with st.expander("Show cached database analytics details", expanded=False):
         render_database_analytics_result(cached_analytics, ml_results)
 
-def main() -> None:
-    signals = read_table("signals")
-    trades = read_table("paper_trades")
-    if trades.empty:
-        trades = read_historical_outcomes()
-    flows = read_table("flow_logs")
-    regimes = read_table("regime_logs")
-    ml_results = read_table("ml_results", limit=50)
-    walkforward = read_table("walkforward_results")
-    counts = table_counts()
-    risk_status = read_risk_status()
-    portfolio_observability = read_portfolio_observability()
-    portfolio_risk_budget = read_portfolio_risk_budget()
-    portfolio_analytics = read_portfolio_analytics()
-    opportunity_allocation = read_opportunity_allocation()
-    model_registry = read_model_registry()
-    internal_paper_trades = read_table("internal_paper_trades", limit=200)
-    broadcast_events = read_table("broadcast_events", limit=300)
-    telegram_events = read_table("telegram_events", limit=200)
-    webhook_payload = read_webhook_payload()
-    macro_observer, macro_components = read_macro_observer()
-    cross_market, cross_market_components, cross_market_correlation = read_cross_market()
-    strategy_genome_results, strategy_genome_archive = read_strategy_genome()
-    daily_ops_report = read_daily_ops_report()
-    anomaly_report, incident_report = read_incident_anomaly_report()
-    orchestrator_diagnostics = read_orchestrator_diagnostics()
-    promotion_scorecard = read_promotion_scorecard()
-    governance_audit = read_governance_audit()
-    phase3_readiness = read_phase3_readiness()
 
-    st.title("MAMUYY Binance Hunter Live Dashboard")
-    st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari SQLite.")
+def main() -> None:
+    st.title("MAMUYY Binance Hunter Governance Dashboard")
+    st.caption("Auto refresh setiap 60 detik. Dashboard read-only dari JSON reports/.")
     st.markdown(
         f"<meta http-equiv='refresh' content='{REFRESH_SECONDS}'>",
         unsafe_allow_html=True,
     )
 
-    render_alerts(signals, trades, ml_results)
+    reports = load_dashboard_reports()
+    render_read_only_banner()
+    render_action_required_area(reports)
 
-    st.header("1. SYSTEM HEALTH")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        status_badge("Scanner Status", "GREEN" if not signals.empty else "YELLOW", "")
-        st.metric("Latest Runtime", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    with col2:
-        health = db_health_check(DB_PATH, migrate_csv=False, backup=False)
-        status_badge("Database Status", "GREEN" if health.get("ok") else "RED", "")
-        st.metric("Total DB Rows", sum(counts.values()))
-    with col3:
-        st.metric("Latest Signal", latest_timestamp(signals))
-        st.metric("Latest ML Run", latest_timestamp(ml_results))
-    with col4:
-        st.metric("Latest Walkforward Run", latest_timestamp(walkforward))
-        st.dataframe(pd.DataFrame([counts]), use_container_width=True)
-
-    render_risk_engine_status(risk_status)
-    render_orchestrator_diagnostics(orchestrator_diagnostics)
-    render_daily_ops_report(daily_ops_report)
-    render_incident_anomaly_intelligence(anomaly_report, incident_report)
-    render_macro_observer(macro_observer, macro_components)
-    render_cross_market_intelligence(cross_market, cross_market_components, cross_market_correlation)
-    render_strategy_genome_lab(strategy_genome_results, strategy_genome_archive)
-    render_portfolio_observability(portfolio_observability)
-    render_portfolio_risk_budget(portfolio_risk_budget)
-    render_promotion_scorecard(promotion_scorecard)
-    render_governance_audit(governance_audit)
-    render_phase3_readiness(phase3_readiness)
-
-    st.header("2. MARKET REGIME")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.metric("Current Regime", metric_value(regimes, "regime_name"))
-        st.metric("Regime Confidence", metric_value(regimes, "regime_score", 0))
-    with col2:
-        safe_plot_line(regimes, "timestamp", "regime_score", "Regime Confidence History")
-
-    st.header("3. LIVE SIGNALS")
-    signal_cols = [
-        "timestamp",
-        "symbol",
-        "score",
-        "calculated_score",
-        "shadow_score",
-        "penalty_applied",
-        "flow_state",
-        "whale_activity",
-        "squeeze_risk",
-        "regime_name",
-    ]
-    st.dataframe(signals[[c for c in signal_cols if c in signals.columns]].head(50), use_container_width=True)
-    render_shadow_penalty_insight(signals)
-    render_shadow_simulation()
-
-    st.header("4. PAPER TRADING")
-    open_trades = trades[trades.get("status", pd.Series(dtype=str)).isin(["OPEN", "TP1 HIT"])] if not trades.empty else trades
-    wins = int((trades.get("status", pd.Series(dtype=str)) == "WIN").sum()) if not trades.empty else 0
-    total = len(trades)
-    winrate = (wins / total * 100) if total else 0.0
-    curve = pnl_curve(trades)
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Open Trades", len(open_trades))
-    col2.metric("Winrate", f"{winrate:.2f}%")
-    col3.metric("Current Drawdown", f"{current_drawdown(curve):.2f}%")
-    if not trades.empty and "pnl_percent" in trades.columns:
-        best = trades.loc[pd.to_numeric(trades["pnl_percent"], errors="coerce").idxmax()]
-        worst = trades.loc[pd.to_numeric(trades["pnl_percent"], errors="coerce").idxmin()]
-        col4.metric("Best/Worst", f"{best.get('symbol', '-')}/{worst.get('symbol', '-')}")
-    else:
-        col4.metric("Best/Worst", "-")
-    safe_plot_line(curve, "trade", "equity", "Paper Trading PnL Curve")
-    st.dataframe(open_trades.head(50), use_container_width=True)
-
-    render_portfolio_equity_analytics(portfolio_analytics)
-
-    st.header("5. FLOW ANALYTICS")
-    col1, col2 = st.columns(2)
-    with col1:
-        safe_plot_line(flows, "timestamp", "funding_zscore", "Funding Anomaly")
-        safe_plot_line(flows, "timestamp", "pressure_score", "Pressure Score")
-    with col2:
-        if not flows.empty and "whale_activity" in flows.columns:
-            freq = flows["whale_activity"].value_counts().reset_index()
-            freq.columns = ["whale_activity", "count"]
-            safe_plot_bar(freq, "whale_activity", "count", "Whale Activity Frequency")
-        else:
-            st.info("No whale activity data yet.")
-        safe_plot_line(flows, "timestamp", "squeeze_probability", "Squeeze Probability")
-
-    st.header("6. ML ANALYTICS")
-    feature_importance = load_feature_importance(ml_results)
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Model Accuracy", metric_value(ml_results, "accuracy", 0))
-    col2.metric("AI Confidence", metric_value(ml_results, "ai_confidence_score", 0))
-    col3.metric("Model Health", metric_value(ml_results, "setup_ranking", "LOW QUALITY"))
-    safe_plot_bar(feature_importance.head(15), "feature", "importance", "Feature Importance")
-    prediction_path = os.path.join(config.chart_output_dir, "prediction_distribution.png")
-    if os.path.exists(prediction_path):
-        st.image(prediction_path, caption="Prediction Distribution")
-    render_ml_lifecycle(model_registry)
-
-    st.header("7. WALKFORWARD ANALYTICS")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Rolling Accuracy", f"{pd.to_numeric(walkforward.get('test_accuracy', pd.Series(dtype=float)), errors='coerce').mean() or 0:.2%}")
-    col2.metric("Rolling Winrate", f"{pd.to_numeric(walkforward.get('winrate', pd.Series(dtype=float)), errors='coerce').mean() or 0:.2f}%")
-    train_acc = pd.to_numeric(walkforward.get("train_accuracy", pd.Series(dtype=float)), errors="coerce").mean()
-    test_acc = pd.to_numeric(walkforward.get("test_accuracy", pd.Series(dtype=float)), errors="coerce").mean()
-    overfit = max(0.0, float((train_acc or 0) - (test_acc or 0)) * 100)
-    col3.metric("Overfit Risk", f"{overfit:.2f}/100")
-    safe_plot_line(walkforward, "fold", "test_accuracy", "Rolling Accuracy")
-    safe_plot_line(walkforward, "fold", "winrate", "Rolling Winrate")
-    if not walkforward.empty and "best_regime" in walkforward.columns:
-        st.dataframe(walkforward[["fold", "best_regime", "worst_regime"]].head(50), use_container_width=True)
-
-    render_database_analytics(counts, ml_results)
-
-    render_opportunity_allocation(opportunity_allocation)
-    render_webhook_paper_engine(internal_paper_trades, webhook_payload)
-    render_broadcast_control_center(broadcast_events, internal_paper_trades)
-    render_telegram_notification_center(telegram_events)
-    render_governance_risk_intelligence()
+    tabs = st.tabs(["📊 Executive Summary", "🛡️ Governance & Risk", "⚙️ ML Diagnostics"])
+    with tabs[0]:
+        render_executive_summary_tab(reports)
+    with tabs[1]:
+        render_governance_risk_tab(reports)
+    with tabs[2]:
+        render_ml_diagnostics_tab(reports)
 
 
 if __name__ == "__main__":
