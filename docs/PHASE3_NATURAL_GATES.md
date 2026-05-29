@@ -60,6 +60,11 @@ This state is safe and expected. Phase 3 must not auto-unlock from this state.
 8. **Real execution and broker routing remain prohibited.**
    - The system must stay simulation, alerting, dashboard, and governance only.
    - Do not enable exchange order placement, live broker paths, or hidden routing hooks.
+   - Do not mutate execution paths, execution state, order handlers, or order placement behavior while Phase 3 is locked.
+
+9. **`PAPER_ONLY` remains active.**
+   - Do not disable, bypass, or reinterpret `PAPER_ONLY` safeguards.
+   - Any evidence refresh must preserve non-live operation and must not create synthetic trades or fake evidence.
 
 ## What operator should monitor daily
 
@@ -80,7 +85,8 @@ This state is safe and expected. Phase 3 must not auto-unlock from this state.
 - Do not hardcode system health, heartbeat freshness, or runtime stability.
 - Do not downgrade `HIGH` brake context without improved evidence.
 - Do not auto-unlock Phase 3.
-- Do not enable real execution, broker routing, threshold tuning, allocation tuning, or strategy auto-promotion.
+- Do not enable real execution, broker routing, order placement, execution mutation, threshold tuning, allocation tuning, or strategy auto-promotion.
+- Do not disable `PAPER_ONLY` or fabricate fake evidence / synthetic trades.
 
 ## Next review condition
 
