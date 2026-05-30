@@ -1302,6 +1302,7 @@ def load_dashboard_reports() -> dict[str, dict[str, Any]]:
         "stress_test": "reports/stress_test_report.json",
         "backup_verification": "reports/backup_verification.json",
         "paper_trade_lifecycle": "reports/paper_trade_lifecycle.json",
+        "paper_portfolio": "reports/paper_portfolio.json",
     }
     return {name: read_json_report(path) for name, path in report_paths.items()}
 
@@ -1426,6 +1427,57 @@ def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
         st.warning("Phase 3 blockers: " + "; ".join(map(str, blockers[:5])))
     if next_actions:
         st.info("Next actions: " + "; ".join(map(str, next_actions[:5])))
+
+    render_paper_portfolio_section(reports.get("paper_portfolio", {}))
+
+
+def render_paper_portfolio_section(report: dict[str, Any]) -> None:
+    st.subheader("Paper Portfolio")
+    st.caption(
+        "Read-only active internal paper trade monitor. Data comes from reports/paper_portfolio.json; "
+        "the dashboard does not create trades, route broker orders, mutate execution state, or unlock Phase 3."
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Active Paper Trades", _metric_display(report.get("total_active_trades")))
+    col2.metric("Closed Paper Trades", report.get("closed_progress", "0/100"))
+    col3.metric("Mode", "PAPER_ONLY")
+
+    active_status = report.get("active_status_distribution", {})
+    if isinstance(active_status, dict) and active_status:
+        st.markdown("**Status Distribution**")
+        status_df = pd.DataFrame(
+            [{"status": status, "count": count} for status, count in active_status.items()]
+        )
+        st.dataframe(status_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No active paper status distribution available. Run python main.py --paper-portfolio.")
+
+    active_trades = report.get("active_trades", [])
+    if isinstance(active_trades, list) and active_trades:
+        st.markdown("**Active Trades**")
+        trade_df = pd.DataFrame(active_trades)
+        display_columns = [
+            "symbol",
+            "status",
+            "entry_price",
+            "current_price",
+            "virtual_unrealized_pnl_pct",
+            "opened_at",
+            "age_hours",
+        ]
+        st.dataframe(
+            trade_df[[column for column in display_columns if column in trade_df.columns]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No active paper trades available in cached paper portfolio report.")
+
+    top_active = report.get("top_active_trades", [])
+    if isinstance(top_active, list) and top_active:
+        with st.expander("Top Active by Unrealized PnL", expanded=False):
+            st.dataframe(pd.DataFrame(top_active), use_container_width=True, hide_index=True)
 
 
 def render_governance_risk_tab(reports: dict[str, dict[str, Any]]) -> None:

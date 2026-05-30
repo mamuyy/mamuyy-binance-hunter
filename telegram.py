@@ -68,6 +68,47 @@ def format_paper_summary_message(summary: Dict[str, Any]) -> str:
     )
 
 
+
+def _format_paper_portfolio_pct(value: Any) -> str:
+    try:
+        if value in (None, ""):
+            return "n/a"
+        return f"{float(value):+.2f}%"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def format_paper_portfolio_message(report: Dict[str, Any]) -> str:
+    active_status = report.get("active_status_distribution", {})
+    if not isinstance(active_status, dict):
+        active_status = {}
+    status_line = " | ".join(
+        f"{str(status).upper()}: {count}" for status, count in active_status.items()
+    ) or "none"
+
+    lines = [
+        "📋 PAPER PORTFOLIO",
+        f"Active: {report.get('total_active_trades', 0)}",
+        f"Closed: {report.get('closed_progress', '0/100')}",
+        status_line,
+        "Top Active:",
+    ]
+    top_active = report.get("top_active_trades", [])
+    if isinstance(top_active, list) and top_active:
+        for index, trade in enumerate(top_active[:5], start=1):
+            if not isinstance(trade, dict):
+                continue
+            lines.append(
+                f"{index}. {trade.get('symbol', '-')} | "
+                f"{trade.get('status', '-')} | "
+                f"{_format_paper_portfolio_pct(trade.get('virtual_unrealized_pnl_pct'))}"
+            )
+    else:
+        lines.append("none")
+    lines.append("Mode: PAPER_ONLY read-only, no execution mutation.")
+    return "\n".join(lines)
+
+
 def format_performance_report_message(metrics: Dict[str, Any]) -> str:
     profit_factor = metrics.get("profit_factor", 0.0)
     if profit_factor == float("inf"):
