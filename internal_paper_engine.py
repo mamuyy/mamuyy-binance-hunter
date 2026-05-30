@@ -183,10 +183,27 @@ def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
         return cursor.rowcount > 0
 
 
-def _paper_metrics(trades: pd.DataFrame) -> Dict[str, float]:
+def _status_counts_from_series(status: pd.Series) -> Dict[str, int]:
+    if status.empty:
+        return {}
+    normalized = status.fillna("OPEN").astype(str).str.strip().str.upper().replace("", "OPEN")
+    return {str(key): int(value) for key, value in normalized.value_counts().sort_index().items()}
+
+
+def _active_status_counts(status_counts: Dict[str, int]) -> Dict[str, int]:
+    return {
+        status: count
+        for status, count in status_counts.items()
+        if status not in CLOSED_STATUSES and count > 0
+    }
+
+
+def _paper_metrics(trades: pd.DataFrame) -> Dict[str, Any]:
     if trades.empty:
-        return {"trade_count": 0, "open_count": 0, "closed_count": 0, "winrate": 0.0, "total_pnl": 0.0, "max_drawdown": 0.0}
+        return {"trade_count": 0, "open_count": 0, "active_count": 0, "closed_count": 0, "winrate": 0.0, "total_pnl": 0.0, "max_drawdown": 0.0}
     status = trades.get("status", pd.Series(dtype=str)).astype(str).str.upper()
+    status_counts = _status_counts_from_series(status)
+    active_status_counts = _active_status_counts(status_counts)
     closed = trades[status.isin(CLOSED_STATUSES)]
     pnl = pd.to_numeric(closed.get("pnl", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     equity = pnl.cumsum()
@@ -194,7 +211,10 @@ def _paper_metrics(trades: pd.DataFrame) -> Dict[str, float]:
     return {
         "trade_count": int(len(trades)),
         "open_count": int(status.isin(ACTIVE_STATUSES).sum()),
+        "active_count": int(sum(active_status_counts.values())),
         "closed_count": int(status.isin(CLOSED_STATUSES).sum()),
+        "status_counts": status_counts,
+        "active_status_counts": active_status_counts,
         "winrate": round(float((pnl > 0).mean() * 100), 2) if len(pnl) else 0.0,
         "total_pnl": round(float(pnl.sum()), 4),
         "max_drawdown": round(float(drawdown.min()), 4) if not drawdown.empty else 0.0,
@@ -332,6 +352,7 @@ def run_internal_paper_engine(
 
     trades = _read_table(db_path, "internal_paper_trades", limit=5000)
     diagnostics = generate_paper_trade_diagnostics(db_path=db_path, write_report=False)
+    metrics = _paper_metrics(trades)
     result = {
         "ok": True,
         "paper_mode_only": True,
@@ -339,7 +360,10 @@ def run_internal_paper_engine(
         "generated": generated,
         "inserted": inserted,
         "naturally_closed": naturally_closed,
-        "metrics": _paper_metrics(trades),
+        "active_count": metrics.get("active_count", 0),
+        "status_counts": metrics.get("status_counts", {}),
+        "active_status_counts": metrics.get("active_status_counts", {}),
+        "metrics": metrics,
         "diagnostics": diagnostics,
     }
     _write_lifecycle_report(result)
@@ -427,6 +451,9 @@ def generate_paper_trade_diagnostics(
             "paper_exits_closed_last_24h": 0,
             "rejection_reasons": {"database_unavailable": 1},
             "current_closed_count": 0,
+            "active_count": 0,
+            "status_counts": {},
+            "active_status_counts": {},
             "target_closed_count": target_closed,
             "progress": f"0/{target_closed}",
         }
@@ -442,6 +469,16 @@ def generate_paper_trade_diagnostics(
         closed_where = "UPPER(COALESCE(status, '')) IN ('CLOSED','WIN','LOSS','STOP_LOSS','TAKE_PROFIT')"
         exits = _count(connection, "internal_paper_trades", f"{closed_where} AND COALESCE(updated_at, timestamp) >= ?", (cutoff,))
         closed_count = _count(connection, "internal_paper_trades", closed_where)
+        status_rows = connection.execute(
+            """
+            SELECT UPPER(COALESCE(NULLIF(TRIM(status), ''), 'OPEN')) AS normalized_status, COUNT(*) AS count
+            FROM internal_paper_trades
+            GROUP BY normalized_status
+            """
+        ).fetchall()
+        status_counts = {str(row["normalized_status"]): int(row["count"]) for row in status_rows}
+        active_status_counts = _active_status_counts(status_counts)
+        active_count = int(sum(active_status_counts.values()))
         if detection["paper_trades"]["exists"] and _count(connection, "paper_trades") == 0:
             reasons["legacy_paper_trades_cli_not_running_or_no_csv_migration"] += 1
         if detection["internal_paper_trades"]["exists"] and entries == 0 and eligible > 0:
@@ -458,6 +495,9 @@ def generate_paper_trade_diagnostics(
             "paper_exits_closed_last_24h": exits,
             "rejection_reasons": dict(reasons),
             "current_closed_count": closed_count,
+            "active_count": active_count,
+            "status_counts": status_counts,
+            "active_status_counts": active_status_counts,
             "target_closed_count": target_closed,
             "progress": f"{closed_count}/{target_closed}",
         }
@@ -481,6 +521,8 @@ def format_paper_diagnostics(report: Dict[str, Any]) -> str:
             f"Eligible Paper Signals Last 24h: {report.get('eligible_paper_signals_last_24h', 0)}",
             f"Paper Entries Created Last 24h: {report.get('paper_entries_created_last_24h', 0)}",
             f"Paper Exits/Closed Last 24h: {report.get('paper_exits_closed_last_24h', 0)}",
+            f"Active Paper Trades: {report.get('active_count', 0)}",
+            f"Active Status Counts: {report.get('active_status_counts', {}) or {'none': 0}}",
             f"Rejection Reasons: {report.get('rejection_reasons', {}) or {'none': 0}}",
             f"Table/Column Detection: {', '.join(table_bits)}",
             f"Closed Count vs Target: {report.get('progress', '0/100')}",
