@@ -404,6 +404,72 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
     )
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, int]:
+    lifecycle = _read_json_report("reports/paper_trade_lifecycle.json")
+    target = _safe_int(
+        lifecycle.get("target_closed_count")
+        or readiness.get("closed_paper_trades_target")
+        or readiness.get("closed_paper_trade_target"),
+        100,
+    )
+
+    if lifecycle:
+        trade_count = _safe_int(lifecycle.get("trade_count"), 0)
+        closed_count = _safe_int(
+            lifecycle.get("closed_count")
+            if lifecycle.get("closed_count") is not None
+            else lifecycle.get("current_closed_count"),
+            0,
+        )
+        open_count = lifecycle.get("open_count")
+        if open_count is None and trade_count:
+            open_count = max(trade_count - closed_count, 0)
+        if open_count is None:
+            open_count = lifecycle.get("inserted_open_trades")
+        return {
+            "closed_count": closed_count,
+            "open_count": _safe_int(open_count, 0),
+            "target": max(target, 1),
+            "trade_count": trade_count,
+            "inserted_open_trades": _safe_int(lifecycle.get("inserted_open_trades"), 0),
+        }
+
+    progress = str(readiness.get("closed_paper_trades_progress", ""))
+    progress_closed = None
+    progress_target = None
+    if "/" in progress:
+        left, right = progress.split("/", 1)
+        progress_closed = _safe_int(left.strip(), 0)
+        progress_target = _safe_int(right.strip(), target)
+
+    closed_count = _safe_int(
+        readiness.get("closed_paper_trades")
+        if readiness.get("closed_paper_trades") is not None
+        else readiness.get("closed_paper_trade_count"),
+        progress_closed if progress_closed is not None else 0,
+    )
+    target = _safe_int(
+        readiness.get("closed_paper_trades_target")
+        or readiness.get("closed_paper_trade_target"),
+        progress_target if progress_target is not None else target,
+    )
+
+    return {
+        "closed_count": closed_count,
+        "open_count": _safe_int(readiness.get("open_paper_trades"), 0),
+        "target": max(target, 1),
+        "trade_count": _safe_int(readiness.get("paper_trade_count"), 0),
+        "inserted_open_trades": 0,
+    }
+
+
 def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str:
     readiness = report if isinstance(report, dict) else _read_json_report("reports/phase3_readiness.json")
     blockers = readiness.get("blockers", []) if isinstance(readiness, dict) else []
@@ -412,11 +478,23 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
         readiness_percent = float(readiness.get("readiness_percent", 0.0))
     except (TypeError, ValueError):
         readiness_percent = 0.0
+
+    paper_progress = _resolve_paper_trade_progress(readiness)
+    closed_count = paper_progress["closed_count"]
+    open_count = paper_progress["open_count"]
+    target = paper_progress["target"]
+    progress_percent = min((closed_count / target) * 100.0, 100.0)
+    status = str(readiness.get("status", "LOCKED")).upper()
+    if closed_count < target:
+        status = "LOCKED"
+
     return (
         "🚦 PHASE 3 READINESS\n"
         f"Readiness: {readiness_percent:.0f}%\n"
-        f"Status: {readiness.get('status', 'LOCKED')}\n"
-        f"Paper Trades: {readiness.get('closed_paper_trades_progress', '0/100')} closed\n"
+        f"Status: {status}\n"
+        f"Paper Trades: {closed_count}/{target} closed\n"
+        f"Open Paper Trades: {open_count}\n"
+        f"Paper Progress: {progress_percent:.0f}%\n"
         f"Top Blocker: {top_blocker}\n"
         "PAPER_ONLY remains active."
     )
