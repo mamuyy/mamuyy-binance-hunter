@@ -722,6 +722,12 @@ def run_phase3_readiness() -> Dict[str, Any]:
     return result
 
 
+def send_phase3_readiness_monitoring_summary() -> None:
+    message = format_phase3_readiness_message()
+    print(message)
+    send_message_if_enabled(message)
+
+
 def run_portfolio_observer() -> Dict[str, Any]:
     with runtime_keepalive(
         "portfolio_observer",
@@ -796,6 +802,7 @@ def run_orchestrator_command() -> Dict[str, Any]:
         keepalive_interval_seconds=config.orchestrator_keepalive_interval_seconds,
         keepalive_threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
     )
+    send_phase3_readiness_monitoring_summary()
     message = format_orchestrator_message(result)
     print(message)
     send_message_if_enabled(message)
