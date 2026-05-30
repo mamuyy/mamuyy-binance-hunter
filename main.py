@@ -319,6 +319,7 @@ from telegram import (
     format_market_regime_message,
     format_ml_analysis_message,
     format_orchestrator_message,
+    format_paper_portfolio_message,
     format_paper_summary_message,
     format_performance_report_message,
     format_phase3_readiness_message,
@@ -740,6 +741,23 @@ def send_phase3_readiness_monitoring_summary() -> None:
     send_message_if_enabled(message)
 
 
+def send_paper_portfolio_monitoring_summary(sent_sections: set[str] | None = None) -> None:
+    if sent_sections is not None and "paper_portfolio" in sent_sections:
+        print("Paper portfolio summary already sent in this cycle; skipping duplicate.")
+        return
+
+    report = generate_paper_portfolio_report(
+        db_path=config.database_path,
+        output_path="reports/paper_portfolio.json",
+        write_report=True,
+    )
+    message = format_paper_portfolio_message(report)
+    print(message)
+    send_message_if_enabled(message)
+    if sent_sections is not None:
+        sent_sections.add("paper_portfolio")
+
+
 def run_portfolio_observer() -> Dict[str, Any]:
     with runtime_keepalive(
         "portfolio_observer",
@@ -814,7 +832,9 @@ def run_orchestrator_command() -> Dict[str, Any]:
         keepalive_interval_seconds=config.orchestrator_keepalive_interval_seconds,
         keepalive_threshold_seconds=config.orchestrator_keepalive_threshold_seconds,
     )
+    sent_sections: set[str] = set()
     send_phase3_readiness_monitoring_summary()
+    send_paper_portfolio_monitoring_summary(sent_sections)
     message = format_orchestrator_message(result)
     print(message)
     send_message_if_enabled(message)
