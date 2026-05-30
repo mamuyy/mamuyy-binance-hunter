@@ -1244,6 +1244,34 @@ def _metric_display(value: Any, suffix: str = "") -> str:
     return str(value)
 
 
+def _metric_int(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_progress_pair(value: Any) -> tuple[int | None, int | None]:
+    if not isinstance(value, str) or "/" not in value:
+        return None, None
+    closed_raw, target_raw = value.split("/", 1)
+    return _metric_int(closed_raw.strip()), _metric_int(target_raw.strip())
+
+
+def _paper_trade_progress_display(closed_count: Any, target_count: Any) -> str:
+    closed = _metric_int(closed_count)
+    target = _metric_int(target_count)
+    if closed is None and target is None:
+        return "-"
+    if target is None:
+        return str(closed) if closed is not None else "-"
+    if closed is None:
+        return f"- / {target}"
+    return f"{closed} / {target}"
+
+
 def _status_message(label: str, status: str, critical: set[str], warning: set[str]) -> None:
     status_upper = _upper_value(status)
     if status_upper in critical:
@@ -1273,6 +1301,7 @@ def load_dashboard_reports() -> dict[str, dict[str, Any]]:
         "label_quality_audit": "reports/label_quality_audit.json",
         "stress_test": "reports/stress_test_report.json",
         "backup_verification": "reports/backup_verification.json",
+        "paper_trade_lifecycle": "reports/paper_trade_lifecycle.json",
     }
     return {name: read_json_report(path) for name, path in report_paths.items()}
 
@@ -1331,18 +1360,25 @@ def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
     audit = reports.get("governance_audit", {})
     risk_budget = reports.get("portfolio_risk_budget", {})
     promotion = reports.get("promotion_scorecard", {})
+    paper_lifecycle = reports.get("paper_trade_lifecycle", {})
 
     readiness_percent = _percent_value(phase3.get("readiness_percent"))
+    progress_closed, progress_target = _parse_progress_pair(phase3.get("closed_paper_trades_progress"))
     closed_paper_trades = _first_existing(
         phase3.get("closed_paper_trades"),
         phase3.get("paper_closed_trades"),
         _nested_get(phase3, "metrics", "closed_paper_trades", default=None),
+        progress_closed,
     )
-    if closed_paper_trades is None:
-        for detail in phase3.get("criteria_details", []) if isinstance(phase3.get("criteria_details"), list) else []:
-            if "closed trades" in str(detail.get("name", "")).lower():
-                closed_paper_trades = detail.get("detail", "-")
-                break
+    closed_paper_trade_target = _first_existing(
+        phase3.get("closed_paper_trade_target"),
+        phase3.get("closed_paper_trades_target"),
+        _nested_get(phase3, "metrics", "closed_paper_trade_target", default=None),
+        _nested_get(phase3, "metrics", "closed_paper_trades_target", default=None),
+        progress_target,
+        default=100,
+    )
+    open_paper_trades = paper_lifecycle.get("open_count")
 
     pnl = _first_existing(
         _nested_get(phase3, "metrics", "shadow_paper_pnl", default=None),
@@ -1358,22 +1394,20 @@ def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
     col2.metric("Phase 3 Status", phase3.get("status", "LOCKED"))
     col3.metric("Governance Health", audit.get("governance_health", "UNKNOWN"))
 
-    col4, col5, col6 = st.columns(3)
+    col4, col5, col6, col7 = st.columns(4)
     col4.metric("Shadow/Paper PnL", _metric_display(pnl))
     col5.metric("Winrate", _metric_display(winrate, "%" if isinstance(winrate, (int, float)) else ""))
-    col6.metric("Closed Paper Trades", _metric_display(closed_paper_trades))
+    col6.metric("Closed Paper Trades", _paper_trade_progress_display(closed_paper_trades, closed_paper_trade_target))
+    col7.metric("Open Paper Trades", _metric_display(open_paper_trades))
 
     st.caption("Phase 3 readiness progress")
     st.progress(readiness_percent / 100.0)
 
-    closed_numeric = None
-    try:
-        closed_numeric = float(closed_paper_trades)
-    except (TypeError, ValueError):
-        closed_numeric = None
-    if closed_numeric is not None:
-        st.caption("Closed paper trades progress toward 100-trade evidence gate")
-        st.progress(max(0.0, min(100.0, closed_numeric)) / 100.0)
+    closed_numeric = _metric_int(closed_paper_trades)
+    target_numeric = _metric_int(closed_paper_trade_target)
+    if closed_numeric is not None and target_numeric and target_numeric > 0:
+        st.caption(f"Closed paper trades progress toward {target_numeric}-trade evidence gate")
+        st.progress(max(0.0, min(1.0, closed_numeric / target_numeric)))
 
     st.subheader("Roadmap Status")
     roadmap = pd.DataFrame(
