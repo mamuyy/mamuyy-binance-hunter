@@ -1,8 +1,12 @@
 import json
 import os
+import sqlite3
+from pathlib import Path
 from typing import Dict, Any
 
 import requests
+
+from config import config
 
 
 def format_signal_message(signal: Dict[str, Any]) -> str:
@@ -445,7 +449,19 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
     )
 
 
-PAPER_CLOSED_STATUSES = {"CLOSED", "WIN", "LOSS", "STOP_LOSS", "TAKE_PROFIT"}
+PAPER_CLOSED_STATUSES = {
+    "CLOSED",
+    "WIN",
+    "LOSS",
+    "STOP_LOSS",
+    "TAKE_PROFIT",
+    "TRADE CLOSED",
+    "TP2 HIT",
+    "SL HIT",
+    "STOP LOSS",
+    "TAKE PROFIT",
+    "EXPIRED",
+}
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -474,7 +490,7 @@ def _active_status_counts_from_lifecycle(lifecycle: Dict[str, Any]) -> Dict[str,
     return {status: count for status, count in status_counts.items() if status not in PAPER_CLOSED_STATUSES and count > 0}
 
 
-def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
+def _readiness_paper_trade_counts(readiness: Dict[str, Any]) -> Dict[str, int]:
     progress = str(readiness.get("closed_paper_trades_progress", ""))
     progress_closed = None
     progress_target = None
@@ -494,14 +510,81 @@ def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
         or readiness.get("closed_paper_trade_target"),
         progress_target if progress_target is not None else 100,
     )
+    trade_count = _safe_int(readiness.get("paper_trade_count"), 0)
+    return {"closed_count": closed_count, "target": max(target, 1), "trade_count": trade_count}
 
-    lifecycle = _read_json_report("reports/paper_trade_lifecycle.json")
+
+def _paper_trade_counts_from_database(db_path: str | None = None) -> Dict[str, Any]:
+    if not db_path:
+        db_path = config.database_path or os.getenv("DATABASE_PATH", "mamuyy_hunter.db")
+
+    if not db_path or not os.path.exists(db_path):
+        return {"available": False}
+
+    try:
+        with sqlite3.connect(f"file:{Path(db_path).resolve()}?mode=ro", uri=True) as connection:
+            table = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='internal_paper_trades'"
+            ).fetchone()
+            if table is None:
+                return {"available": False}
+            status_rows = connection.execute(
+                """
+                SELECT UPPER(COALESCE(NULLIF(TRIM(status), ''), 'OPEN')) AS status, COUNT(*) AS count
+                FROM internal_paper_trades
+                GROUP BY UPPER(COALESCE(NULLIF(TRIM(status), ''), 'OPEN'))
+                """
+            ).fetchall()
+            status_counts = {str(status): int(count or 0) for status, count in status_rows}
+            closed_count = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM internal_paper_trades
+                    WHERE UPPER(COALESCE(NULLIF(TRIM(status), ''), 'OPEN')) = 'CLOSED'
+                    """
+                ).fetchone()[0]
+                or 0
+            )
+    except sqlite3.Error:
+        return {"available": False}
+
+    active_status_counts = {
+        status: count
+        for status, count in status_counts.items()
+        if status != "CLOSED" and count > 0
+    }
+    return {
+        "available": True,
+        "closed_count": closed_count,
+        "active_count": sum(active_status_counts.values()),
+        "active_status_counts": active_status_counts,
+        "status_counts": status_counts,
+        "trade_count": sum(status_counts.values()),
+    }
+
+
+def _lifecycle_paper_trade_counts(lifecycle: Dict[str, Any]) -> Dict[str, Any]:
     lifecycle = lifecycle if isinstance(lifecycle, dict) else {}
     diagnostics = lifecycle.get("diagnostics") if isinstance(lifecycle.get("diagnostics"), dict) else {}
 
     active_status_counts = _active_status_counts_from_lifecycle(lifecycle)
     if not active_status_counts and diagnostics:
         active_status_counts = _active_status_counts_from_lifecycle(diagnostics)
+
+    closed_count = _safe_int(lifecycle.get("current_closed_count"), 0)
+    if closed_count == 0 and diagnostics:
+        closed_count = _safe_int(diagnostics.get("current_closed_count"), 0)
+    progress = str(lifecycle.get("progress") or diagnostics.get("progress") or "")
+    progress_target = None
+    if "/" in progress:
+        left, right = progress.split("/", 1)
+        closed_count = max(closed_count, _safe_int(left.strip(), 0))
+        progress_target = _safe_int(right.strip(), 100)
+
+    target = _safe_int(lifecycle.get("target_closed_count"), progress_target if progress_target is not None else 100)
+    if target <= 0 and diagnostics:
+        target = _safe_int(diagnostics.get("target_closed_count"), progress_target if progress_target is not None else 100)
 
     active_count = _safe_int(lifecycle.get("active_count"), 0)
     if active_count == 0 and diagnostics:
@@ -511,20 +594,10 @@ def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
 
     inserted_open_trades = _safe_int(lifecycle.get("inserted_open_trades"), 0)
     metrics = lifecycle.get("metrics") if isinstance(lifecycle.get("metrics"), dict) else {}
-    trade_count = _safe_int(
-        lifecycle.get("trade_count") or metrics.get("trade_count"),
-        _safe_int(readiness.get("paper_trade_count"), 0),
-    )
+    trade_count = _safe_int(lifecycle.get("trade_count") or metrics.get("trade_count"), 0)
 
     if active_count == 0:
-        legacy_open_count = _safe_int(
-            lifecycle.get("open_count") or metrics.get("open_count"),
-            inserted_open_trades,
-        )
-        active_count = legacy_open_count
-
-    if active_count == 0 and trade_count > closed_count:
-        active_count = trade_count - closed_count
+        active_count = _safe_int(lifecycle.get("open_count") or metrics.get("open_count"), inserted_open_trades)
 
     return {
         "closed_count": closed_count,
@@ -536,6 +609,80 @@ def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def get_paper_trade_progress_for_telegram(
+    readiness: Dict[str, Any] | None = None,
+    db_path: str | None = None,
+    lifecycle: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Return read-only paper trade progress for Telegram Phase 3 readiness.
+
+    Source priority is database internal_paper_trades first, then Phase 3 readiness,
+    then paper trade lifecycle only as a fallback.  Lifecycle values are never allowed
+    to reset a higher database/readiness closed count to zero.
+    """
+    readiness = readiness if isinstance(readiness, dict) else _read_json_report("reports/phase3_readiness.json")
+    readiness_counts = _readiness_paper_trade_counts(readiness if isinstance(readiness, dict) else {})
+    database_counts = _paper_trade_counts_from_database(db_path)
+    lifecycle_counts = _lifecycle_paper_trade_counts(
+        lifecycle if isinstance(lifecycle, dict) else _read_json_report("reports/paper_trade_lifecycle.json")
+    )
+
+    target = max(
+        readiness_counts.get("target", 100),
+        lifecycle_counts.get("target", 100),
+        1,
+    )
+
+    closed_candidates = [readiness_counts.get("closed_count", 0)]
+    if database_counts.get("available"):
+        closed_candidates.insert(0, database_counts.get("closed_count", 0))
+    elif lifecycle_counts.get("closed_count", 0) > 0:
+        closed_candidates.append(lifecycle_counts.get("closed_count", 0))
+    closed_count = max(_safe_int(candidate, 0) for candidate in closed_candidates)
+
+    trade_count = 0
+    active_status_counts: Dict[str, int] = {}
+    source = "readiness"
+    if database_counts.get("available"):
+        active_count = _safe_int(database_counts.get("active_count"), 0)
+        active_status_counts = database_counts.get("active_status_counts", {}) or {}
+        trade_count = _safe_int(database_counts.get("trade_count"), 0)
+        source = "database"
+    else:
+        lifecycle_active = _safe_int(lifecycle_counts.get("active_count"), 0)
+        lifecycle_trade_count = _safe_int(lifecycle_counts.get("trade_count"), 0)
+        lifecycle_closed = _safe_int(lifecycle_counts.get("closed_count"), 0)
+        if lifecycle_active > 0 and lifecycle_closed <= closed_count and lifecycle_trade_count >= lifecycle_active + lifecycle_closed:
+            active_count = lifecycle_active
+            active_status_counts = lifecycle_counts.get("active_status_counts", {}) or {}
+            trade_count = lifecycle_trade_count
+            source = "lifecycle"
+        else:
+            trade_count = max(
+                readiness_counts.get("trade_count", 0),
+                lifecycle_trade_count,
+                closed_count + lifecycle_active,
+            )
+            active_count = max(trade_count - closed_count, 0)
+            source = "readiness"
+
+    if active_count == 0 and trade_count > closed_count:
+        active_count = trade_count - closed_count
+
+    return {
+        "closed_count": closed_count,
+        "active_count": active_count,
+        "active_status_counts": active_status_counts,
+        "target": target,
+        "trade_count": trade_count,
+        "source": source,
+    }
+
+
+def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
+    return get_paper_trade_progress_for_telegram(readiness)
+
+
 def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str:
     readiness = report if isinstance(report, dict) else _read_json_report("reports/phase3_readiness.json")
     blockers = readiness.get("blockers", []) if isinstance(readiness, dict) else []
@@ -545,7 +692,7 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
     except (TypeError, ValueError):
         readiness_percent = 0.0
 
-    paper_progress = _resolve_paper_trade_progress(readiness)
+    paper_progress = get_paper_trade_progress_for_telegram(readiness)
     closed_count = paper_progress["closed_count"]
     active_count = paper_progress["active_count"]
     target = paper_progress["target"]
