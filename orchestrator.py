@@ -14,9 +14,9 @@ from database import insert_runtime_heartbeat
 
 
 SCHEDULER_PROFILES = {
-    "FAST": {"scanner": 60, "regime": 60, "flow": 120, "ML": 3600, "walkforward": 7200, "portfolio": 300, "execution": 300, "shadow": 120},
-    "NORMAL": {"scanner": 300, "regime": 300, "flow": 300, "ML": 3600, "walkforward": 14400, "portfolio": 900, "execution": 900, "shadow": 300},
-    "SAFE": {"scanner": 900, "regime": 900, "flow": 900, "ML": 21600, "walkforward": 43200, "portfolio": 1800, "execution": 1800, "shadow": 900},
+    "FAST": {"scanner": 60, "regime": 60, "flow": 120, "ML": 3600, "walkforward": 7200, "portfolio": 300, "execution": 300, "shadow": 120, "paper_engine": 120},
+    "NORMAL": {"scanner": 300, "regime": 300, "flow": 300, "ML": 3600, "walkforward": 14400, "portfolio": 900, "execution": 900, "shadow": 300, "paper_engine": 300},
+    "SAFE": {"scanner": 900, "regime": 900, "flow": 900, "ML": 21600, "walkforward": 43200, "portfolio": 1800, "execution": 1800, "shadow": 900, "paper_engine": 900},
 }
 
 LOG_FIELDS = ["timestamp", "engine", "state", "execution_time", "failure_count", "restart_count", "avg_runtime", "last_success_timestamp", "message"]

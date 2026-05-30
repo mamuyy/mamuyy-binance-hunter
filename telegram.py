@@ -416,6 +416,7 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
         "🚦 PHASE 3 READINESS\n"
         f"Readiness: {readiness_percent:.0f}%\n"
         f"Status: {readiness.get('status', 'LOCKED')}\n"
+        f"Paper Trades: {readiness.get('closed_paper_trades_progress', '0/100')} closed\n"
         f"Top Blocker: {top_blocker}\n"
         "PAPER_ONLY remains active."
     )
