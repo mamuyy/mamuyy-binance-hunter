@@ -404,6 +404,9 @@ def format_promotion_scorecard_message(report: Dict[str, Any] | None = None) -> 
     )
 
 
+PAPER_CLOSED_STATUSES = {"CLOSED", "WIN", "LOSS", "STOP_LOSS", "TAKE_PROFIT"}
+
+
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
         return int(float(value))
@@ -411,7 +414,26 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, int]:
+def _normalized_status_counts(payload: Any) -> Dict[str, int]:
+    if not isinstance(payload, dict):
+        return {}
+    counts: Dict[str, int] = {}
+    for status, count in payload.items():
+        normalized = str(status or "OPEN").strip().upper() or "OPEN"
+        counts[normalized] = counts.get(normalized, 0) + _safe_int(count, 0)
+    return counts
+
+
+def _active_status_counts_from_lifecycle(lifecycle: Dict[str, Any]) -> Dict[str, int]:
+    active_counts = _normalized_status_counts(lifecycle.get("active_status_counts"))
+    if active_counts:
+        return active_counts
+
+    status_counts = _normalized_status_counts(lifecycle.get("status_counts"))
+    return {status: count for status, count in status_counts.items() if status not in PAPER_CLOSED_STATUSES and count > 0}
+
+
+def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, Any]:
     progress = str(readiness.get("closed_paper_trades_progress", ""))
     progress_closed = None
     progress_target = None
@@ -433,25 +455,40 @@ def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, int]:
     )
 
     lifecycle = _read_json_report("reports/paper_trade_lifecycle.json")
-    lifecycle_open_count = (
-        lifecycle.get("open_count") if isinstance(lifecycle, dict) else None
-    )
-    inserted_open_trades = _safe_int(
-        lifecycle.get("inserted_open_trades") if isinstance(lifecycle, dict) else None,
-        0,
-    )
+    lifecycle = lifecycle if isinstance(lifecycle, dict) else {}
+    diagnostics = lifecycle.get("diagnostics") if isinstance(lifecycle.get("diagnostics"), dict) else {}
+
+    active_status_counts = _active_status_counts_from_lifecycle(lifecycle)
+    if not active_status_counts and diagnostics:
+        active_status_counts = _active_status_counts_from_lifecycle(diagnostics)
+
+    active_count = _safe_int(lifecycle.get("active_count"), 0)
+    if active_count == 0 and diagnostics:
+        active_count = _safe_int(diagnostics.get("active_count"), 0)
+    if active_count == 0 and active_status_counts:
+        active_count = sum(active_status_counts.values())
+
+    inserted_open_trades = _safe_int(lifecycle.get("inserted_open_trades"), 0)
+    metrics = lifecycle.get("metrics") if isinstance(lifecycle.get("metrics"), dict) else {}
     trade_count = _safe_int(
-        lifecycle.get("trade_count") if isinstance(lifecycle, dict) else None,
+        lifecycle.get("trade_count") or metrics.get("trade_count"),
         _safe_int(readiness.get("paper_trade_count"), 0),
     )
-    open_count = _safe_int(lifecycle_open_count, inserted_open_trades)
 
-    if (lifecycle_open_count is None or open_count == 0) and trade_count > closed_count:
-        open_count = trade_count - closed_count
+    if active_count == 0:
+        legacy_open_count = _safe_int(
+            lifecycle.get("open_count") or metrics.get("open_count"),
+            inserted_open_trades,
+        )
+        active_count = legacy_open_count
+
+    if active_count == 0 and trade_count > closed_count:
+        active_count = trade_count - closed_count
 
     return {
         "closed_count": closed_count,
-        "open_count": open_count,
+        "active_count": active_count,
+        "active_status_counts": active_status_counts,
         "target": max(target, 1),
         "trade_count": trade_count,
         "inserted_open_trades": inserted_open_trades,
@@ -469,7 +506,7 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
 
     paper_progress = _resolve_paper_trade_progress(readiness)
     closed_count = paper_progress["closed_count"]
-    open_count = paper_progress["open_count"]
+    active_count = paper_progress["active_count"]
     target = paper_progress["target"]
     progress_percent = min((closed_count / target) * 100.0, 100.0)
     status = str(readiness.get("status", "LOCKED")).upper()
@@ -479,7 +516,7 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
         f"Readiness: {readiness_percent:.0f}%\n"
         f"Status: {status}\n"
         f"Paper Trades: {closed_count}/{target} closed\n"
-        f"Open Paper Trades: {open_count}\n"
+        f"Active Paper Trades: {active_count}\n"
         f"Paper Progress: {progress_percent:.0f}%\n"
         f"Top Blocker: {top_blocker}\n"
         "PAPER_ONLY remains active."
