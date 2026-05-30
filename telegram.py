@@ -412,42 +412,13 @@ def _safe_int(value: Any, default: int = 0) -> int:
 
 
 def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, int]:
-    lifecycle = _read_json_report("reports/paper_trade_lifecycle.json")
-    target = _safe_int(
-        lifecycle.get("target_closed_count")
-        or readiness.get("closed_paper_trades_target")
-        or readiness.get("closed_paper_trade_target"),
-        100,
-    )
-
-    if lifecycle:
-        trade_count = _safe_int(lifecycle.get("trade_count"), 0)
-        closed_count = _safe_int(
-            lifecycle.get("closed_count")
-            if lifecycle.get("closed_count") is not None
-            else lifecycle.get("current_closed_count"),
-            0,
-        )
-        open_count = lifecycle.get("open_count")
-        if open_count is None and trade_count:
-            open_count = max(trade_count - closed_count, 0)
-        if open_count is None:
-            open_count = lifecycle.get("inserted_open_trades")
-        return {
-            "closed_count": closed_count,
-            "open_count": _safe_int(open_count, 0),
-            "target": max(target, 1),
-            "trade_count": trade_count,
-            "inserted_open_trades": _safe_int(lifecycle.get("inserted_open_trades"), 0),
-        }
-
     progress = str(readiness.get("closed_paper_trades_progress", ""))
     progress_closed = None
     progress_target = None
     if "/" in progress:
         left, right = progress.split("/", 1)
         progress_closed = _safe_int(left.strip(), 0)
-        progress_target = _safe_int(right.strip(), target)
+        progress_target = _safe_int(right.strip(), 100)
 
     closed_count = _safe_int(
         readiness.get("closed_paper_trades")
@@ -458,22 +429,39 @@ def _resolve_paper_trade_progress(readiness: Dict[str, Any]) -> Dict[str, int]:
     target = _safe_int(
         readiness.get("closed_paper_trades_target")
         or readiness.get("closed_paper_trade_target"),
-        progress_target if progress_target is not None else target,
+        progress_target if progress_target is not None else 100,
     )
+
+    lifecycle = _read_json_report("reports/paper_trade_lifecycle.json")
+    lifecycle_open_count = (
+        lifecycle.get("open_count") if isinstance(lifecycle, dict) else None
+    )
+    inserted_open_trades = _safe_int(
+        lifecycle.get("inserted_open_trades") if isinstance(lifecycle, dict) else None,
+        0,
+    )
+    trade_count = _safe_int(
+        lifecycle.get("trade_count") if isinstance(lifecycle, dict) else None,
+        _safe_int(readiness.get("paper_trade_count"), 0),
+    )
+    open_count = _safe_int(lifecycle_open_count, inserted_open_trades)
+
+    if (lifecycle_open_count is None or open_count == 0) and trade_count > closed_count:
+        open_count = trade_count - closed_count
 
     return {
         "closed_count": closed_count,
-        "open_count": _safe_int(readiness.get("open_paper_trades"), 0),
+        "open_count": open_count,
         "target": max(target, 1),
-        "trade_count": _safe_int(readiness.get("paper_trade_count"), 0),
-        "inserted_open_trades": 0,
+        "trade_count": trade_count,
+        "inserted_open_trades": inserted_open_trades,
     }
 
 
 def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str:
     readiness = report if isinstance(report, dict) else _read_json_report("reports/phase3_readiness.json")
     blockers = readiness.get("blockers", []) if isinstance(readiness, dict) else []
-    top_blocker = blockers[0] if blockers else "none"
+    top_blocker = readiness.get("top_blocker") or (blockers[0] if blockers else "none")
     try:
         readiness_percent = float(readiness.get("readiness_percent", 0.0))
     except (TypeError, ValueError):
@@ -485,8 +473,6 @@ def format_phase3_readiness_message(report: Dict[str, Any] | None = None) -> str
     target = paper_progress["target"]
     progress_percent = min((closed_count / target) * 100.0, 100.0)
     status = str(readiness.get("status", "LOCKED")).upper()
-    if closed_count < target:
-        status = "LOCKED"
 
     return (
         "🚦 PHASE 3 READINESS\n"
