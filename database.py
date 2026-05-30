@@ -250,6 +250,10 @@ SCHEMAS = {
             market_type TEXT,
             side TEXT,
             entry_price REAL,
+            current_price REAL,
+            sl REAL,
+            tp1 REAL,
+            tp2 REAL,
             exit_price REAL,
             pnl REAL,
             confidence REAL,
@@ -257,6 +261,8 @@ SCHEMAS = {
             macro_state TEXT,
             allocation_tier TEXT,
             status TEXT,
+            exit_reason TEXT,
+            updated_at TEXT,
             payload_json TEXT
         )
     """,
@@ -399,6 +405,19 @@ def _ensure_columns(connection: sqlite3.Connection) -> None:
     for column, column_type in columns.items():
         if column not in existing:
             connection.execute(f"ALTER TABLE signals ADD COLUMN {column} {column_type}")
+
+    internal_paper_existing = {row["name"] for row in connection.execute("PRAGMA table_info(internal_paper_trades)")}
+    internal_paper_columns = {
+        "current_price": "REAL",
+        "sl": "REAL",
+        "tp1": "REAL",
+        "tp2": "REAL",
+        "exit_reason": "TEXT",
+        "updated_at": "TEXT",
+    }
+    for column, column_type in internal_paper_columns.items():
+        if column not in internal_paper_existing:
+            connection.execute(f"ALTER TABLE internal_paper_trades ADD COLUMN {column} {column_type}")
 
     risk_existing = {row["name"] for row in connection.execute("PRAGMA table_info(risk_events)")}
     risk_columns = {

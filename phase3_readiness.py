@@ -189,19 +189,23 @@ def _promotion_scorecard_criterion(path: str) -> Dict[str, Any]:
     )
 
 
+def _internal_paper_closed_count(db_path: str) -> int:
+    quoted_statuses = ",".join(f"'{status}'" for status in sorted(CLOSED_TRADE_STATUSES | {"CLOSED", "STOP_LOSS", "TAKE_PROFIT"}))
+    return int(_number(_query_scalar(db_path, f"SELECT COUNT(*) FROM internal_paper_trades WHERE UPPER(COALESCE(status, '')) IN ({quoted_statuses})", 0), 0.0))
+
+
 def _paper_closed_trades_criterion(db_path: str, csv_path: str) -> Dict[str, Any]:
-    quoted_statuses = ",".join(f"'{status}'" for status in sorted(CLOSED_TRADE_STATUSES))
-    db_count = int(_number(_query_scalar(db_path, f"SELECT COUNT(*) FROM paper_trades WHERE UPPER(COALESCE(status, '')) IN ({quoted_statuses})", 0), 0.0))
+    internal_count = _internal_paper_closed_count(db_path)
     rows = _read_csv_rows(csv_path)
     csv_count = sum(1 for row in rows if str(row.get("status", "")).upper() in CLOSED_TRADE_STATUSES)
-    closed_count = max(db_count, csv_count)
+    closed_count = internal_count
     passed = closed_count >= MIN_CLOSED_PAPER_TRADES
     return _criterion(
-        "paper closed trades >= 100",
+        "internal_paper_trades closed >= 100",
         passed,
-        f"closed_trades={closed_count} (db={db_count}, csv={csv_count})",
+        f"closed_paper_trades: {closed_count}/{MIN_CLOSED_PAPER_TRADES} (internal_paper_trades={internal_count}, legacy_csv={csv_count})",
         "Insufficient closed PAPER trades for Phase 3 readiness evidence.",
-        "Continue PAPER_ONLY collection until at least 100 closed paper trades are available.",
+        "Continue PAPER_ONLY collection until internal_paper_trades has at least 100 naturally closed paper trades.",
     )
 
 
@@ -447,9 +451,13 @@ def calculate_phase3_readiness(
     else:
         status = "LOCKED"
 
+    closed_paper_trades = _internal_paper_closed_count(db_path)
     report = {
         "generated_at": _now_iso(),
         "paper_only": True,
+        "closed_paper_trades": closed_paper_trades,
+        "closed_paper_trades_target": MIN_CLOSED_PAPER_TRADES,
+        "closed_paper_trades_progress": f"{closed_paper_trades}/{MIN_CLOSED_PAPER_TRADES}",
         "readiness_percent": readiness_percent,
         "status": status,
         "passed_criteria": passed_criteria,
@@ -478,6 +486,7 @@ def format_phase3_readiness(report: Dict[str, Any]) -> str:
         "PHASE 3 READINESS\n"
         f"Readiness: {report.get('readiness_percent', 0)}%\n"
         f"Status: {report.get('status', 'LOCKED')}\n"
+        f"Closed Paper Trades: {report.get('closed_paper_trades_progress', '0/100')}\n"
         f"Passed: {len(report.get('passed_criteria', []))}/{READINESS_CRITERIA_COUNT}\n"
         f"Failed: {len(report.get('failed_criteria', []))}/{READINESS_CRITERIA_COUNT}\n"
         f"Top Blocker: {top_blocker}\n"

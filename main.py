@@ -20,6 +20,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "phase3-readiness": "--phase3-readiness",
     "refresh-governance-reports": "--refresh-governance-reports",
     "phase3-remediation": "--phase3-remediation",
+    "paper-trade-diagnostics": "--paper-trade-diagnostics",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -273,7 +274,12 @@ from database import (
 )
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
 from health_guardian import HealthGuardianConfig, check_health_guardian_once, format_health_guardian_result, resolve_runtime_heartbeat
-from internal_paper_engine import format_paper_engine_result, run_internal_paper_engine
+from internal_paper_engine import (
+    format_paper_diagnostics,
+    format_paper_engine_result,
+    generate_paper_trade_diagnostics,
+    run_internal_paper_engine,
+)
 from logger import log_signal
 from market_regime import (
     MarketRegimeEngine,
@@ -422,6 +428,16 @@ def run_paper_engine() -> Dict[str, Any]:
         allocation_path="logs/opportunity_allocation.csv",
     )
     print(format_paper_engine_result(result))
+    return result
+
+
+def run_paper_trade_diagnostics() -> Dict[str, Any]:
+    result = generate_paper_trade_diagnostics(
+        db_path=config.database_path,
+        output_path="reports/paper_trade_lifecycle.json",
+        write_report=True,
+    )
+    print(format_paper_diagnostics(result))
     return result
 
 
@@ -765,6 +781,7 @@ def run_orchestrator_command() -> Dict[str, Any]:
         "portfolio": run_portfolio,
         "execution": run_execution,
         "shadow": run_shadow,
+        "paper_engine": run_paper_engine,
     }
     result = run_orchestrator(
         callbacks=callbacks,
@@ -1171,6 +1188,11 @@ def parse_args() -> argparse.Namespace:
         help="Jalankan internal paper execution simulator tanpa broker.",
     )
     parser.add_argument(
+        "--paper-trade-diagnostics",
+        action="store_true",
+        help="Audit read-only lifecycle signal ke internal paper trades.",
+    )
+    parser.add_argument(
         "--webhook-test",
         action="store_true",
         help="Generate TradingView-compatible webhook payload localhost test.",
@@ -1427,6 +1449,8 @@ if __name__ == "__main__":
         run_model_status()
     elif args.paper_engine:
         run_paper_engine()
+    elif args.paper_trade_diagnostics or args.command == "paper-trade-diagnostics":
+        run_paper_trade_diagnostics()
     elif args.webhook_test:
         run_webhook_test()
     elif args.macro_observer:
