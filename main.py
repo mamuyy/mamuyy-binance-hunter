@@ -21,6 +21,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "refresh-governance-reports": "--refresh-governance-reports",
     "phase3-remediation": "--phase3-remediation",
     "paper-trade-diagnostics": "--paper-trade-diagnostics",
+    "paper-portfolio": "--paper-portfolio",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -281,6 +282,7 @@ from internal_paper_engine import (
     run_internal_paper_engine,
 )
 from logger import log_signal
+from paper_portfolio import format_paper_portfolio_report, generate_paper_portfolio_report
 from market_regime import (
     MarketRegimeEngine,
     apply_regime_to_signal,
@@ -438,6 +440,16 @@ def run_paper_trade_diagnostics() -> Dict[str, Any]:
         write_report=True,
     )
     print(format_paper_diagnostics(result))
+    return result
+
+
+def run_paper_portfolio() -> Dict[str, Any]:
+    result = generate_paper_portfolio_report(
+        db_path=config.database_path,
+        output_path="reports/paper_portfolio.json",
+        write_report=True,
+    )
+    print(format_paper_portfolio_report(result))
     return result
 
 
@@ -1200,6 +1212,11 @@ def parse_args() -> argparse.Namespace:
         help="Audit read-only lifecycle signal ke internal paper trades.",
     )
     parser.add_argument(
+        "--paper-portfolio",
+        action="store_true",
+        help="Tampilkan read-only active internal paper portfolio monitor dan tulis reports/paper_portfolio.json.",
+    )
+    parser.add_argument(
         "--webhook-test",
         action="store_true",
         help="Generate TradingView-compatible webhook payload localhost test.",
@@ -1458,6 +1475,8 @@ if __name__ == "__main__":
         run_paper_engine()
     elif args.paper_trade_diagnostics or args.command == "paper-trade-diagnostics":
         run_paper_trade_diagnostics()
+    elif args.paper_portfolio or args.command == "paper-portfolio":
+        run_paper_portfolio()
     elif args.webhook_test:
         run_webhook_test()
     elif args.macro_observer:
