@@ -73,6 +73,15 @@ def format_paper_summary_message(summary: Dict[str, Any]) -> str:
 
 
 
+def _format_paper_portfolio_price(value: Any) -> str:
+    try:
+        if value in (None, ""):
+            return "n/a"
+        return f"{float(value):.8g}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def _format_paper_portfolio_pct(value: Any) -> str:
     try:
         if value in (None, ""):
@@ -87,29 +96,33 @@ def format_paper_portfolio_message(report: Dict[str, Any]) -> str:
     if not isinstance(active_status, dict):
         active_status = {}
     status_line = " | ".join(
-        f"{str(status).upper()}: {count}" for status, count in active_status.items()
+        f"{str(status).upper()} {count}" for status, count in active_status.items()
     ) or "none"
 
     lines = [
         "📋 PAPER PORTFOLIO",
-        f"Active: {report.get('total_active_trades', 0)}",
-        f"Closed: {report.get('closed_progress', '0/100')}",
-        status_line,
+        f"Active Paper Trades: {report.get('total_active_trades', 0)}",
+        f"Closed Paper Trades: {report.get('closed_progress', '0/100')}",
+        f"Status: {status_line}",
         "Top Active:",
     ]
     top_active = report.get("top_active_trades", [])
+    appended = False
     if isinstance(top_active, list) and top_active:
         for index, trade in enumerate(top_active[:5], start=1):
             if not isinstance(trade, dict):
                 continue
+            appended = True
             lines.append(
                 f"{index}. {trade.get('symbol', '-')} | "
-                f"{trade.get('status', '-')} | "
-                f"{_format_paper_portfolio_pct(trade.get('virtual_unrealized_pnl_pct'))}"
+                f"{str(trade.get('status', '-')).upper()} | "
+                f"Entry {_format_paper_portfolio_price(trade.get('entry_price'))} | "
+                f"Current {_format_paper_portfolio_price(trade.get('current_price'))} | "
+                f"PnL {_format_paper_portfolio_pct(trade.get('virtual_unrealized_pnl_pct'))}"
             )
-    else:
+    if not appended:
         lines.append("none")
-    lines.append("Mode: PAPER_ONLY read-only, no execution mutation.")
+    lines.append("Mode: PAPER_ONLY read-only, no execution mutation, no broker routing, no Phase 3 unlock.")
     return "\n".join(lines)
 
 
