@@ -1303,6 +1303,7 @@ def load_dashboard_reports() -> dict[str, dict[str, Any]]:
         "backup_verification": "reports/backup_verification.json",
         "paper_trade_lifecycle": "reports/paper_trade_lifecycle.json",
         "paper_portfolio": "reports/paper_portfolio.json",
+        "paper_outcome_audit": "reports/paper_outcome_audit.json",
     }
     return {name: read_json_report(path) for name, path in report_paths.items()}
 
@@ -1429,6 +1430,7 @@ def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
         st.info("Next actions: " + "; ".join(map(str, next_actions[:5])))
 
     render_paper_portfolio_section(reports.get("paper_portfolio", {}))
+    render_paper_outcome_audit_section(reports.get("paper_outcome_audit", {}))
 
 
 def render_paper_portfolio_section(report: dict[str, Any]) -> None:
@@ -1478,6 +1480,54 @@ def render_paper_portfolio_section(report: dict[str, Any]) -> None:
     if isinstance(top_active, list) and top_active:
         with st.expander("Top Active by Unrealized PnL", expanded=False):
             st.dataframe(pd.DataFrame(top_active), use_container_width=True, hide_index=True)
+
+
+def render_paper_outcome_audit_section(report: dict[str, Any]) -> None:
+    st.subheader("Paper Outcome Audit")
+    st.caption(
+        "Read-only CLOSED internal paper trade outcome monitor. Data comes from "
+        "reports/paper_outcome_audit.json; the dashboard does not mutate trades, "
+        "route broker orders, place orders, change the paper engine, change readiness gates, or unlock Phase 3."
+    )
+
+    if not report:
+        report = {"warning": "No paper outcome audit report available yet. Run python main.py --paper-outcome-audit."}
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Closed Trades", report.get("closed_progress", "0/100"))
+    col2.metric("Wins", _metric_display(report.get("win_count")))
+    col3.metric("Losses", _metric_display(report.get("loss_count")))
+    col4.metric("Winrate", _metric_display(report.get("winrate"), "%"))
+
+    col5, col6, col7 = st.columns(3)
+    col5.metric("Net PnL", _metric_display(report.get("net_pnl"), "%"))
+    col6.metric("Average PnL", _metric_display(report.get("average_pnl"), "%"))
+    col7.metric("Mode", "PAPER_ONLY")
+
+    best = report.get("best_trade") if isinstance(report.get("best_trade"), dict) else {}
+    worst = report.get("worst_trade") if isinstance(report.get("worst_trade"), dict) else {}
+    if best or worst:
+        st.markdown(
+            f"**Best:** {best.get('symbol', '-')} {_metric_display(best.get('realized_pnl_pct'), '%')}  "
+            f"**Worst:** {worst.get('symbol', '-')} {_metric_display(worst.get('realized_pnl_pct'), '%')}"
+        )
+
+    top_symbols = report.get("top_symbols_by_realized_pnl", [])
+    if isinstance(top_symbols, list) and top_symbols:
+        st.markdown("**Top Symbols by Realized PnL**")
+        st.dataframe(pd.DataFrame(top_symbols), use_container_width=True, hide_index=True)
+
+    exit_distribution = report.get("exit_reason_distribution", {})
+    if isinstance(exit_distribution, dict) and exit_distribution:
+        st.markdown("**Exit Reason Distribution**")
+        st.dataframe(
+            pd.DataFrame([{"exit_reason": reason, "count": count} for reason, count in exit_distribution.items()]),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    if report.get("warning"):
+        st.warning(str(report.get("warning")))
 
 
 def render_governance_risk_tab(reports: dict[str, dict[str, Any]]) -> None:
