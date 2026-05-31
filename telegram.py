@@ -126,6 +126,31 @@ def format_paper_portfolio_message(report: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_paper_outcome_audit_message(report: Dict[str, Any]) -> str:
+    def pct(value: Any) -> str:
+        return _format_paper_portfolio_pct(value)
+
+    def trade_line(trade: Any) -> str:
+        if not isinstance(trade, dict):
+            return "- n/a"
+        symbol = trade.get("symbol") or "-"
+        return f"{symbol} {pct(trade.get('realized_pnl_pct'))}"
+
+    return "\n".join(
+        [
+            "📊 PAPER OUTCOME AUDIT",
+            f"Closed Trades: {report.get('closed_progress', '0/100')}",
+            f"Wins: {report.get('win_count', 0)}",
+            f"Losses: {report.get('loss_count', 0)}",
+            f"Winrate: {float(report.get('winrate') or 0.0):.2f}%",
+            f"Net PnL: {pct(report.get('net_pnl'))}",
+            f"Best: {trade_line(report.get('best_trade'))}",
+            f"Worst: {trade_line(report.get('worst_trade'))}",
+            "Mode: PAPER_ONLY read-only, no trade mutation, no broker routing, no Phase 3 unlock.",
+        ]
+    )
+
+
 def format_performance_report_message(metrics: Dict[str, Any]) -> str:
     profit_factor = metrics.get("profit_factor", 0.0)
     if profit_factor == float("inf"):

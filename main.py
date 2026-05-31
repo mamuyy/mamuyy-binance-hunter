@@ -22,6 +22,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "phase3-remediation": "--phase3-remediation",
     "paper-trade-diagnostics": "--paper-trade-diagnostics",
     "paper-portfolio": "--paper-portfolio",
+    "paper-outcome-audit": "--paper-outcome-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -283,6 +284,7 @@ from internal_paper_engine import (
 )
 from logger import log_signal
 from paper_portfolio import format_paper_portfolio_report, generate_paper_portfolio_report
+from paper_outcome_audit import format_paper_outcome_audit, generate_paper_outcome_audit
 from market_regime import (
     MarketRegimeEngine,
     apply_regime_to_signal,
@@ -319,6 +321,7 @@ from telegram import (
     format_market_regime_message,
     format_ml_analysis_message,
     format_orchestrator_message,
+    format_paper_outcome_audit_message,
     format_paper_portfolio_message,
     format_paper_summary_message,
     format_performance_report_message,
@@ -451,6 +454,16 @@ def run_paper_portfolio() -> Dict[str, Any]:
         write_report=True,
     )
     print(format_paper_portfolio_report(result))
+    return result
+
+
+def run_paper_outcome_audit() -> Dict[str, Any]:
+    result = generate_paper_outcome_audit(
+        db_path=config.database_path,
+        output_path="reports/paper_outcome_audit.json",
+        write_report=True,
+    )
+    print(format_paper_outcome_audit(result))
     return result
 
 
@@ -741,6 +754,23 @@ def send_phase3_readiness_monitoring_summary() -> None:
     send_message_if_enabled(message)
 
 
+def send_paper_outcome_audit_monitoring_summary(sent_sections: set[str] | None = None) -> None:
+    if sent_sections is not None and "paper_outcome_audit" in sent_sections:
+        print("Paper outcome audit summary already sent in this cycle; skipping duplicate.")
+        return
+
+    report = generate_paper_outcome_audit(
+        db_path=config.database_path,
+        output_path="reports/paper_outcome_audit.json",
+        write_report=True,
+    )
+    message = format_paper_outcome_audit_message(report)
+    print(message)
+    send_message_if_enabled(message)
+    if sent_sections is not None:
+        sent_sections.add("paper_outcome_audit")
+
+
 def send_paper_portfolio_monitoring_summary(sent_sections: set[str] | None = None) -> None:
     if sent_sections is not None and "paper_portfolio" in sent_sections:
         print("Paper portfolio summary already sent in this cycle; skipping duplicate.")
@@ -835,6 +865,7 @@ def run_orchestrator_command() -> Dict[str, Any]:
     sent_sections: set[str] = set()
     send_phase3_readiness_monitoring_summary()
     send_paper_portfolio_monitoring_summary(sent_sections)
+    send_paper_outcome_audit_monitoring_summary(sent_sections)
     message = format_orchestrator_message(result)
     print(message)
     send_message_if_enabled(message)
@@ -1237,6 +1268,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan read-only active internal paper portfolio monitor dan tulis reports/paper_portfolio.json.",
     )
     parser.add_argument(
+        "--paper-outcome-audit",
+        action="store_true",
+        help="Tampilkan read-only CLOSED internal paper outcome audit dan tulis reports/paper_outcome_audit.json.",
+    )
+    parser.add_argument(
         "--webhook-test",
         action="store_true",
         help="Generate TradingView-compatible webhook payload localhost test.",
@@ -1497,6 +1533,8 @@ if __name__ == "__main__":
         run_paper_trade_diagnostics()
     elif args.paper_portfolio or args.command == "paper-portfolio":
         run_paper_portfolio()
+    elif args.paper_outcome_audit or args.command == "paper-outcome-audit":
+        run_paper_outcome_audit()
     elif args.webhook_test:
         run_webhook_test()
     elif args.macro_observer:
