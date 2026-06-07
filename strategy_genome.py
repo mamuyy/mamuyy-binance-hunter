@@ -299,8 +299,16 @@ def _correlation_penalty(df: pd.DataFrame) -> float:
     if pivot.shape[0] < 5 or pivot.shape[1] < 2:
         return 0.0
     corr = pivot.corr().abs()
-    values = corr.where(~pd.DataFrame(True, index=corr.index, columns=corr.columns).where(corr.index == corr.columns, False)).stack()
-    return float(values.mean() * 20.0) if not values.empty else 0.0
+
+    values = []
+    columns = list(corr.columns)
+    for i, col_a in enumerate(columns):
+        for col_b in columns[i + 1:]:
+            value = corr.loc[col_a, col_b]
+            if pd.notna(value):
+                values.append(float(value))
+
+    return float((sum(values) / len(values)) * 20.0) if values else 0.0
 
 
 def _apply_strategy(df: pd.DataFrame, strategy: Dict[str, Any]) -> pd.DataFrame:
@@ -321,6 +329,74 @@ def _apply_strategy(df: pd.DataFrame, strategy: Dict[str, Any]) -> pd.DataFrame:
     if cross_filter:
         mask &= df["cross_market_state"].astype(str).str.upper().isin(cross_filter)
     return df[mask].copy()
+
+
+
+def _phase2f_apply_genome_promotion_gate(strategy, proposed_status, trade_count, profit_factor, max_drawdown, stability_score):
+    if proposed_status != "PROMOTED":
+        return proposed_status
+
+    import json
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    shadow_trade_count = int(trade_count)
+    walkforward_folds = int(
+        strategy.get("walkforward_folds", 0)
+        or strategy.get("parameters", {}).get("walkforward_folds", 0)
+        or 0
+    )
+    forward_period_pf = float(
+        strategy.get("forward_period_pf", 0)
+        or strategy.get("parameters", {}).get("forward_period_pf", 0)
+        or 0.0
+    )
+
+    checks = {
+        "shadow_trade_count": {"value": shadow_trade_count, "required": 30, "passed": shadow_trade_count >= 30},
+        "walkforward_folds": {"value": walkforward_folds, "required": 3, "passed": walkforward_folds >= 3},
+        "forward_period_pf": {"value": forward_period_pf, "required": 1.5, "passed": forward_period_pf >= 1.5},
+    }
+
+    if all(v["passed"] for v in checks.values()):
+        return "PROMOTED"
+
+    logs = Path(__file__).resolve().parent / "logs"
+    logs.mkdir(exist_ok=True)
+    blocked_path = logs / "genome_promotion_blocked.json"
+
+    try:
+        existing = json.loads(blocked_path.read_text(encoding="utf-8")) if blocked_path.exists() else []
+        if not isinstance(existing, list):
+            existing = [existing]
+    except Exception:
+        existing = []
+
+    existing.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "mode": "PHASE2F_ENFORCEMENT",
+        "strategy_id": strategy.get("strategy_id"),
+        "strategy_name": strategy.get("strategy_name"),
+        "proposed_status": proposed_status,
+        "final_status": "WATCH",
+        "gate_passed": False,
+        "checks": checks,
+        "reason": "genome_promotion_blocked_by_phase2f_gate",
+        "raw_metrics": {
+            "trade_count": int(trade_count),
+            "in_sample_profit_factor": float(profit_factor) if profit_factor != float("inf") else "inf",
+            "max_drawdown": float(max_drawdown),
+            "stability_score": float(stability_score),
+        },
+        "safety": {
+            "paper_only": True,
+            "existing_promoted_genomes_changed": False,
+            "future_promotion_only": True,
+        },
+    })
+
+    blocked_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    return "WATCH"
 
 
 def _evaluate(strategy: Dict[str, Any], dataset: pd.DataFrame) -> Dict[str, Any]:
@@ -353,6 +429,15 @@ def _evaluate(strategy: Dict[str, Any], dataset: pd.DataFrame) -> Dict[str, Any]
         status = "PROMOTED"
     elif trade_count >= 10 and profit_factor >= 0.95 and stability_score >= 45:
         status = "WATCH"
+
+    status = _phase2f_apply_genome_promotion_gate(
+        strategy,
+        status,
+        trade_count,
+        profit_factor,
+        max_dd,
+        stability_score,
+    )
     return {
         "timestamp": _now(),
         "strategy_id": strategy.get("strategy_id"),
