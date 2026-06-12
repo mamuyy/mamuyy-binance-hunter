@@ -89,6 +89,7 @@ def redact_binance_response(payload: Any) -> Any:
 
 
 def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
+    daily_count, daily_limit, daily_passed, daily_reason = daily_limit_status()
     return {
         "generated_at": utc_now(),
         "mode": mode,
@@ -104,7 +105,10 @@ def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
         "safety_passed": False,
         "endpoint_safety_passed": False,
         "symbol_filter_passed": False,
-        "daily_limit_passed": False,
+        "daily_actual_order_count": daily_count,
+        "daily_order_limit": daily_limit,
+        "daily_limit_passed": daily_passed,
+        "daily_limit_reason": daily_reason,
         "order_attempted": False,
         "order_success": False,
         "estimated_price": None,
@@ -159,7 +163,7 @@ def validate_symbol(symbol: Optional[str], exchange_info: Dict[str, Any]) -> Tup
     return True, ""
 
 
-def today_order_attempt_count(path: str = ORDERS_PATH) -> int:
+def today_actual_order_count(path: str = ORDERS_PATH) -> int:
     today = datetime.now(timezone.utc).date().isoformat()
     if not os.path.exists(path):
         return 0
@@ -170,7 +174,13 @@ def today_order_attempt_count(path: str = ORDERS_PATH) -> int:
                 item = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if str(item.get("generated_at", "")).startswith(today) and item.get("order_attempted"):
+            if (
+                str(item.get("generated_at", "")).startswith(today)
+                and item.get("mode") == "actual_order"
+                and item.get("order_success") is True
+                and item.get("order_test") is False
+                and item.get("dry_run") is False
+            ):
                 count += 1
     return count
 
@@ -180,9 +190,30 @@ def order_allowlist_passed(symbol: str) -> bool:
     return bool(allowlist and symbol.upper() in allowlist)
 
 
-def daily_limit_passed() -> bool:
-    limit = env_int("TESTNET_DAILY_ORDER_LIMIT", DEFAULT_DAILY_ORDER_LIMIT)
-    return today_order_attempt_count() < limit
+def daily_order_limit() -> int:
+    return env_int(
+        "TESTNET_MAX_ORDERS_PER_DAY",
+        env_int("TESTNET_DAILY_ORDER_LIMIT", DEFAULT_DAILY_ORDER_LIMIT),
+    )
+
+
+def daily_limit_status() -> Tuple[int, int, bool, str]:
+    count = today_actual_order_count()
+    limit = daily_order_limit()
+    passed = count < limit
+    if passed:
+        reason = f"{count} actual successful orders today; limit {limit}; actual order allowed."
+    else:
+        reason = f"{count} actual successful orders today; limit {limit}; actual order blocked."
+    return count, limit, passed, reason
+
+
+def apply_daily_limit_status(result: Dict[str, Any]) -> None:
+    count, limit, passed, reason = daily_limit_status()
+    result["daily_actual_order_count"] = count
+    result["daily_order_limit"] = limit
+    result["daily_limit_passed"] = passed
+    result["daily_limit_reason"] = reason
 
 
 def parse_float(value: Any) -> Optional[float]:
@@ -265,6 +296,10 @@ def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = N
                 "max_notional_usdt": result.get("max_notional_usdt"),
                 "notional_limit_passed": result.get("notional_limit_passed"),
                 "blocked_reason": result.get("blocked_reason"),
+                "daily_actual_order_count": result.get("daily_actual_order_count"),
+                "daily_order_limit": result.get("daily_order_limit"),
+                "daily_limit_passed": result.get("daily_limit_passed"),
+                "daily_limit_reason": result.get("daily_limit_reason"),
             }
         )
     else:
@@ -359,7 +394,7 @@ def run_positions(args: argparse.Namespace) -> int:
 
 
 def run_order_action(args: argparse.Namespace) -> int:
-    mode = "dry_run" if args.dry_run or not args.send else "order_test" if args.order_test else "order"
+    mode = "dry_run" if args.dry_run or not args.send else "order_test" if args.order_test else "actual_order"
     result = build_result(args, mode)
     safe, reasons, base_url = config_safety()
     result["base_url"] = base_url
@@ -390,7 +425,7 @@ def run_order_action(args: argparse.Namespace) -> int:
     exchange_info = api.get_exchange_info()
     symbol_ok, symbol_reason = validate_symbol(args.symbol, exchange_info)
     result["symbol_filter_passed"] = symbol_ok
-    result["daily_limit_passed"] = daily_limit_passed()
+    apply_daily_limit_status(result)
     if not symbol_ok:
         result["blocked_reason"] = symbol_reason
         write_json(RESULT_PATH, result)
@@ -448,7 +483,7 @@ def run_order_action(args: argparse.Namespace) -> int:
         print(result["blocked_reason"])
         return 1
     if not result["daily_limit_passed"]:
-        result["blocked_reason"] = "TESTNET_DAILY_ORDER_LIMIT exceeded."
+        result["blocked_reason"] = result["daily_limit_reason"]
         write_json(RESULT_PATH, result)
         append_jsonl(ORDERS_PATH, result)
         print(result["blocked_reason"])
