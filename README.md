@@ -1961,3 +1961,11 @@ orchestrator_log.csv
 - Tidak meminta atau memakai Binance API key.
 - Paper trading hanya simulasi berdasarkan harga market public.
 - Telegram token dibaca dari `.env`, bukan di-hardcode.
+
+## ML Overlay Telegram Safety
+
+The ML Signal Overlay Telegram flow remains `PAPER_ONLY` and advisory-only. Manual real sends must go through `send_ml_overlay_to_telegram.py --send` and require the explicit `ALLOW_OVERLAY_TELEGRAM_SEND=1` gate plus all safety, freshness, decision-policy, score-threshold, kill-switch, and cooldown checks.
+
+Preview-only cron is allowed through `scripts/run_overlay_preview_cron.sh`. That wrapper generates the BEATUSDT overlay preview and runs the Telegram bridge with `--send --dry-run`; it unsets `ALLOW_OVERLAY_TELEGRAM_SEND` and cannot send Telegram messages.
+
+Real-send cron remains on HOLD until several days of preview-only observation confirm no stale previews, duplicate advisory spam, or misleading `UNKNOWN / NEED_REVIEW` output.
