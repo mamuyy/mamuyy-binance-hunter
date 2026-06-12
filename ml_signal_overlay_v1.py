@@ -1,4 +1,4 @@
-"""ML Signal Overlay V1 for PAPER_ONLY Telegram advisory previews.
+"""ML Signal Overlay V1.1 for PAPER_ONLY Telegram advisory previews.
 
 This module is intentionally read-only for Hunter runtime inputs. It inspects the
 latest signal candidate (or a requested symbol), enriches it with available
@@ -20,32 +20,78 @@ import csv
 import json
 import math
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 DB_PATH = "mamuyy_hunter.db"
 REPORT_PATH = "logs/ml_signal_overlay_v1_report.json"
 SAFETY_TEXT = "PAPER_ONLY; read-only advisory; no broker API; no live execution; no order placement"
 
+SEARCH_DIRS = (".", "logs", "reports", "data")
+SOURCE_EXTENSIONS = {".csv", ".json"}
+EXCLUDED_SOURCE_FILES = {REPORT_PATH}
+TIMESTAMP_COLUMNS = (
+    "timestamp",
+    "created_at",
+    "generated_at",
+    "updated_at",
+    "closed_at",
+    "entry_time",
+    "exit_time",
+    "time",
+    "date",
+)
 SIGNAL_TABLES = ("signals", "internal_paper_trades", "shadow_trades", "paper_trades")
-SIGNAL_CSVS = ("logs/latest_signal.csv", "logs/signals.csv", "paper_trades.csv")
-ALLOCATION_CSVS = (
-    "logs/portfolio_v2_allocation.csv",
-    "logs/trade_quality_ranking.csv",
-    "logs/opportunity_allocation.csv",
+SIGNAL_FILE_PATTERNS = ("signal", "paper_trades")
+RANKING_FILE_PATTERNS = ("trade_quality_ranking", "quality_ranking", "ranking", "rank")
+ALLOCATION_FILE_PATTERNS = (
+    "portfolio_allocation",
+    "allocation_v2",
+    "portfolio_v2",
+    "portfolio_snapshot",
+    "portfolio_health",
+    "phase4e",
+    "phase5a",
+    "phase7a",
+    "allocation",
+    "paper_portfolio",
 )
-ALLOCATION_JSONS = (
-    "logs/portfolio_v2_allocation.json",
-    "logs/trade_quality_ranking.json",
-    "reports/portfolio_v2_allocation.json",
+HEALTH_FILE_PATTERNS = (
+    "portfolio_health",
+    "portfolio_v2_health",
+    "portfolio_risk_budget",
+    "phase3_readiness",
+    "portfolio_snapshot",
+    "phase4e",
+    "phase5a",
+    "phase7a",
 )
-PORTFOLIO_HEALTH_JSONS = (
-    "logs/portfolio_health.json",
-    "logs/portfolio_v2_health.json",
-    "reports/portfolio_risk_budget.json",
-    "reports/phase3_readiness.json",
+
+SYMBOL_COLUMNS = ("symbol", "ticker", "asset")
+RANK_COLUMNS = ("rank", "trade_rank", "quality_rank", "portfolio_rank")
+ALLOCATION_COLUMNS = (
+    "allocation",
+    "allocation_pct",
+    "suggested_allocation",
+    "suggested_allocation_pct",
+    "suggested_max_weight_pct",
+    "weight",
+    "weight_pct",
+    "target_weight",
+    "target_weight_pct",
+    "max_weight_pct",
+)
+ELIGIBLE_COLUMNS = ("eligible", "portfolio_eligible", "is_eligible")
+EV_COLUMNS = (
+    "ev",
+    "ev_pct",
+    "expected_value",
+    "expected_value_pct",
+    "expected_return_pct",
+    "avg_pnl",
 )
 
 
@@ -57,6 +103,8 @@ def _safe_float(value: Any) -> Optional[float]:
     try:
         if value in (None, ""):
             return None
+        if isinstance(value, str):
+            value = value.strip().replace("%", "")
         number = float(value)
         if math.isnan(number) or math.isinf(number):
             return None
@@ -66,18 +114,21 @@ def _safe_float(value: Any) -> Optional[float]:
 
 
 def _normalize_symbol(value: Any) -> str:
-    return str(value or "").strip().upper()
+    """Normalize exchange symbols without guessing alternate assets."""
+    return re.sub(r"[\s/_-]+", "", str(value or "").upper())
 
 
 def _normalize_rank(value: Any) -> str:
-    text = str(value or "").strip().upper()
+    text = str(value or "").strip().upper().replace(" ", "")
     aliases = {
         "APLUS": "A+",
         "A_PLUS": "A+",
+        "A-PLUS": "A+",
         "AMINUS": "A-",
         "A_MINUS": "A-",
         "BPLUS": "B+",
         "B_PLUS": "B+",
+        "B-PLUS": "B+",
     }
     return aliases.get(text, text)
 
@@ -98,6 +149,10 @@ def _rank_from_score(score: Optional[float]) -> str:
     if score >= 40:
         return "C"
     return "D"
+
+
+def _rank_is_bplus_or_better(rank: str) -> bool:
+    return _normalize_rank(rank) in {"A+", "A", "A-", "B+"}
 
 
 def _format_pct(value: Optional[float], signed: bool = False) -> str:
@@ -134,6 +189,10 @@ def _connect_read_only(db_path: str) -> Optional[sqlite3.Connection]:
         return None
 
 
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
 def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
     try:
         row = connection.execute(
@@ -147,9 +206,17 @@ def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
 
 def _table_columns(connection: sqlite3.Connection, table: str) -> List[str]:
     try:
-        return [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+        return [row[1] for row in connection.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()]
     except sqlite3.Error:
         return []
+
+
+def _table_row_count(connection: sqlite3.Connection, table: str) -> Optional[int]:
+    try:
+        row = connection.execute(f"SELECT COUNT(*) FROM {_quote_identifier(table)}").fetchone()
+        return int(row[0]) if row is not None else None
+    except sqlite3.Error:
+        return None
 
 
 def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -164,6 +231,224 @@ def _pick_first(row: Dict[str, Any], names: Iterable[str], default: Any = None) 
     return default
 
 
+def _discover_db_path(db_path: str = DB_PATH) -> Optional[str]:
+    candidates = [Path(db_path), Path("mamuyy_hunter.sqlite"), Path("mamuyy_hunter.sqlite3")]
+    candidates.extend(sorted(Path(".").glob("*.db")))
+    candidates.extend(sorted(Path(".").glob("*.sqlite")))
+    candidates.extend(sorted(Path(".").glob("*.sqlite3")))
+    seen = set()
+    for candidate in candidates:
+        normalized = str(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if candidate.exists() and candidate.is_file():
+            return normalized
+    return str(Path(db_path)) if Path(db_path).exists() else None
+
+
+def _filename_matches(path: Path, patterns: Sequence[str]) -> bool:
+    name = path.name.lower()
+    stem = path.stem.lower()
+    return any(pattern in name or pattern in stem for pattern in patterns)
+
+
+def _discover_files(patterns: Sequence[str]) -> List[str]:
+    found: List[str] = []
+    seen = set()
+    for directory in SEARCH_DIRS:
+        base = Path(directory)
+        if not base.exists() or not base.is_dir():
+            continue
+        for path in sorted(base.iterdir()):
+            text = str(path).lstrip("./")
+            if not path.is_file() or path.suffix.lower() not in SOURCE_EXTENSIONS:
+                continue
+            if text in EXCLUDED_SOURCE_FILES:
+                continue
+            if _filename_matches(path, patterns):
+                if text not in seen:
+                    seen.add(text)
+                    found.append(text)
+    return found
+
+
+def _extract_records(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in (
+        "allocations",
+        "allocation",
+        "rankings",
+        "ranking",
+        "candidates",
+        "rows",
+        "data",
+        "symbols",
+        "positions",
+        "portfolio",
+        "holdings",
+        "assets",
+    ):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = _extract_records(value)
+            if nested:
+                return nested
+    if any(str(key).lower() in SYMBOL_COLUMNS for key in payload):
+        return [payload]
+    return []
+
+
+def _source_rows(path: str) -> List[Dict[str, Any]]:
+    suffix = Path(path).suffix.lower()
+    if suffix == ".csv":
+        return _read_csv_rows(path)
+    if suffix == ".json":
+        return _extract_records(_read_json(path))
+    return []
+
+
+def _source_columns(path: str) -> List[str]:
+    suffix = Path(path).suffix.lower()
+    if suffix == ".csv":
+        try:
+            with open(path, newline="", encoding="utf-8") as input_file:
+                reader = csv.DictReader(input_file)
+                return list(reader.fieldnames or [])
+        except OSError:
+            return []
+    if suffix == ".json":
+        payload = _read_json(path)
+        records = _extract_records(payload)
+        columns = set()
+        for row in records:
+            columns.update(str(key) for key in row.keys())
+        if not columns and isinstance(payload, dict):
+            columns.update(str(key) for key in payload.keys())
+        return sorted(columns)
+    return []
+
+
+def _latest_timestamp_from_rows(rows: Iterable[Dict[str, Any]]) -> Optional[str]:
+    latest: Optional[str] = None
+    for row in rows:
+        value = _pick_first(row, TIMESTAMP_COLUMNS)
+        if value in (None, ""):
+            continue
+        text = str(value)
+        if latest is None or text > latest:
+            latest = text
+    return latest
+
+
+def _latest_timestamp_from_payload(payload: Any) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+    value = _pick_first(payload, TIMESTAMP_COLUMNS)
+    return str(value) if value not in (None, "") else None
+
+
+def _source_diagnostic(path: str) -> Dict[str, Any]:
+    rows = _source_rows(path)
+    payload = _read_json(path) if Path(path).suffix.lower() == ".json" else None
+    row_count = len(rows)
+    if row_count == 0 and isinstance(payload, dict):
+        row_count = 1
+    latest_timestamp = _latest_timestamp_from_rows(rows) or _latest_timestamp_from_payload(payload)
+    return {
+        "path": path,
+        "type": Path(path).suffix.lower().lstrip("."),
+        "columns": _source_columns(path),
+        "row_count": row_count,
+        "latest_timestamp": latest_timestamp,
+    }
+
+
+def _db_table_diagnostics(db_path: str = DB_PATH) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+    detected_path = _discover_db_path(db_path)
+    if not detected_path:
+        return None, []
+    connection = _connect_read_only(detected_path)
+    if connection is None:
+        return detected_path, []
+    diagnostics: List[Dict[str, Any]] = []
+    try:
+        for table in SIGNAL_TABLES:
+            if not _table_exists(connection, table):
+                continue
+            columns = _table_columns(connection, table)
+            latest_timestamp = None
+            timestamp_column = next((column for column in columns if column.lower() in TIMESTAMP_COLUMNS), None)
+            if timestamp_column:
+                try:
+                    row = connection.execute(
+                        f"SELECT MAX({_quote_identifier(timestamp_column)}) FROM {_quote_identifier(table)}"
+                    ).fetchone()
+                    latest_timestamp = str(row[0]) if row and row[0] is not None else None
+                except sqlite3.Error:
+                    latest_timestamp = None
+            diagnostics.append(
+                {
+                    "table": table,
+                    "columns": columns,
+                    "row_count": _table_row_count(connection, table),
+                    "latest_timestamp": latest_timestamp,
+                }
+            )
+    finally:
+        connection.close()
+    return detected_path, diagnostics
+
+
+def discover_sources(db_path: str = DB_PATH) -> Dict[str, Any]:
+    database_path, signal_tables = _db_table_diagnostics(db_path)
+    signal_files = _discover_files(SIGNAL_FILE_PATTERNS)
+    ranking_files = _discover_files(RANKING_FILE_PATTERNS)
+    allocation_files = _discover_files(ALLOCATION_FILE_PATTERNS)
+    health_files = _discover_files(HEALTH_FILE_PATTERNS)
+    return {
+        "database_path": database_path,
+        "signal_tables": signal_tables,
+        "signal_files": [_source_diagnostic(path) for path in signal_files],
+        "trade_ranking_files": [_source_diagnostic(path) for path in ranking_files],
+        "portfolio_allocation_files": [_source_diagnostic(path) for path in allocation_files],
+        "portfolio_health_files": [_source_diagnostic(path) for path in health_files],
+    }
+
+
+def print_source_listing(db_path: str = DB_PATH) -> None:
+    diagnostics = discover_sources(db_path)
+    print("ML Signal Overlay V1.1 source diagnostics")
+    print(f"Detected database path: {diagnostics['database_path'] or 'none'}")
+    print("\nDetected signal tables:")
+    _print_items(diagnostics["signal_tables"], label_key="table")
+    print("\nDetected signal files:")
+    _print_items(diagnostics["signal_files"])
+    print("\nDetected trade ranking files:")
+    _print_items(diagnostics["trade_ranking_files"])
+    print("\nDetected portfolio allocation files:")
+    _print_items(diagnostics["portfolio_allocation_files"])
+    print("\nDetected portfolio health files:")
+    _print_items(diagnostics["portfolio_health_files"])
+
+
+def _print_items(items: Sequence[Dict[str, Any]], label_key: str = "path") -> None:
+    if not items:
+        print("  - none")
+        return
+    for item in items:
+        label = item.get(label_key) or item.get("path") or "unknown"
+        print(f"  - {label}")
+        print(f"    columns: {item.get('columns') or []}")
+        print(f"    row_count: {item.get('row_count')}")
+        print(f"    latest_timestamp: {item.get('latest_timestamp') or 'unknown'}")
+
+
 def _latest_signal_from_db(db_path: str, symbol: str = "") -> Tuple[Dict[str, Any], Dict[str, Any]]:
     connection = _connect_read_only(db_path)
     meta: Dict[str, Any] = {"database": db_path, "database_available": bool(connection), "source": "none"}
@@ -174,14 +459,19 @@ def _latest_signal_from_db(db_path: str, symbol: str = "") -> Tuple[Dict[str, An
             if not _table_exists(connection, table):
                 continue
             columns = _table_columns(connection, table)
-            if "symbol" not in {column.lower() for column in columns}:
+            symbol_column = next((column for column in columns if column.lower() in SYMBOL_COLUMNS), None)
+            if not symbol_column:
                 continue
             order_column = "id" if "id" in columns else "timestamp" if "timestamp" in columns else columns[0]
             if symbol:
-                query = f"SELECT * FROM {table} WHERE UPPER(symbol)=? ORDER BY {order_column} DESC LIMIT 1"
-                row = connection.execute(query, (symbol.upper(),)).fetchone()
+                query = (
+                    f"SELECT * FROM {_quote_identifier(table)} "
+                    f"WHERE UPPER(REPLACE(REPLACE(REPLACE(REPLACE({_quote_identifier(symbol_column)}, '/', ''), '-', ''), '_', ''), ' ', ''))=? "
+                    f"ORDER BY {_quote_identifier(order_column)} DESC LIMIT 1"
+                )
+                row = connection.execute(query, (symbol,)).fetchone()
             else:
-                query = f"SELECT * FROM {table} ORDER BY {order_column} DESC LIMIT 1"
+                query = f"SELECT * FROM {_quote_identifier(table)} ORDER BY {_quote_identifier(order_column)} DESC LIMIT 1"
                 row = connection.execute(query).fetchone()
             if row is not None:
                 meta["source"] = f"sqlite:{table}"
@@ -192,13 +482,13 @@ def _latest_signal_from_db(db_path: str, symbol: str = "") -> Tuple[Dict[str, An
 
 
 def _latest_signal_from_csv(symbol: str = "") -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    for path in SIGNAL_CSVS:
+    for path in _discover_files(SIGNAL_FILE_PATTERNS):
         rows = _read_csv_rows(path)
         if not rows:
             continue
         candidates = rows
         if symbol:
-            candidates = [row for row in rows if _normalize_symbol(_pick_first(row, ["symbol"])) == symbol.upper()]
+            candidates = [row for row in rows if _normalize_symbol(_pick_first(row, SYMBOL_COLUMNS)) == symbol]
         if not candidates:
             continue
         return candidates[-1], {"source": f"csv:{path}"}
@@ -213,84 +503,102 @@ def load_signal_candidate(symbol: str = "", db_path: str = DB_PATH) -> Tuple[Dic
     if csv_signal:
         meta = {**db_meta, **csv_meta}
         return csv_signal, meta
-    fallback_symbol = symbol.upper() if symbol else "UNKNOWN"
+    fallback_symbol = symbol if symbol else "UNKNOWN"
     return {"symbol": fallback_symbol, "direction": "UNKNOWN", "score": None}, {**db_meta, "source": "fallback:no_signal_found"}
 
 
-def _extract_records(payload: Any) -> List[Dict[str, Any]]:
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if not isinstance(payload, dict):
-        return []
-    for key in ("allocations", "rankings", "candidates", "rows", "data", "symbols"):
-        value = payload.get(key)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-    if "symbol" in payload:
-        return [payload]
-    return []
-
-
-def load_portfolio_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    target = symbol.upper()
+def _find_symbol_record(symbol: str, paths: Sequence[str]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    target = _normalize_symbol(symbol)
     searched: List[str] = []
-    for path in ALLOCATION_CSVS:
+    source_hits: List[Tuple[str, Dict[str, Any], List[str]]] = []
+    for path in paths:
         searched.append(path)
-        for row in _read_csv_rows(path):
-            if _normalize_symbol(_pick_first(row, ["symbol", "asset", "ticker"])) == target:
-                return row, {"source": f"csv:{path}", "found": True, "searched": searched}
-    for path in ALLOCATION_JSONS:
-        searched.append(path)
-        records = _extract_records(_read_json(path))
-        for row in records:
-            if _normalize_symbol(_pick_first(row, ["symbol", "asset", "ticker"])) == target:
-                return row, {"source": f"json:{path}", "found": True, "searched": searched}
-    return {}, {"source": "none", "found": False, "searched": searched}
+        matches: List[Dict[str, Any]] = []
+        raw_symbols: List[str] = []
+        for row in _source_rows(path):
+            raw_symbol = _pick_first(row, SYMBOL_COLUMNS)
+            if _normalize_symbol(raw_symbol) == target:
+                matches.append(row)
+                raw_symbols.append(str(raw_symbol))
+        if len(matches) > 1:
+            distinct = sorted(set(raw_symbols))
+            return {}, {
+                "source": f"ambiguous:{path}",
+                "found": False,
+                "searched": searched,
+                "match_status": "AMBIGUOUS",
+                "match_reason": f"multiple rows matched normalized symbol {target}: {distinct}",
+            }
+        if len(matches) == 1:
+            source_hits.append((path, matches[0], raw_symbols))
+    if len(source_hits) > 1:
+        distinct_sources = [hit[0] for hit in source_hits]
+        return {}, {
+            "source": "ambiguous:multiple_sources",
+            "found": False,
+            "searched": searched,
+            "match_status": "AMBIGUOUS",
+            "match_reason": f"multiple sources matched normalized symbol {target}: {distinct_sources}",
+        }
+    if len(source_hits) == 1:
+        path, row, raw_symbols = source_hits[0]
+        return row, {
+            "source": f"{Path(path).suffix.lower().lstrip('.') or 'file'}:{path}",
+            "found": True,
+            "searched": searched,
+            "match_status": "MATCHED",
+            "match_reason": f"matched normalized symbol {target} from raw symbol {raw_symbols[0] if raw_symbols else target}",
+        }
+    return {}, {
+        "source": "none",
+        "found": False,
+        "searched": searched,
+        "match_status": "NOT_FOUND",
+        "match_reason": f"no source row matched normalized symbol {target}",
+    }
+
+
+def load_ranking_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    return _find_symbol_record(symbol, _discover_files(RANKING_FILE_PATTERNS))
+
+
+def load_allocation_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    return _find_symbol_record(symbol, _discover_files(ALLOCATION_FILE_PATTERNS))
 
 
 def load_portfolio_health() -> Tuple[str, Dict[str, Any]]:
-    for path in PORTFOLIO_HEALTH_JSONS:
-        payload = _read_json(path)
+    searched: List[str] = []
+    for path in _discover_files(HEALTH_FILE_PATTERNS):
+        searched.append(path)
+        payload = _read_json(path) if Path(path).suffix.lower() == ".json" else None
         if not isinstance(payload, dict):
             continue
         explicit = _pick_first(payload, ["portfolio_health", "health", "health_status", "status"])
         if explicit:
             text = str(explicit).upper()
             if text in {"GREEN", "YELLOW", "RED"}:
-                return text, {"source": path, "raw": explicit}
+                return text, {"source": path, "raw": explicit, "searched": searched, "match_status": "MATCHED"}
         recommendation = str(payload.get("recommendation") or "").upper()
         if recommendation:
             if recommendation in {"NORMAL", "OK", "ALLOW"}:
-                return "GREEN", {"source": path, "raw": recommendation}
+                return "GREEN", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
             if recommendation in {"DEFENSIVE", "CAUTION", "WATCH"}:
-                return "YELLOW", {"source": path, "raw": recommendation}
+                return "YELLOW", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
             if recommendation in {"FREEZE", "HALT", "BLOCK", "AVOID"}:
-                return "RED", {"source": path, "raw": recommendation}
+                return "RED", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
         heat = str(payload.get("portfolio_heat") or payload.get("concentration_label") or "").upper()
         if heat:
             if heat == "LOW":
-                return "GREEN", {"source": path, "raw": heat}
+                return "GREEN", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
             if heat == "MEDIUM":
-                return "YELLOW", {"source": path, "raw": heat}
+                return "YELLOW", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
             if heat == "HIGH":
-                return "RED", {"source": path, "raw": heat}
-    return "UNKNOWN", {"source": "none", "raw": "UNKNOWN"}
+                return "RED", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
+    return "UNKNOWN", {"source": "none", "raw": "UNKNOWN", "searched": searched, "match_status": "NOT_FOUND"}
 
 
 def _expected_value_from_record(record: Dict[str, Any]) -> Optional[float]:
-    explicit = _safe_float(
-        _pick_first(
-            record,
-            [
-                "expected_value",
-                "expected_value_pct",
-                "ev",
-                "ev_pct",
-                "expected_return_pct",
-                "avg_pnl",
-            ],
-        )
-    )
+    explicit = _safe_float(_pick_first(record, EV_COLUMNS))
     if explicit is not None:
         return explicit * 100 if -1 < explicit < 1 and explicit != 0 else explicit
     opportunity = _safe_float(_pick_first(record, ["opportunity_score", "quality_score", "score"]))
@@ -300,21 +608,39 @@ def _expected_value_from_record(record: Dict[str, Any]) -> Optional[float]:
     return round((opportunity - risk) / 100.0, 2)
 
 
-def build_overlay(signal: Dict[str, Any], portfolio_record: Dict[str, Any], portfolio_health: str, symbol_missing: bool) -> Dict[str, Any]:
+def _allocation_from_record(record: Dict[str, Any]) -> Optional[float]:
+    allocation = _safe_float(_pick_first(record, ALLOCATION_COLUMNS))
+    if allocation is not None and 0 < allocation <= 1:
+        return allocation * 100
+    return allocation
+
+
+def _eligible_from_record(record: Dict[str, Any], allocation: Optional[float]) -> bool:
+    eligible = _pick_first(record, ELIGIBLE_COLUMNS)
+    if eligible not in (None, ""):
+        return str(eligible).strip().upper() in {"1", "TRUE", "YES", "Y", "ELIGIBLE", "ALLOW"}
+    return allocation is not None and allocation > 0
+
+
+def build_overlay(
+    signal: Dict[str, Any],
+    ranking_record: Dict[str, Any],
+    allocation_record: Dict[str, Any],
+    portfolio_health: str,
+    symbol_missing: bool,
+) -> Dict[str, Any]:
     score = _safe_float(_pick_first(signal, ["score", "signal_score", "shadow_score", "calculated_score", "confidence"]))
-    rank = _normalize_rank(_pick_first(portfolio_record, ["trade_rank", "rank", "quality_rank", "portfolio_rank"]))
+    rank = _normalize_rank(_pick_first(ranking_record, RANK_COLUMNS))
     if not rank:
-        rank = _rank_from_score(_safe_float(_pick_first(portfolio_record, ["opportunity_score", "quality_score", "score"])))
-    ev = _expected_value_from_record(portfolio_record) if portfolio_record else None
-    allocation = _safe_float(
-        _pick_first(
-            portfolio_record,
-            ["suggested_allocation_pct", "suggested_max_weight_pct", "allocation_pct", "weight_pct", "max_weight_pct"],
-        )
-    )
-    tier = str(_pick_first(portfolio_record, ["allocation_tier", "tier", "eligibility"], "")).upper()
-    risk_score = _safe_float(_pick_first(portfolio_record, ["risk_score"]))
-    suggested_risk = str(_pick_first(portfolio_record, ["suggested_risk_level", "risk_level"], "")).upper()
+        rank = _normalize_rank(_pick_first(allocation_record, RANK_COLUMNS))
+    if not rank:
+        rank = _rank_from_score(_safe_float(_pick_first(ranking_record or allocation_record, ["opportunity_score", "quality_score", "score"])))
+    ev = _expected_value_from_record(ranking_record) if ranking_record else _expected_value_from_record(allocation_record) if allocation_record else None
+    allocation = _allocation_from_record(allocation_record) if allocation_record else None
+    tier = str(_pick_first(allocation_record, ["allocation_tier", "tier", "eligibility"], "")).upper()
+    risk_source = allocation_record or ranking_record
+    risk_score = _safe_float(_pick_first(risk_source, ["risk_score"]))
+    suggested_risk = str(_pick_first(risk_source, ["suggested_risk_level", "risk_level"], "")).upper()
     if not suggested_risk:
         if risk_score is None:
             suggested_risk = "NEED_REVIEW"
@@ -324,11 +650,9 @@ def build_overlay(signal: Dict[str, Any], portfolio_record: Dict[str, Any], port
             suggested_risk = "ELEVATED"
         else:
             suggested_risk = "HIGH"
-    eligible = _pick_first(portfolio_record, ["portfolio_eligible", "eligible", "is_eligible"])
-    if eligible in (None, ""):
-        eligible_bool = bool(portfolio_record) and tier not in {"AVOID", "BLOCK", "BLOCKED"} and (allocation is None or allocation > 0)
-    else:
-        eligible_bool = str(eligible).strip().upper() in {"1", "TRUE", "YES", "Y", "ELIGIBLE", "ALLOW"}
+    eligible_bool = _eligible_from_record(allocation_record, allocation) if allocation_record else False
+    if tier in {"AVOID", "BLOCK", "BLOCKED"} and allocation in (None, 0):
+        eligible_bool = False
 
     if symbol_missing:
         decision = "UNKNOWN / NEED_REVIEW"
@@ -336,7 +660,7 @@ def build_overlay(signal: Dict[str, Any], portfolio_record: Dict[str, Any], port
         decision = "AVOID / BLOCKED"
     elif rank == "C":
         decision = "LOW PRIORITY / PAPER_ONLY"
-    elif portfolio_health == "GREEN" and rank in {"A+", "A", "A-", "B+"}:
+    elif portfolio_health == "GREEN" and _rank_is_bplus_or_better(rank):
         decision = "WATCH / PAPER_ONLY"
     else:
         decision = "UNKNOWN / NEED_REVIEW"
@@ -354,7 +678,7 @@ def build_overlay(signal: Dict[str, Any], portfolio_record: Dict[str, Any], port
 
 
 def format_message(signal: Dict[str, Any], overlay: Dict[str, Any]) -> str:
-    symbol = _normalize_symbol(_pick_first(signal, ["symbol"])) or "UNKNOWN"
+    symbol = _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or "UNKNOWN"
     direction = str(_pick_first(signal, ["direction", "side", "position_side"], "UNKNOWN")).upper()
     score = overlay.get("signal_score")
     score_text = "N/A" if score is None else f"{score:.0f}" if float(score).is_integer() else f"{score:.2f}"
@@ -387,14 +711,28 @@ def write_report(report: Dict[str, Any], output_path: str = REPORT_PATH) -> None
         output_file.write("\n")
 
 
+def _artifact_paths(diagnostics: Dict[str, Any], key: str) -> List[str]:
+    return [item["path"] for item in diagnostics.get(key, []) if item.get("path")]
+
+
 def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_path: str = REPORT_PATH) -> Dict[str, Any]:
     requested_symbol = _normalize_symbol(symbol)
+    diagnostics = discover_sources(db_path)
     signal, signal_meta = load_signal_candidate(requested_symbol, db_path=db_path)
-    signal_symbol = _normalize_symbol(_pick_first(signal, ["symbol"])) or requested_symbol or "UNKNOWN"
-    portfolio_record, portfolio_meta = load_portfolio_record(signal_symbol)
+    signal_symbol = _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or requested_symbol or "UNKNOWN"
+    ranking_record, ranking_meta = load_ranking_record(signal_symbol)
+    allocation_record, allocation_meta = load_allocation_record(signal_symbol)
     portfolio_health, health_meta = load_portfolio_health()
-    overlay = build_overlay(signal, portfolio_record, portfolio_health, symbol_missing=not portfolio_meta.get("found"))
+    symbol_missing = not (ranking_meta.get("found") or allocation_meta.get("found"))
+    overlay = build_overlay(signal, ranking_record, allocation_record, portfolio_health, symbol_missing=symbol_missing)
     message = format_message(signal, overlay)
+    match_status = "MATCHED" if not symbol_missing else "NOT_FOUND"
+    match_reason = "ranking or allocation artifact matched requested symbol"
+    if ranking_meta.get("match_status") == "AMBIGUOUS" or allocation_meta.get("match_status") == "AMBIGUOUS":
+        match_status = "AMBIGUOUS"
+        match_reason = ranking_meta.get("match_reason") or allocation_meta.get("match_reason")
+    elif symbol_missing:
+        match_reason = f"no ranking or allocation artifact matched normalized symbol {signal_symbol}"
     report = {
         "generated_at": _now(),
         "mode": "PAPER_ONLY",
@@ -402,9 +740,21 @@ def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_
         "safety": SAFETY_TEXT,
         "telegram_send_enabled": False,
         "signal_source": signal_meta,
-        "portfolio_source": portfolio_meta,
+        "ranking_source": ranking_meta,
+        "allocation_source": allocation_meta,
         "portfolio_health_source": health_meta,
+        "source_files_detected": _artifact_paths(diagnostics, "signal_files"),
+        "ranking_files_detected": _artifact_paths(diagnostics, "trade_ranking_files"),
+        "allocation_files_detected": _artifact_paths(diagnostics, "portfolio_allocation_files"),
+        "health_files_detected": _artifact_paths(diagnostics, "portfolio_health_files"),
+        "ranking_match_source": ranking_meta.get("source", "none"),
+        "allocation_match_source": allocation_meta.get("source", "none"),
+        "health_match_source": health_meta.get("source", "none"),
+        "match_status": match_status,
+        "match_reason": match_reason,
         "signal": signal,
+        "ranking_record": ranking_record,
+        "allocation_record": allocation_record,
         "overlay": overlay,
         "telegram_message": message,
         "output_path": output_path,
@@ -421,9 +771,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="Preview only; never sends Telegram or touches broker APIs.")
     parser.add_argument("--db-path", default=DB_PATH, help="SQLite database path opened read-only if present.")
     parser.add_argument("--output", default=REPORT_PATH, help="JSON report output path.")
+    parser.add_argument("--list-sources", action="store_true", help="Print detected source diagnostics and exit without writing output.")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run(symbol=args.symbol, dry_run=args.dry_run, db_path=args.db_path, output_path=args.output)
+    if args.list_sources:
+        print_source_listing(args.db_path)
+    else:
+        run(symbol=args.symbol, dry_run=args.dry_run, db_path=args.db_path, output_path=args.output)
