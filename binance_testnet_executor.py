@@ -107,6 +107,11 @@ def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
         "daily_limit_passed": False,
         "order_attempted": False,
         "order_success": False,
+        "estimated_price": None,
+        "estimated_price_source": None,
+        "estimated_notional_usdt": None,
+        "max_notional_usdt": env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL),
+        "notional_limit_passed": False,
         "blocked_reason": None,
         "binance_response_redacted": None,
         "real_binance_enabled": False,
@@ -180,24 +185,91 @@ def daily_limit_passed() -> bool:
     return today_order_attempt_count() < limit
 
 
-def estimate_notional(quantity: Any, price: Any) -> Optional[float]:
-    if quantity is None or price is None:
+def parse_float(value: Any) -> Optional[float]:
+    if value is None:
         return None
     try:
-        return float(quantity) * float(price)
+        return float(value)
     except (TypeError, ValueError):
         return None
 
 
-def order_payload(args: argparse.Namespace) -> Dict[str, Any]:
-    return {
+def estimate_notional(quantity: Any, price: Any) -> Optional[float]:
+    quantity_float = parse_float(quantity)
+    price_float = parse_float(price)
+    if quantity_float is None or price_float is None:
+        return None
+    return quantity_float * price_float
+
+
+def fetch_market_price(api: BinanceFuturesTestnetClient, symbol: str) -> Tuple[Optional[float], Optional[str]]:
+    try:
+        mark_price = parse_float(api.get_mark_price(symbol))
+    except BinanceFuturesTestnetClientError:
+        mark_price = None
+    if mark_price is not None:
+        return mark_price, "markPrice"
+    try:
+        ticker_price = parse_float(api.get_ticker_price(symbol))
+    except BinanceFuturesTestnetClientError:
+        ticker_price = None
+    if ticker_price is not None:
+        return ticker_price, "tickerPrice"
+    return None, None
+
+
+def estimate_order_notional(
+    api: BinanceFuturesTestnetClient, args: argparse.Namespace
+) -> Tuple[Optional[float], Optional[str], Optional[float]]:
+    order_type = args.order_type.upper()
+    if order_type == "MARKET":
+        estimated_price, estimated_price_source = fetch_market_price(api, args.symbol)
+    else:
+        estimated_price = parse_float(args.price)
+        estimated_price_source = "limitPrice" if estimated_price is not None else None
+    return estimated_price, estimated_price_source, estimate_notional(args.quantity, estimated_price)
+
+
+def apply_notional_estimate(result: Dict[str, Any], args: argparse.Namespace, api: BinanceFuturesTestnetClient) -> None:
+    estimated_price, estimated_price_source, estimated_notional = estimate_order_notional(api, args)
+    max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
+    result["estimated_price"] = estimated_price
+    result["estimated_price_source"] = estimated_price_source
+    result["estimated_notional_usdt"] = estimated_notional
+    result["max_notional_usdt"] = max_notional
+    result["notional_limit_passed"] = estimated_notional is not None and estimated_notional <= max_notional
+
+
+def notional_blocked_reason(result: Dict[str, Any]) -> Optional[str]:
+    if result.get("estimated_notional_usdt") is None:
+        return "notional estimate missing"
+    if not result.get("notional_limit_passed"):
+        return "notional exceeds TESTNET_MAX_NOTIONAL_USDT"
+    return None
+
+
+def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = {
         "symbol": args.symbol.upper(),
         "side": args.side.upper(),
         "order_type": args.order_type.upper(),
         "quantity": args.quantity,
         "price": args.price,
-        "estimated_notional_usdt": estimate_notional(args.quantity, args.price),
     }
+    if result is not None:
+        payload.update(
+            {
+                "estimated_price": result.get("estimated_price"),
+                "estimated_price_source": result.get("estimated_price_source"),
+                "estimated_notional_usdt": result.get("estimated_notional_usdt"),
+                "max_notional_usdt": result.get("max_notional_usdt"),
+                "notional_limit_passed": result.get("notional_limit_passed"),
+                "blocked_reason": result.get("blocked_reason"),
+            }
+        )
+    else:
+        payload["estimated_notional_usdt"] = estimate_notional(args.quantity, args.price)
+    return payload
 
 
 def run_status(args: argparse.Namespace) -> int:
@@ -268,7 +340,10 @@ def run_positions(args: argparse.Namespace) -> int:
         write_json(RESULT_PATH, result)
         print(result["blocked_reason"])
         return 1
-    payload = client().get_position_risk(args.symbol.upper() if args.symbol else None)
+    symbol_filter = args.symbol.upper() if args.symbol else None
+    payload = client().get_position_risk(symbol_filter)
+    if symbol_filter and isinstance(payload, list):
+        payload = [item for item in payload if str(item.get("symbol", "")).upper() == symbol_filter]
     result["binance_response_redacted"] = redact_binance_response(payload)
     write_json(RESULT_PATH, result)
     for item in payload:
@@ -316,7 +391,6 @@ def run_order_action(args: argparse.Namespace) -> int:
     symbol_ok, symbol_reason = validate_symbol(args.symbol, exchange_info)
     result["symbol_filter_passed"] = symbol_ok
     result["daily_limit_passed"] = daily_limit_passed()
-    result["binance_response_redacted"] = {"estimate": order_payload(args)}
     if not symbol_ok:
         result["blocked_reason"] = symbol_reason
         write_json(RESULT_PATH, result)
@@ -324,13 +398,25 @@ def run_order_action(args: argparse.Namespace) -> int:
         print(symbol_reason)
         return 1
 
+    apply_notional_estimate(result, args, api)
+    result["binance_response_redacted"] = {"estimate": order_payload(args, result)}
+
     if args.dry_run or not args.send:
         result["blocked_reason"] = None
         write_json(RESULT_PATH, result)
         append_jsonl(ORDERS_PATH, result)
         print("dry_run_ok order_attempted=false")
-        print(json.dumps(order_payload(args), sort_keys=True))
+        print(json.dumps(order_payload(args, result), sort_keys=True))
         return 0
+
+    blocked_reason = notional_blocked_reason(result)
+    if blocked_reason:
+        result["blocked_reason"] = blocked_reason
+        result["binance_response_redacted"] = {"estimate": order_payload(args, result)}
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
 
     if not env_bool("ALLOW_TESTNET_ORDER", False):
         result["blocked_reason"] = "ALLOW_TESTNET_ORDER must be true for any send action."
@@ -367,15 +453,6 @@ def run_order_action(args: argparse.Namespace) -> int:
         append_jsonl(ORDERS_PATH, result)
         print(result["blocked_reason"])
         return 1
-    notional = estimate_notional(args.quantity, args.price)
-    max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
-    if notional is None or notional > max_notional:
-        result["blocked_reason"] = "Order notional is unknown or exceeds TESTNET_MAX_NOTIONAL_USDT."
-        write_json(RESULT_PATH, result)
-        append_jsonl(ORDERS_PATH, result)
-        print(result["blocked_reason"])
-        return 1
-
     result["order_attempted"] = True
     response = api.place_order(args.symbol, args.side, args.order_type, args.quantity, price=args.price)
     result["order_success"] = True
