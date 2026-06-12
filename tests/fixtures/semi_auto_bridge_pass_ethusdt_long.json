@@ -1,0 +1,27 @@
+{
+  "fixture_note": "Advisory-only positive-path fixture for semi_auto_testnet_bridge.py; validates WOULD_ORDER without enabling or attempting execution.",
+  "symbol": "ETHUSDT",
+  "signal": {
+    "symbol": "ETHUSDT",
+    "direction": "LONG",
+    "score": 95,
+    "price": 2500.0,
+    "quantity": 0.002
+  },
+  "overlay": {
+    "signal_score": 95,
+    "portfolio_eligible": true,
+    "overlay_decision": "LONG / TESTNET_READY",
+    "trade_rank": "HIGH_QUALITY",
+    "suggested_risk": "NORMAL",
+    "suggested_allocation_pct": 0.5,
+    "expected_value_pct": 1.25,
+    "portfolio_health": "GREEN"
+  },
+  "allocation_record": {
+    "portfolio_eligible": true,
+    "suggested_allocation_pct": 0.5,
+    "expected_value_pct": 1.25,
+    "portfolio_health": "GREEN"
+  }
+}
