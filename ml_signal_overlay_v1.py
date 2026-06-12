@@ -28,11 +28,12 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 DB_PATH = "mamuyy_hunter.db"
 REPORT_PATH = "logs/ml_signal_overlay_v1_report.json"
+TELEGRAM_PREVIEW_PATH = "logs/ml_signal_overlay_telegram_preview.json"
 SAFETY_TEXT = "PAPER_ONLY; read-only advisory; no broker API; no live execution; no order placement"
 
 SEARCH_DIRS = (".", "logs", "reports", "data")
 SOURCE_EXTENSIONS = {".csv", ".json"}
-EXCLUDED_SOURCE_FILES = {REPORT_PATH}
+EXCLUDED_SOURCE_FILES = {REPORT_PATH, TELEGRAM_PREVIEW_PATH}
 TIMESTAMP_COLUMNS = (
     "timestamp",
     "created_at",
@@ -1028,11 +1029,17 @@ def build_overlay(
     }
 
 
+def _score_text(score: Any) -> str:
+    if score is None:
+        return "N/A"
+    number = float(score)
+    return f"{number:.0f}" if number.is_integer() else f"{number:.2f}"
+
+
 def format_message(signal: Dict[str, Any], overlay: Dict[str, Any]) -> str:
     symbol = _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or "UNKNOWN"
     direction = str(_pick_first(signal, ["direction", "side", "position_side"], "UNKNOWN")).upper()
-    score = overlay.get("signal_score")
-    score_text = "N/A" if score is None else f"{score:.0f}" if float(score).is_integer() else f"{score:.2f}"
+    score_text = _score_text(overlay.get("signal_score"))
     return "\n".join(
         [
             "🦅 HUNTER SIGNAL V2 — PAPER ONLY",
@@ -1055,6 +1062,69 @@ def format_message(signal: Dict[str, Any], overlay: Dict[str, Any]) -> str:
     )
 
 
+def format_telegram_preview_message(signal: Dict[str, Any], overlay: Dict[str, Any]) -> str:
+    symbol = _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or "UNKNOWN"
+    direction = str(_pick_first(signal, ["direction", "side", "position_side"], "UNKNOWN")).upper()
+    return "\n".join(
+        [
+            "🦅 HUNTER SIGNAL OVERLAY — PAPER ONLY",
+            "",
+            f"Symbol: {symbol}",
+            f"Direction: {direction}",
+            f"Signal Score: {_score_text(overlay.get('signal_score'))}",
+            "",
+            f"Portfolio Eligible: {overlay['portfolio_eligible']}",
+            f"Suggested Allocation: {_format_pct(overlay['suggested_allocation_pct'])}",
+            f"Expected Value: {_format_pct(overlay['expected_value'], signed=True)}",
+            f"Trade Rank: {overlay['trade_rank']}",
+            f"Suggested Risk: {overlay['suggested_risk_level']}",
+            "",
+            f"Portfolio Health: {overlay['portfolio_health']}",
+            f"Overlay Decision: {overlay['overlay_decision']}",
+            "",
+            "Reason:",
+            "Allocation matched, but trade-quality rank is not confirmed yet.",
+            "",
+            "Safety:",
+            "PAPER_ONLY=True",
+            "Broker API=False",
+            "Live Execution=False",
+            "",
+            "⚠ Advisory only. No broker API. No live execution.",
+        ]
+    )
+
+
+def build_telegram_preview_payload(
+    signal: Dict[str, Any],
+    overlay: Dict[str, Any],
+    generated_at: str,
+    overlay_report_path: str,
+    send_telegram: bool,
+) -> Dict[str, Any]:
+    telegram_send_enabled = bool(send_telegram and os.getenv("ALLOW_TELEGRAM_SEND") == "1")
+    blocked_reason = None
+    if send_telegram and not telegram_send_enabled:
+        blocked_reason = "ALLOW_TELEGRAM_SEND not enabled"
+    elif not send_telegram:
+        blocked_reason = "send flag not passed; preview only"
+    return {
+        "generated_at": generated_at,
+        "symbol": _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or "UNKNOWN",
+        "telegram_send_enabled": telegram_send_enabled,
+        "telegram_send_blocked_reason": blocked_reason,
+        "payload_text": format_telegram_preview_message(signal, overlay),
+        "overlay_report_path": overlay_report_path,
+        "paper_only": True,
+        "broker_api_enabled": False,
+        "live_execution_enabled": False,
+    }
+
+
+def write_telegram_preview(payload: Dict[str, Any], output_path: str = TELEGRAM_PREVIEW_PATH) -> None:
+    write_report(payload, output_path)
+
+
 def write_report(report: Dict[str, Any], output_path: str = REPORT_PATH) -> None:
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as output_file:
@@ -1066,7 +1136,14 @@ def _artifact_paths(diagnostics: Dict[str, Any], key: str) -> List[str]:
     return [item["path"] for item in diagnostics.get(key, []) if item.get("path")]
 
 
-def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_path: str = REPORT_PATH) -> Dict[str, Any]:
+def run(
+    symbol: str = "",
+    dry_run: bool = False,
+    db_path: str = DB_PATH,
+    output_path: str = REPORT_PATH,
+    telegram_preview: bool = False,
+    send_telegram: bool = False,
+) -> Dict[str, Any]:
     requested_symbol = _normalize_symbol(symbol)
     diagnostics = discover_sources(db_path)
     signal, signal_meta = load_signal_candidate(requested_symbol, db_path=db_path)
@@ -1084,8 +1161,9 @@ def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_
         match_reason = ranking_meta.get("match_reason") or allocation_meta.get("match_reason")
     elif symbol_missing:
         match_reason = f"no ranking or allocation artifact matched normalized symbol {signal_symbol}"
+    generated_at = _now()
     report = {
-        "generated_at": _now(),
+        "generated_at": generated_at,
         "mode": "PAPER_ONLY",
         "dry_run": bool(dry_run),
         "safety": SAFETY_TEXT,
@@ -1122,6 +1200,24 @@ def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_
     write_report(report, output_path)
     print(message)
     print(f"\nJSON report saved: {output_path}")
+    if telegram_preview or send_telegram:
+        preview_payload = build_telegram_preview_payload(
+            signal=signal,
+            overlay=overlay,
+            generated_at=generated_at,
+            overlay_report_path=output_path,
+            send_telegram=send_telegram,
+        )
+        if send_telegram and not preview_payload["telegram_send_enabled"]:
+            print("Telegram Send: BLOCKED — ALLOW_TELEGRAM_SEND not enabled")
+        elif preview_payload["telegram_send_enabled"]:
+            print("Telegram Send: ENABLED — gated by ALLOW_TELEGRAM_SEND=1")
+        else:
+            print("Telegram Send: DISABLED / PREVIEW ONLY")
+        print("\nTelegram Preview Payload:")
+        print(preview_payload["payload_text"])
+        write_telegram_preview(preview_payload)
+        print(f"\nTelegram preview saved: {TELEGRAM_PREVIEW_PATH}")
     return report
 
 
@@ -1129,6 +1225,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build PAPER_ONLY ML signal overlay advisory preview.")
     parser.add_argument("--symbol", default="", help="Optional symbol to overlay, e.g. HYPEUSDT.")
     parser.add_argument("--dry-run", action="store_true", help="Preview only; never sends Telegram or touches broker APIs.")
+    parser.add_argument("--telegram-preview", action="store_true", help="Print and save a Telegram-style preview payload without sending it.")
+    parser.add_argument("--send-telegram", action="store_true", help="Request Telegram send; blocked unless ALLOW_TELEGRAM_SEND=1.")
     parser.add_argument("--db-path", default=DB_PATH, help="SQLite database path opened read-only if present.")
     parser.add_argument("--output", default=REPORT_PATH, help="JSON report output path.")
     parser.add_argument("--list-sources", action="store_true", help="Print detected source diagnostics and exit without writing output.")
@@ -1140,4 +1238,11 @@ if __name__ == "__main__":
     if args.list_sources:
         print_source_listing(args.db_path)
     else:
-        run(symbol=args.symbol, dry_run=args.dry_run, db_path=args.db_path, output_path=args.output)
+        run(
+            symbol=args.symbol,
+            dry_run=args.dry_run,
+            db_path=args.db_path,
+            output_path=args.output,
+            telegram_preview=args.telegram_preview,
+            send_telegram=args.send_telegram,
+        )
