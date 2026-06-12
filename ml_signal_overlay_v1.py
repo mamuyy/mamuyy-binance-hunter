@@ -1,4 +1,4 @@
-"""ML Signal Overlay V1.2 for PAPER_ONLY Telegram advisory previews.
+"""ML Signal Overlay V1.3 for PAPER_ONLY Telegram advisory previews.
 
 This module is intentionally read-only for Hunter runtime inputs. It inspects the
 latest signal candidate (or a requested symbol), enriches it with available
@@ -71,7 +71,7 @@ HEALTH_FILE_PATTERNS = (
 )
 
 SYMBOL_COLUMNS = ("symbol", "ticker", "asset")
-RANK_COLUMNS = ("rank", "trade_rank", "quality_rank", "portfolio_rank")
+RANK_COLUMNS = ("rank", "trade_rank", "trade_quality_rank", "quality_rank", "portfolio_rank")
 ALLOCATION_COLUMNS = (
     "allocation",
     "allocation_pct",
@@ -173,6 +173,28 @@ def _rank_from_position_multiplier(position_multiplier: Optional[float]) -> str:
     if position_multiplier >= 0.50:
         return "C"
     return "UNKNOWN"
+
+
+def _mode_rank(values: Iterable[Any]) -> str:
+    counts: Dict[str, int] = {}
+    first_seen: Dict[str, int] = {}
+    for index, value in enumerate(values):
+        rank = _normalize_rank(value)
+        if not rank:
+            continue
+        counts[rank] = counts.get(rank, 0) + 1
+        first_seen.setdefault(rank, index)
+    if not counts:
+        return "UNKNOWN"
+    return sorted(counts, key=lambda rank: (-counts[rank], first_seen[rank]))[0]
+
+
+def _is_canonical_allocation_source(path: str) -> bool:
+    return Path(path).name.startswith("ml_portfolio_allocation_v2_") and Path(path).suffix.lower() == ".csv"
+
+
+def _is_trade_quality_source(path: str) -> bool:
+    return Path(path).name.startswith("ml_calibration_with_trade_quality_") and Path(path).suffix.lower() == ".csv"
 
 
 def _format_pct(value: Optional[float], signed: bool = False) -> str:
@@ -562,7 +584,7 @@ def discover_sources(db_path: str = DB_PATH) -> Dict[str, Any]:
 
 def print_source_listing(db_path: str = DB_PATH) -> None:
     diagnostics = discover_sources(db_path)
-    print("ML Signal Overlay V1.2 source diagnostics")
+    print("ML Signal Overlay V1.3 source diagnostics")
     print(f"Detected database path: {diagnostics['database_path'] or 'none'}")
     print("\nSelected canonical sources:")
     print(f"  - allocation: {diagnostics['selected_allocation_source']}")
@@ -662,6 +684,56 @@ def _records_conflict(records: Sequence[Dict[str, Any]]) -> bool:
     return len(set(canonical)) > 1
 
 
+def _aggregate_trade_quality_records(
+    symbol: str,
+    path: str,
+    matches: Sequence[Dict[str, Any]],
+    raw_symbols: Sequence[str],
+    searched: Sequence[str],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    target = _normalize_symbol(symbol)
+    normalized_matches = sorted({_normalize_symbol(raw_symbol) for raw_symbol in raw_symbols})
+    if len(normalized_matches) > 1:
+        return {}, {
+            "source": f"ambiguous:{path}",
+            "found": False,
+            "searched": list(searched),
+            "selected_source": path,
+            "match_status": "AMBIGUOUS",
+            "match_reason": f"multiple different normalized symbols matched requested symbol variant {target}: {normalized_matches}",
+            "ranking_aggregation_method": "not_applied_ambiguous_symbol_variants",
+        }
+
+    mode_rank = _mode_rank(_pick_first(row, ["trade_quality_rank", *RANK_COLUMNS]) for row in matches)
+    quality_scores = [
+        score
+        for score in (_safe_float(_pick_first(row, ["trade_quality_score"])) for row in matches)
+        if score is not None
+    ]
+    aggregated: Dict[str, Any] = {
+        "symbol": target,
+        "source_row_count": len(matches),
+        "raw_symbol_variants": sorted(set(str(raw_symbol) for raw_symbol in raw_symbols)),
+        "__rank_source": "ranking.trade_quality_rank_mode",
+    }
+    if mode_rank != "UNKNOWN":
+        aggregated["trade_quality_rank"] = mode_rank
+    if quality_scores:
+        aggregated["trade_quality_score_avg"] = sum(quality_scores) / len(quality_scores)
+
+    return aggregated, {
+        "source": f"csv_aggregated:{path}",
+        "found": True,
+        "searched": list(searched),
+        "selected_source": path,
+        "match_status": "MATCHED",
+        "match_reason": f"aggregated {len(matches)} trade-quality rows for normalized symbol {target}",
+        "ranking_aggregation_method": "normalized_symbol_group_mode_trade_quality_rank_avg_trade_quality_score",
+        "aggregated_row_count": len(matches),
+        "trade_quality_score_avg": aggregated.get("trade_quality_score_avg"),
+    }
+
+
 def _find_symbol_record(symbol: str, paths: Sequence[str]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     target = _normalize_symbol(symbol)
     searched: List[str] = []
@@ -674,8 +746,19 @@ def _find_symbol_record(symbol: str, paths: Sequence[str]) -> Tuple[Dict[str, An
             if _normalize_symbol(raw_symbol) == target:
                 matches.append(row)
                 raw_symbols.append(str(raw_symbol))
+        if matches and _is_trade_quality_source(path):
+            return _aggregate_trade_quality_records(target, path, matches, raw_symbols, searched)
         if len(matches) > 1 and _records_conflict(matches):
-            distinct = sorted(set(raw_symbols))
+            distinct = sorted({_normalize_symbol(raw_symbol) for raw_symbol in raw_symbols})
+            if len(distinct) <= 1:
+                return matches[-1], {
+                    "source": _source_kind(path),
+                    "found": True,
+                    "searched": searched,
+                    "selected_source": path,
+                    "match_status": "MATCHED",
+                    "match_reason": f"matched {len(matches)} rows for normalized symbol {target}; using latest row",
+                }
             return {}, {
                 "source": f"ambiguous:{path}",
                 "found": False,
@@ -718,7 +801,7 @@ def _phase4b_rank_summary_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str,
             continue
         value = summary.get(target) or summary.get(symbol)
         if isinstance(value, dict):
-            return {"symbol": target, **value}, {
+            return {"symbol": target, "__rank_source": "phase4b.rank_summary", **value}, {
                 "source": f"json_rank_summary:{path}",
                 "found": True,
                 "searched": searched,
@@ -727,7 +810,7 @@ def _phase4b_rank_summary_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str,
                 "match_reason": f"matched normalized symbol {target} in phase4b rank_summary fallback",
             }
         if value not in (None, ""):
-            return {"symbol": target, "rank": value}, {
+            return {"symbol": target, "rank": value, "__rank_source": "phase4b.rank_summary"}, {
                 "source": f"json_rank_summary:{path}",
                 "found": True,
                 "searched": searched,
@@ -759,7 +842,21 @@ def load_ranking_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
 
 def load_allocation_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    return _find_symbol_record(symbol, _allocation_priority_paths())
+    record, meta = _find_symbol_record(symbol, _allocation_priority_paths())
+    if record and _is_canonical_allocation_source(str(meta.get("selected_source", ""))):
+        allocation = _safe_float(record.get("capital_pct_v2"))
+        mapped = {
+            **record,
+            "symbol": record.get("symbol"),
+            "allocation": record.get("capital_pct_v2"),
+            "expected_value": record.get("ev_pct"),
+            "position_multiplier": record.get("position_multiplier"),
+            "allocation_score": record.get("allocation_score_v2"),
+            "eligible": "YES" if allocation is not None and allocation > 0 else "NO",
+        }
+        meta["allocation_aggregation_method"] = "canonical_symbol_level_ml_portfolio_allocation_v2"
+        return mapped, meta
+    return record, meta
 
 
 def load_portfolio_health() -> Tuple[str, Dict[str, Any]]:
@@ -793,15 +890,47 @@ def load_portfolio_health() -> Tuple[str, Dict[str, Any]]:
     return "UNKNOWN", {"source": "none", "selected_source": searched[0] if searched else "none", "raw": "UNKNOWN", "searched": searched, "match_status": "NOT_FOUND"}
 
 
-def _expected_value_from_record(record: Dict[str, Any]) -> Optional[float]:
-    explicit = _safe_float(_pick_first(record, EV_COLUMNS))
-    if explicit is not None:
-        return explicit * 100 if -1 < explicit < 1 and explicit != 0 else explicit
+def _expected_value_with_debug(record: Dict[str, Any]) -> Tuple[Optional[float], Dict[str, Any]]:
+    lowered = {str(key).lower(): value for key, value in record.items()}
+    source_column = next(
+        (column for column in EV_COLUMNS if column.lower() in lowered and lowered[column.lower()] not in (None, "")),
+        None,
+    )
+    if source_column:
+        raw = lowered[source_column.lower()]
+        explicit = _safe_float(raw)
+        warning = None
+        if source_column.lower() == "ev_pct" and explicit is not None and abs(explicit) > 20:
+            warning = "EV value unusually large; verify whether ev_pct is percentage or score metric."
+        if explicit is not None:
+            value = explicit if source_column.lower() == "ev_pct" else explicit * 100 if -1 < explicit < 1 and explicit != 0 else explicit
+            return value, {
+                "expected_value_source_column": source_column,
+                "expected_value_raw": raw,
+                "expected_value_display": _format_pct(value, signed=True),
+                "expected_value_scale_warning": warning,
+            }
     opportunity = _safe_float(_pick_first(record, ["opportunity_score", "quality_score", "score"]))
     risk = _safe_float(_pick_first(record, ["risk_score"])) or 0.0
     if opportunity is None:
-        return None
-    return round((opportunity - risk) / 100.0, 2)
+        return None, {
+            "expected_value_source_column": None,
+            "expected_value_raw": None,
+            "expected_value_display": "N/A",
+            "expected_value_scale_warning": None,
+        }
+    value = round((opportunity - risk) / 100.0, 2)
+    return value, {
+        "expected_value_source_column": "derived_opportunity_minus_risk",
+        "expected_value_raw": {"opportunity_score": opportunity, "risk_score": risk},
+        "expected_value_display": _format_pct(value, signed=True),
+        "expected_value_scale_warning": None,
+    }
+
+
+def _expected_value_from_record(record: Dict[str, Any]) -> Optional[float]:
+    value, _debug = _expected_value_with_debug(record)
+    return value
 
 
 def _allocation_from_record(record: Dict[str, Any]) -> Optional[float]:
@@ -830,29 +959,40 @@ def build_overlay(
     symbol_missing: bool,
 ) -> Dict[str, Any]:
     score = _safe_float(_pick_first(signal, ["score", "signal_score", "shadow_score", "calculated_score", "confidence"]))
-    rank = _normalize_rank(_pick_first(ranking_record, RANK_COLUMNS))
-    if not rank:
-        rank = _normalize_rank(_pick_first(allocation_record, RANK_COLUMNS))
-    if not rank:
-        rank = _rank_from_position_multiplier(_safe_float(_pick_first(ranking_record, ["position_multiplier"])))
-    if not rank or rank == "UNKNOWN":
-        rank = _rank_from_score(_safe_float(_pick_first(ranking_record or allocation_record, ["opportunity_score", "quality_score", "score"])))
-    ev = _expected_value_from_record(ranking_record) if ranking_record else _expected_value_from_record(allocation_record) if allocation_record else None
     allocation = _allocation_from_record(allocation_record) if allocation_record else None
     allocation_score = _allocation_score_from_record(allocation_record) if allocation_record else None
+    position_multiplier = _safe_float(_pick_first(allocation_record, ["position_multiplier"])) if allocation_record else None
+    rank = _rank_from_position_multiplier(position_multiplier)
+    inferred_rank_source = "allocation.position_multiplier" if rank != "UNKNOWN" else "none"
+    if rank == "UNKNOWN":
+        rank = _normalize_rank(_pick_first(ranking_record, ["trade_quality_rank", *RANK_COLUMNS]))
+        inferred_rank_source = str(ranking_record.get("__rank_source") or "ranking.trade_quality_rank_mode") if rank else "none"
+    if not rank or rank == "UNKNOWN":
+        rank = _normalize_rank(_pick_first(ranking_record, RANK_COLUMNS))
+        inferred_rank_source = "phase4b.rank_summary" if rank else "none"
+    if not rank:
+        rank = "UNKNOWN"
+    ev_source = allocation_record if allocation_record else ranking_record
+    ev, ev_debug = _expected_value_with_debug(ev_source) if ev_source else (
+        None,
+        {
+            "expected_value_source_column": None,
+            "expected_value_raw": None,
+            "expected_value_display": "N/A",
+            "expected_value_scale_warning": None,
+        },
+    )
     tier = str(_pick_first(allocation_record, ["allocation_tier", "tier", "eligibility"], "")).upper()
-    risk_source = allocation_record or ranking_record
-    risk_score = _safe_float(_pick_first(risk_source, ["risk_score"]))
-    suggested_risk = str(_pick_first(risk_source, ["suggested_risk_level", "risk_level"], "")).upper()
-    if not suggested_risk:
-        if risk_score is None:
-            suggested_risk = "NEED_REVIEW"
-        elif risk_score <= 35:
-            suggested_risk = "NORMAL"
-        elif risk_score <= 55:
-            suggested_risk = "ELEVATED"
-        else:
-            suggested_risk = "HIGH"
+    if rank == "D" or (ev is not None and ev < 0):
+        suggested_risk = "BLOCKED"
+    elif rank in {"A+", "A", "A-", "B+"}:
+        suggested_risk = "NORMAL"
+    elif rank == "B":
+        suggested_risk = "ELEVATED"
+    elif rank == "C":
+        suggested_risk = "CAUTION"
+    else:
+        suggested_risk = "NEED_REVIEW"
     eligible_bool = _eligible_from_record(allocation_record, allocation) if allocation_record else False
     if tier in {"AVOID", "BLOCK", "BLOCKED"} and allocation in (None, 0):
         eligible_bool = False
@@ -863,8 +1003,12 @@ def build_overlay(
         decision = "AVOID / BLOCKED"
     elif rank == "C":
         decision = "LOW PRIORITY / PAPER_ONLY"
-    elif portfolio_health == "GREEN" and _rank_is_bplus_or_better(rank):
+    elif portfolio_health == "GREEN" and _rank_is_bplus_or_better(rank) and allocation is not None and allocation > 0:
         decision = "WATCH / PAPER_ONLY"
+    elif rank == "B" and allocation is not None and allocation > 0:
+        decision = "WATCHLIST / CAUTION / PAPER_ONLY"
+    elif rank == "UNKNOWN":
+        decision = "UNKNOWN / NEED_REVIEW"
     else:
         decision = "UNKNOWN / NEED_REVIEW"
 
@@ -878,6 +1022,9 @@ def build_overlay(
         "portfolio_health": portfolio_health,
         "overlay_decision": decision,
         "signal_score": score,
+        "position_multiplier": position_multiplier,
+        "inferred_rank_source": inferred_rank_source,
+        **ev_debug,
     }
 
 
@@ -957,6 +1104,12 @@ def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_
         "ranking_match_source": ranking_meta.get("source", "none"),
         "allocation_match_source": allocation_meta.get("source", "none"),
         "health_match_source": health_meta.get("source", "none"),
+        "ranking_aggregation_method": ranking_meta.get("ranking_aggregation_method", "not_applied"),
+        "inferred_rank_source": overlay.get("inferred_rank_source"),
+        "expected_value_source_column": overlay.get("expected_value_source_column"),
+        "expected_value_raw": overlay.get("expected_value_raw"),
+        "expected_value_display": overlay.get("expected_value_display"),
+        "expected_value_scale_warning": overlay.get("expected_value_scale_warning"),
         "match_status": match_status,
         "match_reason": match_reason,
         "signal": signal,
