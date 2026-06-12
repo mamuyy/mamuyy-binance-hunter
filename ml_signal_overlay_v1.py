@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import os
@@ -1095,12 +1096,21 @@ def format_telegram_preview_message(signal: Dict[str, Any], overlay: Dict[str, A
     )
 
 
+def _payload_sha256(payload_text: str) -> str:
+    return hashlib.sha256(payload_text.encode("utf-8")).hexdigest()
+
+
 def build_telegram_preview_payload(
     signal: Dict[str, Any],
     overlay: Dict[str, Any],
     generated_at: str,
     overlay_report_path: str,
     send_telegram: bool,
+    match_status: str,
+    match_reason: str,
+    selected_allocation_source: str,
+    selected_ranking_source: str,
+    selected_health_source: str,
 ) -> Dict[str, Any]:
     telegram_send_enabled = bool(send_telegram and os.getenv("ALLOW_TELEGRAM_SEND") == "1")
     blocked_reason = None
@@ -1108,13 +1118,31 @@ def build_telegram_preview_payload(
         blocked_reason = "ALLOW_TELEGRAM_SEND not enabled"
     elif not send_telegram:
         blocked_reason = "send flag not passed; preview only"
+    payload_text = format_telegram_preview_message(signal, overlay)
+    direction = str(_pick_first(signal, ["direction", "side", "position_side"], "UNKNOWN")).upper()
     return {
         "generated_at": generated_at,
         "symbol": _normalize_symbol(_pick_first(signal, SYMBOL_COLUMNS)) or "UNKNOWN",
         "telegram_send_enabled": telegram_send_enabled,
         "telegram_send_blocked_reason": blocked_reason,
-        "payload_text": format_telegram_preview_message(signal, overlay),
+        "payload_text": payload_text,
+        "payload_sha256": _payload_sha256(payload_text),
         "overlay_report_path": overlay_report_path,
+        "overlay_decision": overlay.get("overlay_decision"),
+        "signal_score": overlay.get("signal_score"),
+        "direction": direction,
+        "trade_rank": overlay.get("trade_rank"),
+        "expected_value_display": overlay.get("expected_value_display"),
+        "portfolio_eligible": overlay.get("portfolio_eligible"),
+        "suggested_allocation": overlay.get("suggested_allocation_pct"),
+        "suggested_risk": overlay.get("suggested_risk_level"),
+        "match_status": match_status,
+        "match_reason": match_reason,
+        "selected_allocation_source": selected_allocation_source,
+        "selected_ranking_source": selected_ranking_source,
+        "selected_health_source": selected_health_source,
+        "expected_value_source_column": overlay.get("expected_value_source_column"),
+        "expected_value_raw": overlay.get("expected_value_raw"),
         "paper_only": True,
         "broker_api_enabled": False,
         "live_execution_enabled": False,
@@ -1207,6 +1235,11 @@ def run(
             generated_at=generated_at,
             overlay_report_path=output_path,
             send_telegram=send_telegram,
+            match_status=match_status,
+            match_reason=match_reason,
+            selected_allocation_source=diagnostics.get("selected_allocation_source", allocation_meta.get("selected_source", "none")),
+            selected_ranking_source=diagnostics.get("selected_ranking_source", ranking_meta.get("selected_source", "none")),
+            selected_health_source=diagnostics.get("selected_health_source", health_meta.get("selected_source", "none")),
         )
         if send_telegram and not preview_payload["telegram_send_enabled"]:
             print("Telegram Send: BLOCKED — ALLOW_TELEGRAM_SEND not enabled")

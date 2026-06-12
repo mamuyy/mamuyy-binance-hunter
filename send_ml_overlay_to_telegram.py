@@ -8,6 +8,7 @@ Telegram sender when explicit manual gates are enabled.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -20,12 +21,23 @@ from telegram import send_telegram_message
 
 DEFAULT_PREVIEW_PATH = "logs/ml_signal_overlay_telegram_preview.json"
 DEFAULT_RESULT_PATH = "logs/ml_overlay_telegram_send_result.json"
+DEFAULT_STATE_PATH = "logs/ml_overlay_telegram_send_state.json"
 ALLOW_SEND_ENV = "ALLOW_OVERLAY_TELEGRAM_SEND"
+KILL_SWITCH_ENV = "OVERLAY_TELEGRAM_KILL_SWITCH"
+SEND_UNKNOWN_ENV = "OVERLAY_SEND_UNKNOWN"
+MIN_SCORE_ENV = "OVERLAY_MIN_SCORE"
+MAX_PREVIEW_AGE_MINUTES_ENV = "OVERLAY_MAX_PREVIEW_AGE_MINUTES"
+COOLDOWN_HOURS_ENV = "OVERLAY_COOLDOWN_HOURS"
+DEFAULT_MAX_PREVIEW_AGE_MINUTES = 10.0
+DEFAULT_MIN_SCORE = 75.0
+DEFAULT_COOLDOWN_HOURS = 6.0
 REQUIRED_PAYLOAD_MARKERS = (
     "PAPER ONLY",
     "No broker API",
     "No live execution",
 )
+DEFAULT_DECISION_ALLOWLIST = {"WATCH / PAPER_ONLY"}
+OPTIONAL_UNKNOWN_DECISIONS = {"UNKNOWN / NEED_REVIEW"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,11 +64,60 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_RESULT_PATH,
         help=f"Path for send result JSON (default: {DEFAULT_RESULT_PATH}).",
     )
+    parser.add_argument(
+        "--state-path",
+        default=DEFAULT_STATE_PATH,
+        help=f"Path for manual-send dedupe/cooldown state (default: {DEFAULT_STATE_PATH}).",
+    )
     return parser.parse_args()
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def compute_payload_sha256(payload_text: Any) -> str:
+    if not isinstance(payload_text, str):
+        payload_text = ""
+    return hashlib.sha256(payload_text.encode("utf-8")).hexdigest()
 
 
 def read_preview_payload(preview_path: str) -> Tuple[Dict[str, Any], str | None]:
@@ -91,6 +152,96 @@ def validate_safety(payload: Dict[str, Any]) -> Tuple[bool, str | None]:
     return True, None
 
 
+def evaluate_freshness(payload: Dict[str, Any]) -> Tuple[bool, float | None, str | None]:
+    generated_at = _parse_datetime(payload.get("generated_at"))
+    if generated_at is None:
+        return False, None, "preview generated_at missing or invalid"
+    age_minutes = max((_utc_now() - generated_at).total_seconds() / 60.0, 0.0)
+    max_age_minutes = _env_float(MAX_PREVIEW_AGE_MINUTES_ENV, DEFAULT_MAX_PREVIEW_AGE_MINUTES)
+    if age_minutes > max_age_minutes:
+        return False, age_minutes, f"preview age {age_minutes:.2f}m exceeds {max_age_minutes:.2f}m"
+    return True, age_minutes, None
+
+
+def evaluate_decision_policy(payload: Dict[str, Any], args: argparse.Namespace) -> Tuple[bool, str | None]:
+    decision = str(payload.get("overlay_decision") or "").strip().upper()
+    if decision in DEFAULT_DECISION_ALLOWLIST:
+        return True, None
+    if decision in OPTIONAL_UNKNOWN_DECISIONS and os.getenv(SEND_UNKNOWN_ENV) == "1" and args.send:
+        return True, f"{SEND_UNKNOWN_ENV}=1 allowed manual UNKNOWN advisory"
+    if not decision:
+        return False, "overlay_decision missing"
+    return False, f"overlay_decision {decision!r} is not in real-send allowlist"
+
+
+def evaluate_score_threshold(payload: Dict[str, Any]) -> Tuple[bool, str | None]:
+    score = _safe_float(payload.get("signal_score"))
+    min_score = _env_float(MIN_SCORE_ENV, DEFAULT_MIN_SCORE)
+    if score is None:
+        return False, "signal_score missing or invalid"
+    if score < min_score:
+        return False, f"signal_score {score:.2f} below minimum {min_score:.2f}"
+    return True, None
+
+
+def build_dedupe_key(payload: Dict[str, Any]) -> str:
+    parts = [
+        str(payload.get("symbol") or "UNKNOWN").upper(),
+        str(payload.get("direction") or "UNKNOWN").upper(),
+        str(payload.get("overlay_decision") or "UNKNOWN").upper(),
+    ]
+    return "|".join(parts)
+
+
+def read_state(state_path: str) -> Dict[str, Any]:
+    path = Path(state_path)
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def write_state(state_path: str, state: Dict[str, Any]) -> None:
+    path = Path(state_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(state, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def evaluate_cooldown(state: Dict[str, Any], dedupe_key: str) -> Tuple[bool, str | None]:
+    cooldown_hours = _env_float(COOLDOWN_HOURS_ENV, DEFAULT_COOLDOWN_HOURS)
+    sent = state.get("sent", {}) if isinstance(state.get("sent"), dict) else {}
+    record = sent.get(dedupe_key)
+    if not isinstance(record, dict):
+        return True, None
+    last_sent = _parse_datetime(record.get("last_sent_at"))
+    if last_sent is None:
+        return True, None
+    age_hours = (_utc_now() - last_sent).total_seconds() / 3600.0
+    if age_hours < cooldown_hours:
+        return False, f"dedupe_key within cooldown ({age_hours:.2f}h < {cooldown_hours:.2f}h)"
+    return True, None
+
+
+def record_successful_send(state_path: str, state: Dict[str, Any], payload: Dict[str, Any], dedupe_key: str, payload_sha256: str) -> None:
+    sent = state.get("sent") if isinstance(state.get("sent"), dict) else {}
+    sent[dedupe_key] = {
+        "last_sent_at": utc_now_iso(),
+        "symbol": payload.get("symbol"),
+        "direction": payload.get("direction"),
+        "overlay_decision": payload.get("overlay_decision"),
+        "payload_sha256": payload_sha256,
+    }
+    state["sent"] = sent
+    state["updated_at"] = utc_now_iso()
+    write_state(state_path, state)
+
+
 def write_result(result_path: str, result: Dict[str, Any]) -> None:
     path = Path(result_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,11 +250,93 @@ def write_result(result_path: str, result: Dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def _first_block_reason(policy: Dict[str, Any]) -> Tuple[str, str | None]:
+    ordered = [
+        ("BLOCKED_SAFETY", policy.get("safety_reason")) if not policy["safety_passed"] else None,
+        ("BLOCKED_FRESHNESS", policy.get("freshness_reason")) if not policy["freshness_passed"] else None,
+        ("BLOCKED_KILL_SWITCH", f"{KILL_SWITCH_ENV}=1") if policy["kill_switch_active"] else None,
+        ("BLOCKED_DECISION_POLICY", policy.get("decision_policy_reason")) if not policy["decision_policy_passed"] else None,
+        ("BLOCKED_SCORE_THRESHOLD", policy.get("score_threshold_reason")) if not policy["score_threshold_passed"] else None,
+        ("BLOCKED_COOLDOWN", policy.get("cooldown_reason")) if not policy["cooldown_passed"] else None,
+    ]
+    for item in ordered:
+        if item is not None:
+            return item
+    return "POLICY_PASSED", None
+
+
+def evaluate_policy(args: argparse.Namespace, payload: Dict[str, Any], safety_passed: bool, safety_reason: str | None) -> Dict[str, Any]:
+    freshness_passed, preview_age_minutes, freshness_reason = evaluate_freshness(payload)
+    decision_policy_passed, decision_policy_reason = evaluate_decision_policy(payload, args)
+    score_threshold_passed, score_threshold_reason = evaluate_score_threshold(payload)
+    payload_sha256 = compute_payload_sha256(payload.get("payload_text"))
+    preview_payload_sha256 = payload.get("payload_sha256")
+    payload_sha256_matches = not preview_payload_sha256 or preview_payload_sha256 == payload_sha256
+    if not payload_sha256_matches:
+        safety_passed = False
+        safety_reason = "payload_sha256 does not match payload_text"
+
+    dedupe_key = build_dedupe_key(payload)
+    state = read_state(args.state_path)
+    cooldown_passed, cooldown_reason = evaluate_cooldown(state, dedupe_key)
+    kill_switch_active = os.getenv(KILL_SWITCH_ENV) == "1"
+
+    policy: Dict[str, Any] = {
+        "safety_passed": safety_passed,
+        "safety_reason": safety_reason,
+        "freshness_passed": freshness_passed,
+        "freshness_reason": freshness_reason,
+        "decision_policy_passed": decision_policy_passed,
+        "decision_policy_reason": decision_policy_reason,
+        "score_threshold_passed": score_threshold_passed,
+        "score_threshold_reason": score_threshold_reason,
+        "cooldown_passed": cooldown_passed,
+        "cooldown_reason": cooldown_reason,
+        "kill_switch_active": kill_switch_active,
+        "dedupe_key": dedupe_key,
+        "preview_age_minutes": round(preview_age_minutes, 2) if preview_age_minutes is not None else None,
+        "payload_sha256": payload_sha256,
+        "payload_sha256_matches": payload_sha256_matches,
+        "state": state,
+    }
+    status, blocked_reason = _first_block_reason(policy)
+    policy["policy_status"] = status
+    policy["blocked_reason"] = blocked_reason
+    policy["base_policy_passed"] = status == "POLICY_PASSED"
+    policy["would_send"] = bool(
+        policy["base_policy_passed"]
+        and args.send
+        and not args.dry_run
+        and os.getenv(ALLOW_SEND_ENV) == "1"
+        and config.telegram_enabled
+    )
+    return policy
+
+
+def determine_block_reason(args: argparse.Namespace, policy: Dict[str, Any]) -> Tuple[str, str | None]:
+    if not policy["base_policy_passed"]:
+        return str(policy["policy_status"]), policy.get("blocked_reason") or "policy validation failed"
+    if args.dry_run:
+        return "DRY_RUN", "dry-run requested"
+    if not args.send:
+        return "PREVIEW_ONLY", "send flag not passed; preview only"
+    if os.getenv(ALLOW_SEND_ENV) != "1":
+        return "BLOCKED_MANUAL_GATE", f"{ALLOW_SEND_ENV} not enabled"
+    if not config.telegram_enabled:
+        return "BLOCKED_TELEGRAM_CONFIG", "telegram not enabled"
+    if not config.telegram_bot_token:
+        return "BLOCKED_TELEGRAM_CONFIG", "telegram bot token missing"
+    if not config.telegram_chat_id:
+        return "BLOCKED_TELEGRAM_CONFIG", "telegram chat id missing"
+    return "READY_TO_SEND", None
+
+
 def build_result(
     *,
     args: argparse.Namespace,
     payload: Dict[str, Any],
-    safety_passed: bool,
+    policy: Dict[str, Any],
+    result_status: str,
     send_attempted: bool,
     send_success: bool,
     send_blocked_reason: str | None,
@@ -113,38 +346,29 @@ def build_result(
         "symbol": payload.get("symbol"),
         "preview_path": args.preview_path,
         "result_path": args.result_path,
-        "safety_passed": safety_passed,
+        "state_path": args.state_path,
+        "status": result_status,
+        "safety_passed": policy["safety_passed"],
+        "freshness_passed": policy["freshness_passed"],
+        "decision_policy_passed": policy["decision_policy_passed"],
+        "score_threshold_passed": policy["score_threshold_passed"],
+        "cooldown_passed": policy["cooldown_passed"],
+        "would_send": policy["would_send"],
+        "blocked_reason": send_blocked_reason,
+        "dedupe_key": policy["dedupe_key"],
+        "preview_age_minutes": policy["preview_age_minutes"],
+        "payload_sha256": policy["payload_sha256"],
+        "payload_sha256_matches": policy["payload_sha256_matches"],
         "send_requested": bool(args.send),
         "dry_run": bool(args.dry_run),
         "send_attempted": send_attempted,
         "send_success": send_success,
         "send_blocked_reason": send_blocked_reason,
         "telegram_enabled": bool(config.telegram_enabled),
+        "overlay_decision": payload.get("overlay_decision"),
+        "signal_score": payload.get("signal_score"),
         "payload_text": payload.get("payload_text"),
     }
-
-
-def determine_block_reason(
-    *,
-    args: argparse.Namespace,
-    safety_passed: bool,
-    safety_reason: str | None,
-) -> str | None:
-    if not safety_passed:
-        return safety_reason or "safety validation failed"
-    if args.dry_run:
-        return "dry-run requested"
-    if not args.send:
-        return "send flag not passed; preview only"
-    if os.getenv(ALLOW_SEND_ENV) != "1":
-        return f"{ALLOW_SEND_ENV} not enabled"
-    if not config.telegram_enabled:
-        return "telegram not enabled"
-    if not config.telegram_bot_token:
-        return "telegram bot token missing"
-    if not config.telegram_chat_id:
-        return "telegram chat id missing"
-    return None
 
 
 def main() -> int:
@@ -157,19 +381,12 @@ def main() -> int:
         safety_reason = read_error
         safety_passed = False
 
-    send_blocked_reason = determine_block_reason(
-        args=args,
-        safety_passed=safety_passed,
-        safety_reason=safety_reason,
-    )
+    policy = evaluate_policy(args, payload, safety_passed, safety_reason)
+    result_status, send_blocked_reason = determine_block_reason(args, policy)
     send_attempted = False
     send_success = False
 
-    if not safety_passed:
-        print("Overlay Telegram Send: BLOCKED — safety validation failed")
-    elif args.send and not args.dry_run and os.getenv(ALLOW_SEND_ENV) != "1":
-        print(f"Overlay Telegram Send: BLOCKED — {ALLOW_SEND_ENV} not enabled")
-    elif send_blocked_reason:
+    if result_status != "READY_TO_SEND":
         print(f"Overlay Telegram Send: BLOCKED — {send_blocked_reason}")
     else:
         send_attempted = True
@@ -179,18 +396,23 @@ def main() -> int:
             message=escape(str(payload.get("payload_text", ""))),
             timeout=config.request_timeout_seconds,
         )
+        if send_success:
+            result_status = "SENT"
+            record_successful_send(args.state_path, policy["state"], payload, policy["dedupe_key"], policy["payload_sha256"])
+        else:
+            result_status = "FAILED_SEND"
+            send_blocked_reason = "telegram send failed"
         print(
             "Overlay Telegram Send: SENT"
             if send_success
             else "Overlay Telegram Send: FAILED"
         )
-        if not send_success:
-            send_blocked_reason = "telegram send failed"
 
     result = build_result(
         args=args,
         payload=payload,
-        safety_passed=safety_passed,
+        policy=policy,
+        result_status=result_status,
         send_attempted=send_attempted,
         send_success=send_success,
         send_blocked_reason=send_blocked_reason,
