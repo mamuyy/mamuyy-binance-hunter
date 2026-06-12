@@ -99,6 +99,13 @@ def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
         "order_type": (args.order_type or "").upper() or None,
         "quantity": args.quantity,
         "price": args.price,
+        "reduce_only": bool(args.reduce_only),
+        "close_position_requested": bool(args.close_position),
+        "close_side": None,
+        "close_quantity": None,
+        "already_flat": False,
+        "position_before_amt": None,
+        "position_after_amt": None,
         "dry_run": bool(args.dry_run),
         "send_requested": bool(args.send),
         "order_test": bool(args.order_test),
@@ -176,10 +183,11 @@ def today_actual_order_count(path: str = ORDERS_PATH) -> int:
                 continue
             if (
                 str(item.get("generated_at", "")).startswith(today)
-                and item.get("mode") == "actual_order"
+                and item.get("mode") in {"actual_order", "actual_close_position"}
                 and item.get("order_success") is True
                 and item.get("order_test") is False
                 and item.get("dry_run") is False
+                and (item.get("mode") != "actual_close_position" or item.get("reduce_only") is True)
             ):
                 count += 1
     return count
@@ -223,6 +231,44 @@ def parse_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def format_quantity(value: float) -> str:
+    formatted = f"{value:.12f}".rstrip("0").rstrip(".")
+    return formatted or "0"
+
+
+def position_items(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
+def fetch_symbol_position(api: BinanceFuturesTestnetClient, symbol: str) -> Tuple[Optional[Dict[str, Any]], float]:
+    normalized_symbol = symbol.upper()
+    payload = api.get_position_risk(normalized_symbol)
+    for item in position_items(payload):
+        if str(item.get("symbol", "")).upper() == normalized_symbol:
+            return item, parse_float(item.get("positionAmt")) or 0.0
+    return None, 0.0
+
+
+def reducing_order_blocked_reason(side: str, quantity: Any, position_amt: float) -> Optional[str]:
+    quantity_float = parse_float(quantity)
+    if quantity_float is None or quantity_float <= 0:
+        return "reduce-only quantity must be greater than zero."
+    normalized_side = side.upper()
+    if position_amt == 0:
+        return "reduce-only order blocked because position is already flat."
+    if normalized_side == "SELL" and position_amt <= 0:
+        return "reduce-only SELL would not reduce the current position."
+    if normalized_side == "BUY" and position_amt >= 0:
+        return "reduce-only BUY would not reduce the current position."
+    if quantity_float > abs(position_amt):
+        return "reduce-only quantity exceeds current position size."
+    return None
 
 
 def estimate_notional(quantity: Any, price: Any) -> Optional[float]:
@@ -281,11 +327,12 @@ def notional_blocked_reason(result: Dict[str, Any]) -> Optional[str]:
 
 def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     payload = {
-        "symbol": args.symbol.upper(),
-        "side": args.side.upper(),
-        "order_type": args.order_type.upper(),
+        "symbol": args.symbol.upper() if args.symbol else None,
+        "side": args.side.upper() if args.side else None,
+        "order_type": args.order_type.upper() if args.order_type else None,
         "quantity": args.quantity,
         "price": args.price,
+        "reduce_only": bool(args.reduce_only),
     }
     if result is not None:
         payload.update(
@@ -300,6 +347,12 @@ def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = N
                 "daily_order_limit": result.get("daily_order_limit"),
                 "daily_limit_passed": result.get("daily_limit_passed"),
                 "daily_limit_reason": result.get("daily_limit_reason"),
+                "close_position_requested": result.get("close_position_requested"),
+                "close_side": result.get("close_side"),
+                "close_quantity": result.get("close_quantity"),
+                "already_flat": result.get("already_flat"),
+                "position_before_amt": result.get("position_before_amt"),
+                "position_after_amt": result.get("position_after_amt"),
             }
         )
     else:
@@ -393,6 +446,126 @@ def run_positions(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_close_position(args: argparse.Namespace) -> int:
+    args.reduce_only = True
+    args.order_type = "MARKET"
+    mode = "close_position" if args.dry_run or not args.send else "actual_close_position"
+    result = build_result(args, mode)
+    result["reduce_only"] = True
+    safe, reasons, base_url = config_safety()
+    result["base_url"] = base_url
+    result["endpoint_safety_passed"] = not any("base URL" in reason for reason in reasons)
+    result["safety_passed"] = safe
+    if not safe:
+        result["blocked_reason"] = "; ".join(reasons)
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+
+    if not args.symbol:
+        result["blocked_reason"] = "symbol is required for --close-position."
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+
+    api = client()
+    exchange_info = api.get_exchange_info()
+    symbol_ok, symbol_reason = validate_symbol(args.symbol, exchange_info)
+    result["symbol_filter_passed"] = symbol_ok
+    apply_daily_limit_status(result)
+    if not symbol_ok:
+        result["blocked_reason"] = symbol_reason
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(symbol_reason)
+        return 1
+
+    position, position_amt = fetch_symbol_position(api, args.symbol)
+    result["position_before_amt"] = format_quantity(position_amt)
+    result["binance_response_redacted"] = {"position_before": redact_binance_response(position)}
+
+    if position_amt == 0:
+        result["already_flat"] = True
+        result["blocked_reason"] = None
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print("already_flat")
+        return 0
+
+    close_side = "SELL" if position_amt > 0 else "BUY"
+    close_quantity = format_quantity(abs(position_amt))
+    args.side = close_side
+    args.quantity = close_quantity
+    args.price = None
+    result["side"] = close_side
+    result["quantity"] = close_quantity
+    result["order_type"] = "MARKET"
+    result["close_side"] = close_side
+    result["close_quantity"] = close_quantity
+    apply_notional_estimate(result, args, api)
+    result["binance_response_redacted"] = {
+        "position_before": redact_binance_response(position),
+        "estimate": order_payload(args, result),
+    }
+
+    if args.dry_run or not args.send:
+        result["blocked_reason"] = None
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print("dry_run_ok order_attempted=false")
+        print(json.dumps(order_payload(args, result), sort_keys=True))
+        return 0
+
+    blocked_reason = notional_blocked_reason(result)
+    if blocked_reason:
+        result["blocked_reason"] = blocked_reason
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+
+    if not env_bool("ALLOW_TESTNET_ORDER", False):
+        result["blocked_reason"] = "ALLOW_TESTNET_ORDER must be true for any send action."
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+
+    if not order_allowlist_passed(args.symbol):
+        result["blocked_reason"] = "Symbol is not in TESTNET_ORDER_ALLOWLIST."
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+    if not result["daily_limit_passed"]:
+        result["blocked_reason"] = result["daily_limit_reason"]
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+
+    result["order_attempted"] = True
+    try:
+        response = api.place_order(args.symbol, close_side, "MARKET", close_quantity, reduce_only=True)
+    except BinanceFuturesTestnetClientError as exc:
+        result["order_success"] = False
+        result["blocked_reason"] = str(exc)
+        write_json(RESULT_PATH, result)
+        append_jsonl(ORDERS_PATH, result)
+        print(result["blocked_reason"])
+        return 1
+    result["order_success"] = True
+    _, position_after_amt = fetch_symbol_position(api, args.symbol)
+    result["position_after_amt"] = format_quantity(position_after_amt)
+    result["binance_response_redacted"] = redact_binance_response(response)
+    write_json(RESULT_PATH, result)
+    append_jsonl(ORDERS_PATH, result)
+    print("close_position_sent_ok")
+    return 0
+
+
 def run_order_action(args: argparse.Namespace) -> int:
     mode = "dry_run" if args.dry_run or not args.send else "order_test" if args.order_test else "actual_order"
     result = build_result(args, mode)
@@ -433,6 +606,18 @@ def run_order_action(args: argparse.Namespace) -> int:
         print(symbol_reason)
         return 1
 
+    if args.reduce_only:
+        _, position_amt = fetch_symbol_position(api, args.symbol)
+        result["position_before_amt"] = format_quantity(position_amt)
+        blocked_reason = reducing_order_blocked_reason(args.side, args.quantity, position_amt)
+        if blocked_reason:
+            result["blocked_reason"] = blocked_reason
+            result["binance_response_redacted"] = {"estimate": order_payload(args, result)}
+            write_json(RESULT_PATH, result)
+            append_jsonl(ORDERS_PATH, result)
+            print(result["blocked_reason"])
+            return 1
+
     apply_notional_estimate(result, args, api)
     result["binance_response_redacted"] = {"estimate": order_payload(args, result)}
 
@@ -468,6 +653,7 @@ def run_order_action(args: argparse.Namespace) -> int:
             args.order_type,
             args.quantity,
             price=args.price,
+            reduce_only=args.reduce_only,
         )
         result["order_success"] = True
         result["binance_response_redacted"] = redact_binance_response(response)
@@ -489,8 +675,18 @@ def run_order_action(args: argparse.Namespace) -> int:
         print(result["blocked_reason"])
         return 1
     result["order_attempted"] = True
-    response = api.place_order(args.symbol, args.side, args.order_type, args.quantity, price=args.price)
+    response = api.place_order(
+        args.symbol,
+        args.side,
+        args.order_type,
+        args.quantity,
+        price=args.price,
+        reduce_only=args.reduce_only,
+    )
     result["order_success"] = True
+    if args.reduce_only:
+        _, position_after_amt = fetch_symbol_position(api, args.symbol)
+        result["position_after_amt"] = format_quantity(position_after_amt)
     result["binance_response_redacted"] = redact_binance_response(response)
     write_json(RESULT_PATH, result)
     append_jsonl(ORDERS_PATH, result)
@@ -511,6 +707,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--send", action="store_true")
     parser.add_argument("--order-test", action="store_true")
+    parser.add_argument("--reduce-only", action="store_true")
+    parser.add_argument("--close-position", action="store_true")
     parser.add_argument("--from-overlay", action="store_true")
     parser.add_argument("--auto-from-overlay", action="store_true")
     parser.add_argument("--allow-need-review", action="store_true")
@@ -527,6 +725,8 @@ def main() -> int:
             return run_account(args)
         if args.positions:
             return run_positions(args)
+        if args.close_position:
+            return run_close_position(args)
         return run_order_action(args)
     except BinanceFuturesTestnetClientError as exc:
         result = build_result(args, "error")
