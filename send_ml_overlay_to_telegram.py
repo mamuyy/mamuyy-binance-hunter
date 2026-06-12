@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
@@ -22,9 +23,9 @@ from telegram import send_telegram_message
 DEFAULT_PREVIEW_PATH = "logs/ml_signal_overlay_telegram_preview.json"
 DEFAULT_RESULT_PATH = "logs/ml_overlay_telegram_send_result.json"
 DEFAULT_STATE_PATH = "logs/ml_overlay_telegram_send_state.json"
+DEFAULT_OVERLAY_REPORT_PATH = "logs/ml_signal_overlay_v1_report.json"
 ALLOW_SEND_ENV = "ALLOW_OVERLAY_TELEGRAM_SEND"
 KILL_SWITCH_ENV = "OVERLAY_TELEGRAM_KILL_SWITCH"
-SEND_UNKNOWN_ENV = "OVERLAY_SEND_UNKNOWN"
 MIN_SCORE_ENV = "OVERLAY_MIN_SCORE"
 MAX_PREVIEW_AGE_MINUTES_ENV = "OVERLAY_MAX_PREVIEW_AGE_MINUTES"
 COOLDOWN_HOURS_ENV = "OVERLAY_COOLDOWN_HOURS"
@@ -35,6 +36,10 @@ REQUIRED_PAYLOAD_MARKERS = (
     "PAPER ONLY",
     "No broker API",
     "No live execution",
+)
+REQUIRED_PAYLOAD_MARKERS_CASE_INSENSITIVE = (
+    "no broker api",
+    "no live execution",
 )
 DEFAULT_DECISION_ALLOWLIST = {"WATCH / PAPER_ONLY"}
 OPTIONAL_UNKNOWN_DECISIONS = {"UNKNOWN / NEED_REVIEW"}
@@ -68,6 +73,11 @@ def parse_args() -> argparse.Namespace:
         "--state-path",
         default=DEFAULT_STATE_PATH,
         help=f"Path for manual-send dedupe/cooldown state (default: {DEFAULT_STATE_PATH}).",
+    )
+    parser.add_argument(
+        "--allow-need-review",
+        action="store_true",
+        help="Allow UNKNOWN / NEED_REVIEW advisory messages when all other real-send gates pass.",
     )
     return parser.parse_args()
 
@@ -133,6 +143,108 @@ def read_preview_payload(preview_path: str) -> Tuple[Dict[str, Any], str | None]
     return payload, None
 
 
+def read_overlay_report(preview_payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str | None, str]:
+    report_path = preview_payload.get("overlay_report_path") or DEFAULT_OVERLAY_REPORT_PATH
+    path = Path(str(report_path))
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            report = json.load(handle)
+    except FileNotFoundError:
+        return {}, "overlay_report_not_found", str(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        return {}, f"overlay_report_read_failed: {exc}", str(path)
+
+    if not isinstance(report, dict):
+        return {}, "overlay_report_not_object", str(path)
+    return report, None, str(path)
+
+
+def _first_present(payload: Dict[str, Any], keys: Tuple[str, ...]) -> Any:
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _extract_nested_report_value(overlay_report: Dict[str, Any], keys: Tuple[str, ...]) -> Any:
+    value = _first_present(overlay_report, keys)
+    if value not in (None, ""):
+        return value
+    for container_key in ("overlay", "result", "report", "signal", "telegram_preview"):
+        container = overlay_report.get(container_key)
+        if isinstance(container, dict):
+            value = _first_present(container, keys)
+            if value not in (None, ""):
+                return value
+    return None
+
+
+def _coerce_score(value: Any) -> float | int | None:
+    score = _safe_float(value)
+    if score is None:
+        return None
+    return int(score) if score.is_integer() else score
+
+
+def extract_signal_score(
+    preview_payload: Dict[str, Any],
+    overlay_report: Dict[str, Any],
+    payload_text: Any,
+) -> Tuple[float | int | None, str | None]:
+    preview_value = _coerce_score(preview_payload.get("signal_score"))
+    if preview_value is not None:
+        return preview_value, "preview_payload.signal_score"
+
+    report_value = _coerce_score(_extract_nested_report_value(overlay_report, ("signal_score", "score")))
+    if report_value is not None:
+        return report_value, "overlay_report.signal_score"
+
+    if isinstance(payload_text, str):
+        match = re.search(r"^\s*Signal\s+Score\s*:\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\b", payload_text, re.IGNORECASE | re.MULTILINE)
+        if match:
+            text_value = _coerce_score(match.group(1))
+            if text_value is not None:
+                return text_value, "payload_text.signal_score"
+    return None, None
+
+
+def extract_overlay_decision(
+    preview_payload: Dict[str, Any],
+    overlay_report: Dict[str, Any],
+    payload_text: Any,
+) -> Tuple[str | None, str | None]:
+    preview_value = preview_payload.get("overlay_decision")
+    if isinstance(preview_value, str) and preview_value.strip():
+        return preview_value.strip().upper(), "preview_payload.overlay_decision"
+
+    report_value = _extract_nested_report_value(overlay_report, ("overlay_decision", "decision"))
+    if isinstance(report_value, str) and report_value.strip():
+        return report_value.strip().upper(), "overlay_report.overlay_decision"
+
+    if isinstance(payload_text, str):
+        match = re.search(r"^\s*Overlay\s+Decision\s*:\s*(.*?)\s*$", payload_text, re.IGNORECASE | re.MULTILINE)
+        if match and match.group(1).strip():
+            return match.group(1).strip().upper(), "payload_text.overlay_decision"
+    return None, None
+
+
+def enrich_payload_from_fallbacks(payload: Dict[str, Any]) -> Tuple[Dict[str, Any], str | None]:
+    overlay_report, overlay_report_error, overlay_report_path = read_overlay_report(payload)
+    payload_text = payload.get("payload_text")
+    overlay_decision, overlay_decision_source = extract_overlay_decision(payload, overlay_report, payload_text)
+    signal_score, signal_score_source = extract_signal_score(payload, overlay_report, payload_text)
+
+    enriched = dict(payload)
+    enriched["overlay_report_path"] = payload.get("overlay_report_path") or overlay_report_path
+    enriched["overlay_report_read_error"] = overlay_report_error
+    enriched["overlay_decision"] = overlay_decision
+    enriched["signal_score"] = signal_score
+    enriched["extraction_source_overlay_decision"] = overlay_decision_source
+    enriched["extraction_source_signal_score"] = signal_score_source
+    return enriched, overlay_report_error
+
+
 def validate_safety(payload: Dict[str, Any]) -> Tuple[bool, str | None]:
     payload_text = payload.get("payload_text")
     checks = {
@@ -143,8 +255,11 @@ def validate_safety(payload: Dict[str, Any]) -> Tuple[bool, str | None]:
     }
 
     if isinstance(payload_text, str):
+        payload_text_lower = payload_text.lower()
         for marker in REQUIRED_PAYLOAD_MARKERS:
             checks[f'payload_text missing "{marker}"'] = marker in payload_text
+        for marker in REQUIRED_PAYLOAD_MARKERS_CASE_INSENSITIVE:
+            checks[f'payload_text missing "{marker}"'] = marker in payload_text_lower
 
     failed = [reason for reason, passed in checks.items() if not passed]
     if failed:
@@ -167,10 +282,10 @@ def evaluate_decision_policy(payload: Dict[str, Any], args: argparse.Namespace) 
     decision = str(payload.get("overlay_decision") or "").strip().upper()
     if decision in DEFAULT_DECISION_ALLOWLIST:
         return True, None
-    if decision in OPTIONAL_UNKNOWN_DECISIONS and os.getenv(SEND_UNKNOWN_ENV) == "1" and args.send:
-        return True, f"{SEND_UNKNOWN_ENV}=1 allowed manual UNKNOWN advisory"
+    if decision in OPTIONAL_UNKNOWN_DECISIONS and args.allow_need_review and args.send:
+        return True, "--allow-need-review allowed manual UNKNOWN / NEED_REVIEW advisory"
     if not decision:
-        return False, "overlay_decision missing"
+        return False, "overlay_decision missing after preview/report/text fallback"
     return False, f"overlay_decision {decision!r} is not in real-send allowlist"
 
 
@@ -178,7 +293,7 @@ def evaluate_score_threshold(payload: Dict[str, Any]) -> Tuple[bool, str | None]
     score = _safe_float(payload.get("signal_score"))
     min_score = _env_float(MIN_SCORE_ENV, DEFAULT_MIN_SCORE)
     if score is None:
-        return False, "signal_score missing or invalid"
+        return False, "signal_score missing after preview/report/text fallback"
     if score < min_score:
         return False, f"signal_score {score:.2f} below minimum {min_score:.2f}"
     return True, None
@@ -314,14 +429,14 @@ def evaluate_policy(args: argparse.Namespace, payload: Dict[str, Any], safety_pa
 
 
 def determine_block_reason(args: argparse.Namespace, policy: Dict[str, Any]) -> Tuple[str, str | None]:
-    if not policy["base_policy_passed"]:
-        return str(policy["policy_status"]), policy.get("blocked_reason") or "policy validation failed"
-    if args.dry_run:
-        return "DRY_RUN", "dry-run requested"
     if not args.send:
         return "PREVIEW_ONLY", "send flag not passed; preview only"
+    if args.dry_run:
+        return "DRY_RUN", "dry-run enabled"
     if os.getenv(ALLOW_SEND_ENV) != "1":
         return "BLOCKED_MANUAL_GATE", f"{ALLOW_SEND_ENV} not enabled"
+    if not policy["base_policy_passed"]:
+        return str(policy["policy_status"]), policy.get("blocked_reason") or "policy validation failed"
     if not config.telegram_enabled:
         return "BLOCKED_TELEGRAM_CONFIG", "telegram not enabled"
     if not config.telegram_bot_token:
@@ -347,6 +462,8 @@ def build_result(
         "preview_path": args.preview_path,
         "result_path": args.result_path,
         "state_path": args.state_path,
+        "overlay_report_path": payload.get("overlay_report_path"),
+        "overlay_report_read_error": payload.get("overlay_report_read_error"),
         "status": result_status,
         "safety_passed": policy["safety_passed"],
         "freshness_passed": policy["freshness_passed"],
@@ -367,6 +484,8 @@ def build_result(
         "telegram_enabled": bool(config.telegram_enabled),
         "overlay_decision": payload.get("overlay_decision"),
         "signal_score": payload.get("signal_score"),
+        "extraction_source_overlay_decision": payload.get("extraction_source_overlay_decision"),
+        "extraction_source_signal_score": payload.get("extraction_source_signal_score"),
         "payload_text": payload.get("payload_text"),
     }
 
@@ -374,6 +493,7 @@ def build_result(
 def main() -> int:
     args = parse_args()
     payload, read_error = read_preview_payload(args.preview_path)
+    payload, _overlay_report_error = enrich_payload_from_fallbacks(payload)
     safety_passed, safety_reason = validate_safety(payload)
     if read_error and safety_reason:
         safety_reason = f"{read_error}; {safety_reason}"
@@ -386,7 +506,9 @@ def main() -> int:
     send_attempted = False
     send_success = False
 
-    if result_status != "READY_TO_SEND":
+    if result_status == "PREVIEW_ONLY":
+        print("Overlay Telegram Send: PREVIEW ONLY")
+    elif result_status != "READY_TO_SEND":
         print(f"Overlay Telegram Send: BLOCKED — {send_blocked_reason}")
     else:
         send_attempted = True
