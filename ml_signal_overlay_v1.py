@@ -1,4 +1,4 @@
-"""ML Signal Overlay V1.1 for PAPER_ONLY Telegram advisory previews.
+"""ML Signal Overlay V1.2 for PAPER_ONLY Telegram advisory previews.
 
 This module is intentionally read-only for Hunter runtime inputs. It inspects the
 latest signal candidate (or a requested symbol), enriches it with available
@@ -46,7 +46,7 @@ TIMESTAMP_COLUMNS = (
 )
 SIGNAL_TABLES = ("signals", "internal_paper_trades", "shadow_trades", "paper_trades")
 SIGNAL_FILE_PATTERNS = ("signal", "paper_trades")
-RANKING_FILE_PATTERNS = ("trade_quality_ranking", "quality_ranking", "ranking", "rank")
+RANKING_FILE_PATTERNS = ("trade_quality_ranking", "trade_quality", "quality_ranking", "ranking", "rank")
 ALLOCATION_FILE_PATTERNS = (
     "portfolio_allocation",
     "allocation_v2",
@@ -83,6 +83,8 @@ ALLOCATION_COLUMNS = (
     "target_weight",
     "target_weight_pct",
     "max_weight_pct",
+    "capital_pct_v2",
+    "capital_pct",
 )
 ELIGIBLE_COLUMNS = ("eligible", "portfolio_eligible", "is_eligible")
 EV_COLUMNS = (
@@ -153,6 +155,24 @@ def _rank_from_score(score: Optional[float]) -> str:
 
 def _rank_is_bplus_or_better(rank: str) -> bool:
     return _normalize_rank(rank) in {"A+", "A", "A-", "B+"}
+
+
+def _rank_from_position_multiplier(position_multiplier: Optional[float]) -> str:
+    if position_multiplier is None or position_multiplier <= 0:
+        return "UNKNOWN"
+    if position_multiplier >= 1.50:
+        return "A+"
+    if position_multiplier >= 1.25:
+        return "A"
+    if position_multiplier >= 1.10:
+        return "A-"
+    if position_multiplier >= 1.00:
+        return "B+"
+    if position_multiplier >= 0.75:
+        return "B"
+    if position_multiplier >= 0.50:
+        return "C"
+    return "UNKNOWN"
 
 
 def _format_pct(value: Optional[float], signed: bool = False) -> str:
@@ -273,6 +293,120 @@ def _discover_files(patterns: Sequence[str]) -> List[str]:
     return found
 
 
+def _path_text(path: Path) -> str:
+    text = str(path)
+    if path.is_absolute():
+        try:
+            return str(path.relative_to(Path.cwd()))
+        except ValueError:
+            return text
+    return text.lstrip("./")
+
+
+def _existing_file(path: str) -> Optional[str]:
+    candidate = Path(path)
+    if candidate.exists() and candidate.is_file():
+        return _path_text(candidate)
+    return None
+
+
+def _newest_matching_file(pattern: str) -> Optional[str]:
+    candidates = [path for path in Path(".").glob(pattern) if path.is_file()]
+    if not candidates:
+        return None
+    return _path_text(sorted(candidates, key=lambda item: (item.name, item.stat().st_mtime))[-1])
+
+
+def _json_output_csv(path: str) -> Optional[str]:
+    payload = _read_json(path)
+    if not isinstance(payload, dict):
+        return None
+    output_csv = payload.get("output_csv")
+    if not output_csv:
+        return None
+    candidate = Path(str(output_csv))
+    candidates = [candidate] if candidate.is_absolute() else [candidate, Path(path).parent / candidate]
+    for option in candidates:
+        if option.exists() and option.is_file():
+            return _path_text(option)
+    return None
+
+
+def _newest_json_output_csv(pattern: str) -> Optional[str]:
+    reports = [path for path in Path(".").glob(pattern) if path.is_file()]
+    for report in sorted(reports, key=lambda item: (item.name, item.stat().st_mtime), reverse=True):
+        output_csv = _json_output_csv(_path_text(report))
+        if output_csv:
+            return output_csv
+    return None
+
+
+def _dedupe_paths(paths: Iterable[Optional[str]]) -> List[str]:
+    selected: List[str] = []
+    seen = set()
+    for path in paths:
+        if not path:
+            continue
+        text = str(path).lstrip("./")
+        if text in EXCLUDED_SOURCE_FILES or text in seen:
+            continue
+        seen.add(text)
+        selected.append(text)
+    return selected
+
+
+def _allocation_priority_paths() -> List[str]:
+    return _dedupe_paths(
+        [
+            _existing_file("data/ml_portfolio_allocation_v2_20260610.csv")
+            or _newest_matching_file("data/ml_portfolio_allocation_v2_*.csv"),
+            _newest_matching_file("data/ml_calibration_with_portfolio_allocation_*.csv"),
+            _newest_json_output_csv("logs/phase4e_portfolio_allocation_v2_report_*.json"),
+            _newest_json_output_csv("logs/phase4d_portfolio_allocation_engine_report_*.json"),
+            _existing_file("logs/opportunity_allocation.csv"),
+        ]
+    )
+
+
+def _ranking_priority_paths() -> List[str]:
+    return _dedupe_paths(
+        [
+            _newest_matching_file("data/ml_calibration_with_trade_quality_*.csv"),
+            _newest_json_output_csv("logs/phase4b_trade_quality_ranking_engine_report_*.json"),
+        ]
+    )
+
+
+def _phase4b_rank_summary_source() -> Optional[str]:
+    reports = [path for path in Path(".").glob("logs/phase4b_trade_quality_ranking_engine_report_*.json") if path.is_file()]
+    if not reports:
+        return None
+    return _path_text(sorted(reports, key=lambda item: (item.name, item.stat().st_mtime))[-1])
+
+
+def _health_priority_paths() -> List[str]:
+    return _dedupe_paths(
+        [
+            _newest_matching_file("reports/portfolio_risk_budget.json"),
+            _newest_matching_file("reports/paper_portfolio.json"),
+            _newest_matching_file("reports/phase3_readiness.json"),
+            *_discover_files(HEALTH_FILE_PATTERNS),
+        ]
+    )
+
+
+def selected_canonical_sources() -> Dict[str, str]:
+    allocation_paths = _allocation_priority_paths()
+    ranking_paths = _ranking_priority_paths()
+    health_paths = _health_priority_paths()
+    fallback_ranking = _phase4b_rank_summary_source()
+    return {
+        "allocation": allocation_paths[0] if allocation_paths else "none",
+        "ranking": ranking_paths[0] if ranking_paths else fallback_ranking or "none",
+        "health": health_paths[0] if health_paths else "none",
+    }
+
+
 def _extract_records(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
@@ -283,6 +417,7 @@ def _extract_records(payload: Any) -> List[Dict[str, Any]]:
         "allocation",
         "rankings",
         "ranking",
+        "rank_summary",
         "candidates",
         "rows",
         "data",
@@ -411,6 +546,7 @@ def discover_sources(db_path: str = DB_PATH) -> Dict[str, Any]:
     ranking_files = _discover_files(RANKING_FILE_PATTERNS)
     allocation_files = _discover_files(ALLOCATION_FILE_PATTERNS)
     health_files = _discover_files(HEALTH_FILE_PATTERNS)
+    selected = selected_canonical_sources()
     return {
         "database_path": database_path,
         "signal_tables": signal_tables,
@@ -418,13 +554,20 @@ def discover_sources(db_path: str = DB_PATH) -> Dict[str, Any]:
         "trade_ranking_files": [_source_diagnostic(path) for path in ranking_files],
         "portfolio_allocation_files": [_source_diagnostic(path) for path in allocation_files],
         "portfolio_health_files": [_source_diagnostic(path) for path in health_files],
+        "selected_allocation_source": selected["allocation"],
+        "selected_ranking_source": selected["ranking"],
+        "selected_health_source": selected["health"],
     }
 
 
 def print_source_listing(db_path: str = DB_PATH) -> None:
     diagnostics = discover_sources(db_path)
-    print("ML Signal Overlay V1.1 source diagnostics")
+    print("ML Signal Overlay V1.2 source diagnostics")
     print(f"Detected database path: {diagnostics['database_path'] or 'none'}")
+    print("\nSelected canonical sources:")
+    print(f"  - allocation: {diagnostics['selected_allocation_source']}")
+    print(f"  - ranking: {diagnostics['selected_ranking_source']}")
+    print(f"  - health: {diagnostics['selected_health_source']}")
     print("\nDetected signal tables:")
     _print_items(diagnostics["signal_tables"], label_key="table")
     print("\nDetected signal files:")
@@ -507,10 +650,21 @@ def load_signal_candidate(symbol: str = "", db_path: str = DB_PATH) -> Tuple[Dic
     return {"symbol": fallback_symbol, "direction": "UNKNOWN", "score": None}, {**db_meta, "source": "fallback:no_signal_found"}
 
 
+def _source_kind(path: str) -> str:
+    suffix = Path(path).suffix.lower().lstrip(".") or "file"
+    return f"{suffix}:{path}"
+
+
+def _records_conflict(records: Sequence[Dict[str, Any]]) -> bool:
+    if len(records) <= 1:
+        return False
+    canonical = [json.dumps(record, sort_keys=True, default=str) for record in records]
+    return len(set(canonical)) > 1
+
+
 def _find_symbol_record(symbol: str, paths: Sequence[str]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     target = _normalize_symbol(symbol)
     searched: List[str] = []
-    source_hits: List[Tuple[str, Dict[str, Any], List[str]]] = []
     for path in paths:
         searched.append(path)
         matches: List[Dict[str, Any]] = []
@@ -520,55 +674,97 @@ def _find_symbol_record(symbol: str, paths: Sequence[str]) -> Tuple[Dict[str, An
             if _normalize_symbol(raw_symbol) == target:
                 matches.append(row)
                 raw_symbols.append(str(raw_symbol))
-        if len(matches) > 1:
+        if len(matches) > 1 and _records_conflict(matches):
             distinct = sorted(set(raw_symbols))
             return {}, {
                 "source": f"ambiguous:{path}",
                 "found": False,
                 "searched": searched,
+                "selected_source": path,
                 "match_status": "AMBIGUOUS",
-                "match_reason": f"multiple rows matched normalized symbol {target}: {distinct}",
+                "match_reason": f"multiple conflicting rows matched normalized symbol {target}: {distinct}",
             }
-        if len(matches) == 1:
-            source_hits.append((path, matches[0], raw_symbols))
-    if len(source_hits) > 1:
-        distinct_sources = [hit[0] for hit in source_hits]
-        return {}, {
-            "source": "ambiguous:multiple_sources",
-            "found": False,
-            "searched": searched,
-            "match_status": "AMBIGUOUS",
-            "match_reason": f"multiple sources matched normalized symbol {target}: {distinct_sources}",
-        }
-    if len(source_hits) == 1:
-        path, row, raw_symbols = source_hits[0]
-        return row, {
-            "source": f"{Path(path).suffix.lower().lstrip('.') or 'file'}:{path}",
-            "found": True,
-            "searched": searched,
-            "match_status": "MATCHED",
-            "match_reason": f"matched normalized symbol {target} from raw symbol {raw_symbols[0] if raw_symbols else target}",
-        }
+        if matches:
+            return matches[-1], {
+                "source": _source_kind(path),
+                "found": True,
+                "searched": searched,
+                "selected_source": path,
+                "match_status": "MATCHED",
+                "match_reason": f"matched normalized symbol {target} from raw symbol {raw_symbols[-1] if raw_symbols else target}",
+            }
     return {}, {
         "source": "none",
         "found": False,
         "searched": searched,
+        "selected_source": paths[0] if paths else "none",
         "match_status": "NOT_FOUND",
         "match_reason": f"no source row matched normalized symbol {target}",
     }
 
 
+def _phase4b_rank_summary_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    target = _normalize_symbol(symbol)
+    searched: List[str] = []
+    reports = sorted(Path(".").glob("logs/phase4b_trade_quality_ranking_engine_report_*.json"), key=lambda item: (item.name, item.stat().st_mtime), reverse=True)
+    for report in reports:
+        path = _path_text(report)
+        searched.append(path)
+        payload = _read_json(path)
+        if not isinstance(payload, dict):
+            continue
+        summary = payload.get("rank_summary")
+        if not isinstance(summary, dict):
+            continue
+        value = summary.get(target) or summary.get(symbol)
+        if isinstance(value, dict):
+            return {"symbol": target, **value}, {
+                "source": f"json_rank_summary:{path}",
+                "found": True,
+                "searched": searched,
+                "selected_source": path,
+                "match_status": "MATCHED",
+                "match_reason": f"matched normalized symbol {target} in phase4b rank_summary fallback",
+            }
+        if value not in (None, ""):
+            return {"symbol": target, "rank": value}, {
+                "source": f"json_rank_summary:{path}",
+                "found": True,
+                "searched": searched,
+                "selected_source": path,
+                "match_status": "MATCHED",
+                "match_reason": f"matched normalized symbol {target} in phase4b rank_summary fallback",
+            }
+    return {}, {
+        "source": "none",
+        "found": False,
+        "searched": searched,
+        "selected_source": reports[0].as_posix() if reports else "none",
+        "match_status": "NOT_FOUND",
+        "match_reason": f"no phase4b rank_summary entry matched normalized symbol {target}",
+    }
+
+
 def load_ranking_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    return _find_symbol_record(symbol, _discover_files(RANKING_FILE_PATTERNS))
+    priority_paths = _ranking_priority_paths()
+    record, meta = _find_symbol_record(symbol, priority_paths)
+    if record or meta.get("match_status") == "AMBIGUOUS":
+        return record, meta
+    fallback_record, fallback_meta = _phase4b_rank_summary_record(symbol)
+    if fallback_record or fallback_meta.get("match_status") == "AMBIGUOUS":
+        fallback_meta["searched"] = meta.get("searched", []) + fallback_meta.get("searched", [])
+        return fallback_record, fallback_meta
+    fallback_meta["searched"] = meta.get("searched", []) + fallback_meta.get("searched", [])
+    return {}, fallback_meta
 
 
 def load_allocation_record(symbol: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    return _find_symbol_record(symbol, _discover_files(ALLOCATION_FILE_PATTERNS))
+    return _find_symbol_record(symbol, _allocation_priority_paths())
 
 
 def load_portfolio_health() -> Tuple[str, Dict[str, Any]]:
     searched: List[str] = []
-    for path in _discover_files(HEALTH_FILE_PATTERNS):
+    for path in _health_priority_paths():
         searched.append(path)
         payload = _read_json(path) if Path(path).suffix.lower() == ".json" else None
         if not isinstance(payload, dict):
@@ -577,24 +773,24 @@ def load_portfolio_health() -> Tuple[str, Dict[str, Any]]:
         if explicit:
             text = str(explicit).upper()
             if text in {"GREEN", "YELLOW", "RED"}:
-                return text, {"source": path, "raw": explicit, "searched": searched, "match_status": "MATCHED"}
+                return text, {"source": path, "selected_source": path, "raw": explicit, "searched": searched, "match_status": "MATCHED"}
         recommendation = str(payload.get("recommendation") or "").upper()
         if recommendation:
             if recommendation in {"NORMAL", "OK", "ALLOW"}:
-                return "GREEN", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
+                return "GREEN", {"source": path, "selected_source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
             if recommendation in {"DEFENSIVE", "CAUTION", "WATCH"}:
-                return "YELLOW", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
+                return "YELLOW", {"source": path, "selected_source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
             if recommendation in {"FREEZE", "HALT", "BLOCK", "AVOID"}:
-                return "RED", {"source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
+                return "RED", {"source": path, "selected_source": path, "raw": recommendation, "searched": searched, "match_status": "MATCHED"}
         heat = str(payload.get("portfolio_heat") or payload.get("concentration_label") or "").upper()
         if heat:
             if heat == "LOW":
-                return "GREEN", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
+                return "GREEN", {"source": path, "selected_source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
             if heat == "MEDIUM":
-                return "YELLOW", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
+                return "YELLOW", {"source": path, "selected_source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
             if heat == "HIGH":
-                return "RED", {"source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
-    return "UNKNOWN", {"source": "none", "raw": "UNKNOWN", "searched": searched, "match_status": "NOT_FOUND"}
+                return "RED", {"source": path, "selected_source": path, "raw": heat, "searched": searched, "match_status": "MATCHED"}
+    return "UNKNOWN", {"source": "none", "selected_source": searched[0] if searched else "none", "raw": "UNKNOWN", "searched": searched, "match_status": "NOT_FOUND"}
 
 
 def _expected_value_from_record(record: Dict[str, Any]) -> Optional[float]:
@@ -613,6 +809,10 @@ def _allocation_from_record(record: Dict[str, Any]) -> Optional[float]:
     if allocation is not None and 0 < allocation <= 1:
         return allocation * 100
     return allocation
+
+
+def _allocation_score_from_record(record: Dict[str, Any]) -> Optional[float]:
+    return _safe_float(_pick_first(record, ["allocation_score_v2", "allocation_score"]))
 
 
 def _eligible_from_record(record: Dict[str, Any], allocation: Optional[float]) -> bool:
@@ -634,9 +834,12 @@ def build_overlay(
     if not rank:
         rank = _normalize_rank(_pick_first(allocation_record, RANK_COLUMNS))
     if not rank:
+        rank = _rank_from_position_multiplier(_safe_float(_pick_first(ranking_record, ["position_multiplier"])))
+    if not rank or rank == "UNKNOWN":
         rank = _rank_from_score(_safe_float(_pick_first(ranking_record or allocation_record, ["opportunity_score", "quality_score", "score"])))
     ev = _expected_value_from_record(ranking_record) if ranking_record else _expected_value_from_record(allocation_record) if allocation_record else None
     allocation = _allocation_from_record(allocation_record) if allocation_record else None
+    allocation_score = _allocation_score_from_record(allocation_record) if allocation_record else None
     tier = str(_pick_first(allocation_record, ["allocation_tier", "tier", "eligibility"], "")).upper()
     risk_source = allocation_record or ranking_record
     risk_score = _safe_float(_pick_first(risk_source, ["risk_score"]))
@@ -670,6 +873,7 @@ def build_overlay(
         "expected_value": ev,
         "portfolio_eligible": "YES" if eligible_bool else "NO",
         "suggested_allocation_pct": allocation,
+        "allocation_score": allocation_score,
         "suggested_risk_level": suggested_risk,
         "portfolio_health": portfolio_health,
         "overlay_decision": decision,
@@ -747,6 +951,9 @@ def run(symbol: str = "", dry_run: bool = False, db_path: str = DB_PATH, output_
         "ranking_files_detected": _artifact_paths(diagnostics, "trade_ranking_files"),
         "allocation_files_detected": _artifact_paths(diagnostics, "portfolio_allocation_files"),
         "health_files_detected": _artifact_paths(diagnostics, "portfolio_health_files"),
+        "selected_allocation_source": diagnostics.get("selected_allocation_source", allocation_meta.get("selected_source", "none")),
+        "selected_ranking_source": diagnostics.get("selected_ranking_source", ranking_meta.get("selected_source", "none")),
+        "selected_health_source": diagnostics.get("selected_health_source", health_meta.get("selected_source", "none")),
         "ranking_match_source": ranking_meta.get("source", "none"),
         "allocation_match_source": allocation_meta.get("source", "none"),
         "health_match_source": health_meta.get("source", "none"),
