@@ -18,6 +18,7 @@ ORDERS_PATH = "logs/binance_testnet_orders.jsonl"
 STATUS_PATH = "reports/binance_testnet_status.json"
 DEFAULT_DAILY_ORDER_LIMIT = 1
 DEFAULT_MAX_NOTIONAL = 25.0
+DEFAULT_MIN_NOTIONAL = 20.0
 
 
 def utc_now() -> str:
@@ -121,7 +122,11 @@ def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
         "estimated_price": None,
         "estimated_price_source": None,
         "estimated_notional_usdt": None,
+        "min_notional_usdt": env_float("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL),
         "max_notional_usdt": env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL),
+        "minimum_notional_passed": False,
+        "maximum_notional_passed": False,
+        "notional_policy_passed": False,
         "notional_limit_passed": False,
         "blocked_reason": None,
         "binance_response_redacted": None,
@@ -309,18 +314,28 @@ def estimate_order_notional(
 
 def apply_notional_estimate(result: Dict[str, Any], args: argparse.Namespace, api: BinanceFuturesTestnetClient) -> None:
     estimated_price, estimated_price_source, estimated_notional = estimate_order_notional(api, args)
+    min_notional = env_float("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL)
     max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
+    minimum_passed = estimated_notional is not None and estimated_notional >= min_notional
+    maximum_passed = estimated_notional is not None and estimated_notional <= max_notional
+    policy_passed = minimum_passed and maximum_passed
     result["estimated_price"] = estimated_price
     result["estimated_price_source"] = estimated_price_source
     result["estimated_notional_usdt"] = estimated_notional
+    result["min_notional_usdt"] = min_notional
     result["max_notional_usdt"] = max_notional
-    result["notional_limit_passed"] = estimated_notional is not None and estimated_notional <= max_notional
+    result["minimum_notional_passed"] = minimum_passed
+    result["maximum_notional_passed"] = maximum_passed
+    result["notional_policy_passed"] = policy_passed
+    result["notional_limit_passed"] = policy_passed
 
 
 def notional_blocked_reason(result: Dict[str, Any]) -> Optional[str]:
     if result.get("estimated_notional_usdt") is None:
         return "notional estimate missing"
-    if not result.get("notional_limit_passed"):
+    if not result.get("minimum_notional_passed"):
+        return "notional below TESTNET_MIN_NOTIONAL_USDT"
+    if not result.get("maximum_notional_passed"):
         return "notional exceeds TESTNET_MAX_NOTIONAL_USDT"
     return None
 
@@ -340,7 +355,11 @@ def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = N
                 "estimated_price": result.get("estimated_price"),
                 "estimated_price_source": result.get("estimated_price_source"),
                 "estimated_notional_usdt": result.get("estimated_notional_usdt"),
+                "min_notional_usdt": result.get("min_notional_usdt"),
                 "max_notional_usdt": result.get("max_notional_usdt"),
+                "minimum_notional_passed": result.get("minimum_notional_passed"),
+                "maximum_notional_passed": result.get("maximum_notional_passed"),
+                "notional_policy_passed": result.get("notional_policy_passed"),
                 "notional_limit_passed": result.get("notional_limit_passed"),
                 "blocked_reason": result.get("blocked_reason"),
                 "daily_actual_order_count": result.get("daily_actual_order_count"),

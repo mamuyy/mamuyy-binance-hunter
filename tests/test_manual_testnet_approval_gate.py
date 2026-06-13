@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import manual_testnet_approval_gate as gate
+import binance_testnet_executor as executor
 
 
 BASE_BRIDGE = {
@@ -30,6 +31,58 @@ BASE_BRIDGE = {
     "suggested_risk": "NORMAL",
     "overlay_report_path": "tests/fixtures/manual_approval_pass_ethusdt_long.json",
 }
+
+
+EXCHANGE_INFO = {
+    "symbols": [
+        {
+            "symbol": "ETHUSDT",
+            "status": "TRADING",
+            "quantityPrecision": 3,
+            "filters": [
+                {"filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001"},
+                {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001"},
+            ],
+        }
+    ]
+}
+
+
+class FakeClient:
+    def __init__(self, mark_price="1664.45", exchange_info=None, fail_mark=False, fail_exchange=False):
+        self.mark_price = mark_price
+        self.exchange_info = exchange_info if exchange_info is not None else copy.deepcopy(EXCHANGE_INFO)
+        self.fail_mark = fail_mark
+        self.fail_exchange = fail_exchange
+
+    def get_mark_price(self, symbol):
+        if self.fail_mark:
+            raise gate.BinanceFuturesTestnetClientError("mark failed")
+        return self.mark_price
+
+    def get_exchange_info(self):
+        if self.fail_exchange:
+            raise gate.BinanceFuturesTestnetClientError("exchange failed")
+        return self.exchange_info
+
+
+class FakeExecutorClient:
+    base_url = gate.DEMO_FUTURES_BASE_URL
+
+    def get_exchange_info(self):
+        return copy.deepcopy(EXCHANGE_INFO)
+
+    def get_mark_price(self, symbol):
+        return "1664.45"
+
+    def get_ticker_price(self, symbol):
+        return "1664.45"
+
+    def place_test_order(self, *args, **kwargs):
+        raise AssertionError("dry-run must not call order-test")
+
+    def place_order(self, *args, **kwargs):
+        raise AssertionError("dry-run must not call actual order")
 
 
 class ManualApprovalGateTest(unittest.TestCase):
@@ -63,8 +116,11 @@ class ManualApprovalGateTest(unittest.TestCase):
             HALT_FILE_PATH=str(self.root / "runtime" / "TESTNET_EXECUTION_HALT"),
         )
         self.paths.start()
+        self.client_patch = mock.patch.object(gate, "live_client", return_value=FakeClient())
+        self.client_patch.start()
 
     def tearDown(self):
+        self.client_patch.stop()
         self.paths.stop()
         self.env.stop()
         self.tmp.cleanup()
@@ -87,18 +143,13 @@ class ManualApprovalGateTest(unittest.TestCase):
             send=True,
         )
 
-    def test_prepare_blocks_below_minimum_before_executor_is_relevant(self):
-        self.write_bridge(quantity="0.002", estimated_notional_usdt=5.0)
+    def test_quantity_below_minimum_policy_fails(self):
+        notional_policy = gate.notional_policy_fields(14.98)
 
-        rc = gate.prepare()
-        result = self.read_result()
-
-        self.assertEqual(rc, 1)
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertFalse(result["order_attempted"])
-        self.assertFalse(Path(gate.REQUEST_PATH).exists())
-        self.assertFalse(result["minimum_notional_passed"])
-        self.assertIn(gate.MIN_NOTIONAL_BLOCKED_REASON, result["blocked_reason"])
+        self.assertFalse(notional_policy["minimum_notional_passed"])
+        self.assertTrue(notional_policy["maximum_notional_passed"])
+        self.assertFalse(notional_policy["notional_policy_passed"])
+        self.assertIn(gate.MIN_NOTIONAL_BLOCKED_REASON, notional_policy["notional_policy_reason"])
 
     def test_prepare_positive_fixture_generates_approvable_request(self):
         self.write_bridge()
@@ -112,9 +163,11 @@ class ManualApprovalGateTest(unittest.TestCase):
         self.assertTrue(result["minimum_notional_passed"])
         self.assertTrue(result["maximum_notional_passed"])
         self.assertTrue(result["notional_policy_passed"])
-        self.assertGreaterEqual(result["estimated_notional_usdt"], result["min_notional_usdt"])
-        self.assertLessEqual(result["estimated_notional_usdt"], result["max_notional_usdt"])
-        self.assertEqual(request["approval_payload"]["quantity"], "0.009")
+        self.assertGreaterEqual(float(result["estimated_notional_usdt"]), float(result["min_notional_usdt"]))
+        self.assertLessEqual(float(result["estimated_notional_usdt"]), float(result["max_notional_usdt"]))
+        self.assertEqual(request["approval_payload"]["source_bridge_quantity"], "0.009")
+        self.assertNotEqual(request["approval_payload"]["approved_quantity"], "0.009")
+        self.assertEqual(request["approval_payload"]["approved_quantity"], "0.014")
 
     def test_valid_approval_marks_used_after_mocked_order_test_success(self):
         self.write_bridge()
@@ -217,6 +270,82 @@ class ManualApprovalGateTest(unittest.TestCase):
             with mock.patch.object(gate, "run_executor") as executor:
                 self.assertEqual(gate.approve(self.approve_args(fresh)), 1)
                 executor.assert_not_called()
+
+
+    def test_prepare_blocks_mark_price_and_exchange_filter_failures(self):
+        self.write_bridge()
+        with mock.patch.object(gate, "live_client", return_value=FakeClient(fail_mark=True)):
+            self.assertEqual(gate.prepare(), 1)
+            self.assertIn("live mark price unavailable", self.read_result()["blocked_reason"])
+
+        with mock.patch.object(gate, "live_client", return_value=FakeClient(fail_exchange=True)):
+            self.assertEqual(gate.prepare(), 1)
+            self.assertIn("exchange filters unavailable", self.read_result()["blocked_reason"])
+
+    def test_approval_time_price_drift_outside_limits_blocks(self):
+        self.write_bridge()
+        self.assertEqual(gate.prepare(), 0)
+        request = json.loads(Path(gate.REQUEST_PATH).read_text())
+        with mock.patch.object(gate, "live_client", return_value=FakeClient(mark_price="1900")):
+            with mock.patch.object(gate, "run_executor") as executor:
+                self.assertEqual(gate.approve(self.approve_args(request)), 1)
+                executor.assert_not_called()
+        result = self.read_result()
+        self.assertFalse(result["notional_policy_passed"])
+        self.assertIn("exceeds", result["blocked_reason"])
+
+    def test_request_used_only_after_successful_mocked_order_test(self):
+        self.write_bridge()
+        self.assertEqual(gate.prepare(), 0)
+        request = json.loads(Path(gate.REQUEST_PATH).read_text())
+        with mock.patch.object(gate, "run_executor", return_value=(0, {"order_test": True, "order_attempted": True, "order_success": True})):
+            self.assertEqual(gate.approve(self.approve_args(request)), 0)
+        used_request = json.loads(Path(gate.REQUEST_PATH).read_text())
+        self.assertTrue(used_request["used"])
+
+
+    def test_executor_dry_run_reports_minimum_notional_failure_without_order(self):
+        result_path = str(self.root / "logs" / "binance_testnet_executor_result.json")
+        orders_path = str(self.root / "logs" / "binance_testnet_orders.jsonl")
+        args = argparse.Namespace(
+            status=False,
+            account=False,
+            positions=False,
+            symbol="ETHUSDT",
+            side="BUY",
+            quantity="0.009",
+            order_type="MARKET",
+            price=None,
+            dry_run=True,
+            send=False,
+            order_test=False,
+            reduce_only=False,
+            close_position=False,
+            from_overlay=False,
+            auto_from_overlay=False,
+            allow_need_review=False,
+        )
+        with mock.patch.multiple(executor, RESULT_PATH=result_path, ORDERS_PATH=orders_path):
+            with mock.patch.object(executor, "client", return_value=FakeExecutorClient()):
+                rc = executor.run_order_action(args)
+        self.assertEqual(rc, 0)
+        result = json.loads(Path(result_path).read_text())
+        self.assertAlmostEqual(result["estimated_notional_usdt"], 14.98005, places=5)
+        self.assertFalse(result["minimum_notional_passed"])
+        self.assertTrue(result["maximum_notional_passed"])
+        self.assertFalse(result["notional_policy_passed"])
+        self.assertFalse(result["notional_limit_passed"])
+        self.assertFalse(result["order_attempted"])
+
+    def test_manual_executor_command_is_order_test_only(self):
+        payload = {"symbol": "ETHUSDT", "side": "BUY", "quantity": "0.014"}
+        with mock.patch.object(gate.subprocess, "run") as run:
+            run.return_value = argparse.Namespace(returncode=0, stdout="", stderr="")
+            gate.run_executor(payload)
+        command = run.call_args.args[0]
+        self.assertIn("--order-test", command)
+        self.assertIn("--send", command)
+        self.assertNotIn("/fapi/v1/order", " ".join(command))
 
 
 if __name__ == "__main__":

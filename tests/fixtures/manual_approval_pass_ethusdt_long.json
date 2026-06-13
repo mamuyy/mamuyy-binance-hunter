@@ -1,13 +1,13 @@
 {
-  "fixture_note": "Positive-path fixture for Phase 2.95 manual approval gate; ETHUSDT LONG/BUY notional is 21.6 USDT, above the default 20 USDT minimum and below the 25 USDT safety cap.",
+  "fixture_note": "Positive-path advisory fixture for Phase 2.95 manual approval gate; bridge quantity is advisory only and live Binance Futures Demo mark price is used to size the approved order between 20 and 25 USDT.",
   "symbol": "ETHUSDT",
   "signal": {
     "symbol": "ETHUSDT",
     "direction": "LONG",
     "score": 95,
-    "price": 2400.0,
+    "price": 1664.45,
     "quantity": 0.009,
-    "estimated_notional_usdt": 21.6
+    "estimated_notional_usdt": 14.98
   },
   "overlay": {
     "signal_score": 95,
@@ -18,7 +18,7 @@
     "suggested_allocation_pct": 0.5,
     "expected_value_pct": 1.25,
     "portfolio_health": "GREEN",
-    "estimated_notional_usdt": 21.6
+    "estimated_notional_usdt": 14.98
   },
   "allocation_record": {
     "portfolio_eligible": true,
