@@ -5,7 +5,8 @@ import glob
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+import fcntl
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +30,7 @@ REQUIRED_EVIDENCE_FILES = [
     "manual_actual_testnet_roundtrip_audit.jsonl",
     "binance_testnet_orders.jsonl",
 ]
-LIFECYCLE_EVENTS = {"ENTRY_INTENT_RECORDED", "ENTRY_SENT", "ENTRY_CONFIRMED", "PRIMARY_CLOSE_INTENT_RECORDED", "PRIMARY_CLOSE_SENT", "COMPLETED"}
+LIFECYCLE_EVENTS = {"entry intent", "entry result", "entry verification", "close intent", "close result", "flat verification", "completion"}
 
 
 def utc_now() -> str:
@@ -104,8 +105,29 @@ def write_json(path: str, payload: Dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def inspect_execution_lock(path: str = LOCK_FILE_PATH) -> Dict[str, bool]:
+    present = os.path.exists(path)
+    state = {
+        "execution_lock_file_present": present,
+        "execution_lock_active": False,
+        "execution_lock_stale_or_free": False,
+    }
+    if not present:
+        return state
+    with open(path, "rb") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            state["execution_lock_active"] = True
+            return state
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    state["execution_lock_stale_or_free"] = True
+    return state
+
+
 def posture() -> Dict[str, Any]:
     base_url = os.getenv("BINANCE_FUTURES_TESTNET_BASE_URL", DEMO_FUTURES_BASE_URL).strip().rstrip("/")
+    lock = inspect_execution_lock()
     return {
         "broker_mode": os.getenv("BROKER_MODE", BROKER_MODE_REQUIRED),
         "base_url": base_url,
@@ -117,7 +139,8 @@ def posture() -> Dict[str, Any]:
         "allow_manual_actual_roundtrip": env_bool("ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP", False),
         "execution_halt_active": env_bool("TESTNET_EXECUTION_HALT", False) or os.path.exists(HALT_FILE_PATH),
         "execution_halt_file": HALT_FILE_PATH if os.path.exists(HALT_FILE_PATH) else None,
-        "execution_lock_present": os.path.exists(LOCK_FILE_PATH),
+        "execution_lock_present": lock["execution_lock_file_present"],
+        **lock,
     }
 
 
@@ -181,17 +204,61 @@ def opposite(side: Any) -> Optional[str]:
     return "SELL" if value == "BUY" else ("BUY" if value == "SELL" else None)
 
 
+def parse_time(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def evidence_path(result: Dict[str, Any], filename: str) -> str:
+    directory = result.get("evidence_directory")
+    return os.path.join(directory, filename) if directory else filename
+
+
+def in_window(row: Dict[str, Any], start: Optional[datetime], end: Optional[datetime]) -> bool:
+    when = parse_time(row.get("generated_at"))
+    if when is None or start is None or end is None:
+        return False
+    return start <= when <= end
+
+
+def plan_id_matches(row: Dict[str, Any], plan_id: Any) -> bool:
+    if not plan_id:
+        return True
+    for key in ("actual_roundtrip_plan_id", "plan_id", "roundtrip_plan_id"):
+        if key in row and row.get(key) not in (None, ""):
+            return str(row.get(key)) == str(plan_id)
+    return True
+
+
 def roundtrip_evidence(result: Dict[str, Any], review: List[str], blocked: List[str]) -> None:
     malformed: List[str] = []
-    plan = read_json(PLAN_PATH)
-    state = read_json(STATE_PATH)
+    result["roundtrip_evidence_source"] = "EVIDENCE_DIRECTORY"
+    plan = read_json(evidence_path(result, "manual_actual_testnet_roundtrip_plan.json"))
+    state = read_json(evidence_path(result, "manual_actual_testnet_roundtrip_state.json"))
     execution_result = read_json(RESULT_PATH)
     status = read_json(STATUS_PATH)
-    orders = read_jsonl(ORDERS_PATH, malformed)
-    audit = read_jsonl(AUDIT_PATH, malformed)
+    orders = read_jsonl(evidence_path(result, "binance_testnet_orders.jsonl"), malformed)
+    audit = read_jsonl(evidence_path(result, "manual_actual_testnet_roundtrip_audit.jsonl"), malformed)
     review.extend(malformed)
     payload = plan.get("actual_roundtrip_payload", {}) if plan else {}
     symbol = str(result.get("symbol") or payload.get("symbol") or "").upper()
+    entry_side = str(payload.get("entry_side") or "").upper()
+    entry_qty = dec(payload.get("entry_quantity"))
+    plan_id = plan.get("actual_roundtrip_plan_id") if plan else None
+    start = parse_time(plan.get("generated_at") if plan else None)
+    completed = parse_time(plan.get("completed_at") if plan else None)
+    end = completed.replace() if completed else None
+    if end:
+        end = end + timedelta(seconds=60)
+    orders_for_plan = [o for o in orders if in_window(o, start, end)]
+    audit_for_plan = [a for a in audit if in_window(a, start, end) and plan_id_matches(a, plan_id)]
     result.update({
         "plan_available": bool(plan),
         "plan_consumed": bool(plan and plan.get("consumed")),
@@ -199,16 +266,21 @@ def roundtrip_evidence(result: Dict[str, Any], review: List[str], blocked: List[
         "plan_expired": False,
         "persistent_state": state.get("state") if state else None,
         "execution_result_available": bool(execution_result),
-        "audit_event_count": len(audit),
+        "audit_event_count": len(audit_for_plan),
+        "audit_total_rows_in_snapshot": len(audit),
+        "audit_rows_for_current_plan": len(audit_for_plan),
+        "audit_event_names_for_current_plan": sorted({str(a.get("event") or "") for a in audit_for_plan if a.get("event")}),
     })
     if plan and plan.get("expires_at"):
-        try:
-            expires = datetime.fromisoformat(str(plan["expires_at"]).replace("Z", "+00:00"))
-            result["plan_expired"] = expires <= datetime.now(timezone.utc)
-        except ValueError:
+        expires = parse_time(plan["expires_at"])
+        if expires is None:
             review.append("plan expiry malformed")
+        else:
+            result["plan_expired"] = expires <= datetime.now(timezone.utc)
     if not plan:
         review.append("plan missing")
+    if start is None or completed is None:
+        review.append("plan execution window unavailable")
     if not execution_result:
         review.append("result file unavailable")
     if not result["plan_consumed"]:
@@ -220,8 +292,9 @@ def roundtrip_evidence(result: Dict[str, Any], review: List[str], blocked: List[
     if status and execution_result and status.get("state") and execution_result.get("state") and status.get("state") != execution_result.get("state"):
         review.append("status/result evidence inconsistency")
 
-    entries = [o for o in orders if o.get("mode") == "actual_order" and o.get("order_success") is True and o.get("order_test") is False and o.get("dry_run") is False and not o.get("reduce_only") and (not symbol or str(o.get("symbol", "")).upper() == symbol)]
-    closes = [o for o in orders if o.get("mode") == "actual_close_position" and o.get("order_success") is True and o.get("order_test") is False and o.get("dry_run") is False and o.get("reduce_only") is True and (not symbol or str(o.get("symbol", "")).upper() == symbol)]
+    entries = [o for o in orders_for_plan if o.get("mode") == "actual_order" and o.get("order_success") is True and o.get("order_test") is False and o.get("dry_run") is False and not o.get("reduce_only") and (not symbol or str(o.get("symbol", "")).upper() == symbol) and (not entry_side or str(o.get("side", "")).upper() == entry_side) and (entry_qty is None or dec(o.get("quantity")) == entry_qty)]
+    close_candidates = [o for o in orders_for_plan if o.get("mode") == "actual_close_position" and o.get("order_success") is True and o.get("order_test") is False and o.get("dry_run") is False and o.get("reduce_only") is True and (not symbol or str(o.get("symbol", "")).upper() == symbol) and (not entry_side or str(o.get("side", "")).upper() == opposite(entry_side)) and not zero(o.get("position_before_amt")) and dec(o.get("quantity")) == abs(dec(o.get("position_before_amt")) or Decimal("0"))]
+    closes = [o for o in close_candidates if zero(o.get("position_after_amt"))]
     result["successful_entry_count"] = len(entries)
     result["successful_reduce_only_close_count"] = len(closes)
     result["duplicate_entry_detected"] = len(entries) > 1
@@ -233,29 +306,22 @@ def roundtrip_evidence(result: Dict[str, Any], review: List[str], blocked: List[
     result["close_position_after_zero"] = bool(close and zero(close.get("position_after_amt")))
     result["close_position_before_nonzero"] = bool(close and not zero(close.get("position_before_amt")))
     result["close_blocked_reason_null"] = bool(close and close.get("blocked_reason") is None)
-    events = {str(a.get("event") or a.get("state") or "") for a in audit}
-    result["audit_lifecycle_passed"] = bool(events.intersection(LIFECYCLE_EVENTS)) and ("COMPLETED" in events or result["persistent_state"] in {"COMPLETED", "FINAL_FLAT_VERIFIED"})
+    events = {str(a.get("event") or "").strip().lower() for a in audit_for_plan}
+    result["audit_lifecycle_passed"] = LIFECYCLE_EVENTS.issubset(events)
     if len(entries) != 1:
         review.append("missing successful entry" if len(entries) == 0 else "duplicate entry detected")
     if len(closes) != 1:
         review.append("missing reduce-only close" if len(closes) == 0 else "duplicate close detected")
-    for key, reason in [
-        ("entry_close_symbol_match", "entry/close symbol mismatch"),
-        ("entry_close_quantity_match", "entry/close quantity mismatch"),
-        ("entry_close_side_match", "wrong close side"),
-        ("close_position_before_nonzero", "close position_before is zero"),
-        ("close_blocked_reason_null", "close blocked_reason is not null"),
-        ("audit_lifecycle_passed", "audit evidence incomplete"),
-    ]:
+    for key, reason in [("entry_close_symbol_match", "entry/close symbol mismatch"), ("entry_close_quantity_match", "entry/close quantity mismatch"), ("entry_close_side_match", "wrong close side"), ("close_position_before_nonzero", "close position_before is zero"), ("close_blocked_reason_null", "close blocked_reason is not null"), ("audit_lifecycle_passed", "audit evidence incomplete")]:
         if not result.get(key):
             review.append(reason)
-    if close and not result["close_position_after_zero"]:
+    if any(not zero(c.get("position_after_amt")) for c in close_candidates):
         blocked.append("close position_after non-zero")
     elif not result["close_position_after_zero"]:
         review.append("close position_after not zero")
 
-
 def daily_capacity(result: Dict[str, Any]) -> None:
+    result["daily_capacity_source"] = "LIVE_ORDER_LOG"
     count = today_actual_order_count(ORDERS_PATH)
     limit = daily_order_limit()
     remaining = max(0, limit - count)
@@ -355,8 +421,8 @@ def finalize(result: Dict[str, Any], blocked: List[str], review: List[str]) -> N
         blocked.append("manual actual roundtrip gate is enabled")
     if result["execution_halt_active"]:
         blocked.append("emergency halt active")
-    if result["execution_lock_present"]:
-        blocked.append("execution lock present")
+    if result["execution_lock_active"]:
+        blocked.append("execution lock active")
     if result["base_url"] != DEMO_FUTURES_BASE_URL:
         msg = "production Binance URL is configured" if any(f in result["base_url"] for f in PRODUCTION_URL_FRAGMENTS) else "non-demo Binance URL is configured"
         blocked.append(msg)

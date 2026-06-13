@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import fcntl
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -82,7 +83,7 @@ class SupervisorTests(unittest.TestCase):
         self.make_artifacts()
 
     def make_artifacts(self, checksum=True, checksum_valid=True, entry=True, close=True, duplicate=False, close_after="0", close_side="SELL", close_qty="0.013", close_symbol="ETHUSDT"):
-        plan = {"consumed": True, "completed": True, "actual_roundtrip_payload": {"symbol": "ETHUSDT", "entry_side": "BUY", "entry_quantity": "0.013"}}
+        plan = {"actual_roundtrip_plan_id": "plan-current", "generated_at": TODAY+"T00:00:00+00:00", "completed_at": TODAY+"T00:03:00+00:00", "consumed": True, "completed": True, "actual_roundtrip_payload": {"symbol": "ETHUSDT", "entry_side": "BUY", "entry_quantity": "0.013"}}
         write_json(Path(sup.PLAN_PATH), plan)
         write_json(Path(sup.STATE_PATH), {"state": "COMPLETED"})
         write_json(Path(sup.RESULT_PATH), {"state": "COMPLETED"})
@@ -95,7 +96,7 @@ class SupervisorTests(unittest.TestCase):
         if close:
             orders.append({"generated_at": TODAY+"T00:02:00+00:00", "mode": "actual_close_position", "symbol": close_symbol, "side": close_side, "quantity": close_qty, "reduce_only": True, "order_success": True, "order_test": False, "dry_run": False, "position_before_amt": "0.013", "position_after_amt": close_after, "blocked_reason": None})
         append_jsonl(Path(sup.ORDERS_PATH), orders)
-        append_jsonl(Path(sup.AUDIT_PATH), [{"event": e} for e in ["ENTRY_INTENT_RECORDED", "ENTRY_SENT", "ENTRY_CONFIRMED", "PRIMARY_CLOSE_INTENT_RECORDED", "PRIMARY_CLOSE_SENT", "COMPLETED"]])
+        append_jsonl(Path(sup.AUDIT_PATH), [{"generated_at": TODAY+"T00:01:00+00:00", "actual_roundtrip_plan_id": "plan-current", "event": e} for e in ["execution locked", "entry intent", "entry result", "entry verification", "close intent", "close result", "flat verification", "completion"]])
         ev = Path("evidence/phase2_97b_test")
         ev.mkdir(parents=True, exist_ok=True)
         for src in [sup.PLAN_PATH, sup.STATE_PATH, sup.AUDIT_PATH, sup.ORDERS_PATH]:
@@ -109,6 +110,14 @@ class SupervisorTests(unittest.TestCase):
                     digest = "0" * 64
                 lines.append(f"{digest}  {file}\n")
             (ev / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
+
+
+    def refresh_evidence_checksums(self):
+        ev = Path("evidence/phase2_97b_test")
+        lines = []
+        for file in sup.REQUIRED_EVIDENCE_FILES:
+            lines.append(f"{hashlib.sha256((ev / file).read_bytes()).hexdigest()}  {file}\n")
+        (ev / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
 
     def run_supervisor(self, mode="full"):
         with mock.patch.object(sup, "BinanceFuturesTestnetClient", self.client), contextlib.redirect_stdout(io.StringIO()) as out:
@@ -187,6 +196,71 @@ class SupervisorTests(unittest.TestCase):
             result, _ = self.run_supervisor()
         self.assertEqual(result["verdict"], "SAFE_IDLE")
         self.assertEqual(before, source.read_text(encoding="utf-8"))
+
+    def test_lock_file_missing_stale_active_and_bytes_unchanged(self):
+        self.assertFalse(self.run_supervisor()[0]["execution_lock_file_present"])
+        lock = Path(sup.LOCK_FILE_PATH)
+        lock.parent.mkdir(exist_ok=True)
+        payload = b"left behind by exited controller\n"
+        lock.write_bytes(payload)
+        result, _ = self.run_supervisor()
+        self.assertEqual(result["verdict"], "SAFE_IDLE")
+        self.assertTrue(result["execution_lock_file_present"])
+        self.assertFalse(result["execution_lock_active"])
+        self.assertTrue(result["execution_lock_stale_or_free"])
+        self.assertEqual(lock.read_bytes(), payload)
+        with lock.open("rb") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            active, _ = self.run_supervisor()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        self.assertEqual(active["verdict"], "HALTED")
+        self.assertTrue(active["execution_lock_active"])
+        self.assertEqual(lock.read_bytes(), payload)
+
+    def test_historical_live_entry_outside_window_not_duplicate_and_evidence_snapshot_used(self):
+        live_rows = [
+            {"generated_at": TODAY+"T00:00:00+00:00", "mode": "actual_order", "symbol": "ETHUSDT", "side": "BUY", "quantity": "0.013", "reduce_only": False, "order_success": True, "order_test": False, "dry_run": False},
+            {"generated_at": TODAY+"T00:02:00+00:00", "mode": "actual_close_position", "symbol": "ETHUSDT", "side": "SELL", "quantity": "0.013", "reduce_only": True, "order_success": True, "order_test": False, "dry_run": False, "position_before_amt": "0.013", "position_after_amt": "0", "blocked_reason": None},
+            {"generated_at": TODAY+"T05:00:00+00:00", "mode": "actual_order", "symbol": "ETHUSDT", "side": "BUY", "quantity": "0.013", "reduce_only": False, "order_success": True, "order_test": False, "dry_run": False},
+        ]
+        append_jsonl(Path(sup.ORDERS_PATH), live_rows)
+        result, _ = self.run_supervisor()
+        self.assertEqual(result["roundtrip_evidence_source"], "EVIDENCE_DIRECTORY")
+        self.assertEqual(result["daily_capacity_source"], "LIVE_ORDER_LOG")
+        self.assertEqual(result["successful_entry_count"], 1)
+        self.assertFalse(result["duplicate_entry_detected"])
+        self.assertEqual(result["daily_actual_order_count"], 3)
+
+    def test_two_entries_inside_current_evidence_window_duplicate(self):
+        ev_orders = Path("evidence/phase2_97b_test/binance_testnet_orders.jsonl")
+        rows = [json.loads(line) for line in ev_orders.read_text(encoding="utf-8").splitlines()]
+        rows.insert(1, {"generated_at": TODAY+"T00:01:00+00:00", "mode": "actual_order", "symbol": "ETHUSDT", "side": "BUY", "quantity": "0.013", "reduce_only": False, "order_success": True, "order_test": False, "dry_run": False})
+        append_jsonl(ev_orders, rows)
+        self.refresh_evidence_checksums()
+        result, _ = self.run_supervisor()
+        self.assertEqual(result["successful_entry_count"], 2)
+        self.assertTrue(result["duplicate_entry_detected"])
+        self.assertEqual(result["verdict"], "REVIEW_REQUIRED")
+
+    def test_audit_other_plan_ignored(self):
+        ev_audit = Path("evidence/phase2_97b_test/manual_actual_testnet_roundtrip_audit.jsonl")
+        old = [{"generated_at": TODAY+"T00:01:00+00:00", "actual_roundtrip_plan_id": "older", "event": e} for e in ["entry intent", "entry result", "entry verification", "close intent", "close result", "flat verification", "completion"]]
+        current = [{"generated_at": TODAY+"T00:01:00+00:00", "actual_roundtrip_plan_id": "plan-current", "event": e} for e in ["entry intent", "entry result", "entry verification", "close intent", "close result", "flat verification", "completion"]]
+        append_jsonl(ev_audit, old + current)
+        self.refresh_evidence_checksums()
+        result, _ = self.run_supervisor()
+        self.assertEqual(result["audit_total_rows_in_snapshot"], 14)
+        self.assertEqual(result["audit_rows_for_current_plan"], 7)
+        self.assertTrue(result["audit_lifecycle_passed"])
+        self.assertNotIn("older", " ".join(result["audit_event_names_for_current_plan"]))
+
+    def test_order_endpoints_and_execution_gate_not_used(self):
+        with mock.patch.object(ReadOnlyClient, "place_order", side_effect=AssertionError("order endpoint")), \
+             mock.patch.object(ReadOnlyClient, "place_test_order", side_effect=AssertionError("order-test endpoint")):
+            result, _ = self.run_supervisor()
+        self.assertEqual(result["verdict"], "SAFE_IDLE")
+        self.assertFalse(result["allow_testnet_order"])
+        self.assertFalse(result["allow_manual_actual_roundtrip"])
 
 
 if __name__ == "__main__":
