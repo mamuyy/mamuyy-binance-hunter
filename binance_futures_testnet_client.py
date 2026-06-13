@@ -136,6 +136,12 @@ class BinanceFuturesTestnetClient:
             params["symbol"] = symbol.upper()
         return self._request("GET", "/fapi/v2/positionRisk", params=params, signed=True)
 
+    def get_open_orders(self, symbol: Optional[str] = None) -> Any:
+        params: Dict[str, Any] = {}
+        if symbol:
+            params["symbol"] = symbol.upper()
+        return self._request("GET", "/fapi/v1/openOrders", params=params, signed=True)
+
     def get_mark_price(self, symbol: str) -> Optional[Any]:
         payload = self._request(
             "GET",
