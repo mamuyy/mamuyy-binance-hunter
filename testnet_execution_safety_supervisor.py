@@ -21,6 +21,7 @@ from binance_futures_testnet_client import (
     load_dotenv_file,
 )
 from binance_testnet_executor import BROKER_MODE_REQUIRED, DEFAULT_DAILY_ORDER_LIMIT
+from testnet_approval_identity import canonical_bridge_signal_metadata
 
 BRIDGE_RESULT_PATH = "logs/semi_auto_testnet_bridge_result.json"
 APPROVAL_REQUEST_PATH = "logs/manual_testnet_approval_request.json"
@@ -442,20 +443,6 @@ def request_used(request: Optional[Dict[str, Any]], state_path: str) -> bool:
     return str(request.get("request_id") or "") in {str(item) for item in state.get("used_request_ids", []) if item}
 
 
-def bridge_signal_metadata(bridge: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "symbol": str(bridge.get("symbol") or "").upper(),
-        "side": str(bridge.get("side") or "").upper(),
-        "quantity": str(bridge.get("quantity") or ""),
-        "estimated_notional_usdt": bridge.get("estimated_notional_usdt"),
-        "signal_score": bridge.get("signal_score"),
-        "overlay_decision": bridge.get("overlay_decision"),
-        "trade_rank": bridge.get("trade_rank"),
-        "suggested_risk": bridge.get("suggested_risk"),
-        "overlay_report_path": bridge.get("overlay_report_path"),
-    }
-
-
 def approval_checks(
     result: Dict[str, Any], request_path: str, state_path: str, bridge_path: str, cli_symbol: Optional[str]
 ) -> Tuple[List[str], Optional[Dict[str, Any]]]:
@@ -518,7 +505,7 @@ def approval_checks(
         for key, expected in bridge_required.items():
             if bridge.get(key) != expected:
                 reasons.append(f"bridge {key} must be {expected!r}.")
-        result["bridge_payload_matches"] = canonical_json(bridge_signal_metadata(bridge)) == canonical_json(payload.get("bridge_signal_metadata") or {})
+        result["bridge_payload_matches"] = canonical_json(canonical_bridge_signal_metadata(bridge)) == canonical_json(payload.get("bridge_signal_metadata") or {})
         if not result["bridge_payload_matches"]:
             reasons.append("bridge signal identity does not match approval payload.")
     result["request_integrity_passed"] = not reasons

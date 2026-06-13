@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import testnet_execution_safety_supervisor as sup
+from testnet_approval_identity import canonical_bridge_signal_metadata
 
 NOW = "2026-06-13T12:00:00+00:00"
 
@@ -91,7 +92,7 @@ def approval_request(**payload_updates):
         "quantity": "0.014",
         "approved_quantity": "0.014",
         "order_type": "MARKET",
-        "bridge_signal_metadata": sup.bridge_signal_metadata(BRIDGE),
+        "bridge_signal_metadata": canonical_bridge_signal_metadata(BRIDGE),
     }
     payload.update(payload_updates)
     return {
@@ -186,9 +187,27 @@ class SupervisorTest(unittest.TestCase):
         self.assertFalse(result["order_success"])
         self.assertFalse(result["execution_permitted"])
         self.assertEqual(self.client.forbidden_calls, [])
+        self.assertNotIn("/fapi/v1/order", self.client.forbidden_calls)
+        self.assertNotIn("/fapi/v1/order/test", self.client.forbidden_calls)
+        self.assertNotIn("cancel", " ".join(self.client.forbidden_calls).lower())
         self.assertEqual(request_before, self.request_path.read_text() if self.request_path.exists() else None)
         self.assertEqual(positions_before, self.client.positions)
         self.assertEqual(open_orders_before, self.client.open_orders)
+        return result
+
+    def write_bridge_variant(self, **updates):
+        bridge = copy.deepcopy(BRIDGE)
+        bridge.update(updates)
+        self.write_json(self.bridge_path, bridge)
+        return bridge
+
+    def assert_blocked_for_bridge_identity_change(self, **updates):
+        self.write_bridge_variant(**updates)
+        result = self.run_case()
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertFalse(result["bridge_payload_matches"])
+        self.assertFalse(result["request_integrity_passed"])
+        self.assertIn("bridge signal identity", "; ".join(result["blocked_reasons"]))
         return result
 
     def test_flat_account_no_proposal_safe_idle(self):
@@ -198,8 +217,32 @@ class SupervisorTest(unittest.TestCase):
     def test_valid_fresh_proposal_ready(self):
         result = self.run_case()
         self.assertEqual(result["status"], "READY_FOR_MANUAL_DUMMY_ORDER")
+        self.assertTrue(result["bridge_payload_matches"])
+        self.assertTrue(result["request_integrity_passed"])
+        self.assertTrue(result["read_only"])
         self.assertFalse(result["execution_permitted"])
+        self.assertTrue(result["manual_execution_required"])
         self.assertFalse(result["order_attempted"])
+        self.assertFalse(result["order_success"])
+
+    def test_bridge_identity_changed_signal_score_blocks(self):
+        self.assert_blocked_for_bridge_identity_change(signal_score=94)
+
+    def test_bridge_identity_changed_overlay_decision_blocks(self):
+        self.assert_blocked_for_bridge_identity_change(overlay_decision="LONG / NEED_REVIEW")
+
+    def test_bridge_identity_changed_trade_rank_blocks(self):
+        self.assert_blocked_for_bridge_identity_change(trade_rank="MEDIUM_QUALITY")
+
+    def test_bridge_identity_changed_suggested_risk_blocks(self):
+        self.assert_blocked_for_bridge_identity_change(suggested_risk="REDUCED")
+
+    def test_bridge_identity_changed_source_report_path_blocks(self):
+        self.assert_blocked_for_bridge_identity_change(overlay_report_path="changed_fixture.json")
+
+    def test_bridge_identity_changed_status_blocks(self):
+        result = self.assert_blocked_for_bridge_identity_change(status="BLOCKED")
+        self.assertIn("bridge status must be", "; ".join(result["blocked_reasons"]))
 
     def test_existing_position_blocks(self):
         self.client.positions = [{"symbol": "ETHUSDT", "positionAmt": "0.01", "markPrice": "1664.45"}]
@@ -246,6 +289,7 @@ class SupervisorTest(unittest.TestCase):
         result = self.run_case()
         self.assertEqual(result["status"], "BLOCKED")
         self.assertTrue(result["request_expired"])
+        self.assertFalse(result["request_integrity_passed"])
 
     def test_request_already_used_blocks(self):
         req = approval_request()
@@ -254,6 +298,7 @@ class SupervisorTest(unittest.TestCase):
         result = self.run_case()
         self.assertEqual(result["status"], "BLOCKED")
         self.assertTrue(result["request_used"])
+        self.assertFalse(result["request_integrity_passed"])
 
     def test_corrupted_sha256_blocks(self):
         req = approval_request()
@@ -262,6 +307,7 @@ class SupervisorTest(unittest.TestCase):
         result = self.run_case()
         self.assertEqual(result["status"], "BLOCKED")
         self.assertFalse(result["payload_sha256_matches"])
+        self.assertFalse(result["request_integrity_passed"])
 
     def test_live_notional_below_minimum_blocks(self):
         self.client.mark = "1000"
