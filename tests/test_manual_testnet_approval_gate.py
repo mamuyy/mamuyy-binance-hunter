@@ -69,20 +69,30 @@ class FakeClient:
 class FakeExecutorClient:
     base_url = gate.DEMO_FUTURES_BASE_URL
 
+    def __init__(self, mark_price="1664.45", position_amt="0.013"):
+        self.mark_price = mark_price
+        self.position_amt = position_amt
+        self.orders = []
+
     def get_exchange_info(self):
         return copy.deepcopy(EXCHANGE_INFO)
 
     def get_mark_price(self, symbol):
-        return "1664.45"
+        return self.mark_price
 
     def get_ticker_price(self, symbol):
-        return "1664.45"
+        return self.mark_price
+
+    def get_position_risk(self, symbol=None):
+        return [{"symbol": symbol or "ETHUSDT", "positionAmt": self.position_amt}]
 
     def place_test_order(self, *args, **kwargs):
         raise AssertionError("dry-run must not call order-test")
 
-    def place_order(self, *args, **kwargs):
-        raise AssertionError("dry-run must not call actual order")
+    def place_order(self, symbol, side, order_type, quantity, price=None, reduce_only=False):
+        self.orders.append((symbol, side, order_type, quantity, price, reduce_only))
+        self.position_amt = "0"
+        return {"orderId": 1, "symbol": symbol, "side": side, "type": order_type, "origQty": quantity, "reduceOnly": reduce_only}
 
 
 class ManualApprovalGateTest(unittest.TestCase):
@@ -102,6 +112,8 @@ class ManualApprovalGateTest(unittest.TestCase):
                 "TESTNET_MAX_NOTIONAL_USDT": "25",
                 "BINANCE_FUTURES_TESTNET_BASE_URL": gate.DEMO_FUTURES_BASE_URL,
                 "TESTNET_EXECUTION_HALT": "false",
+                "TESTNET_ORDER_ALLOWLIST": "ETHUSDT",
+                "TESTNET_MAX_ORDERS_PER_DAY": "3",
             },
             clear=False,
         )
@@ -336,6 +348,170 @@ class ManualApprovalGateTest(unittest.TestCase):
         self.assertFalse(result["notional_policy_passed"])
         self.assertFalse(result["notional_limit_passed"])
         self.assertFalse(result["order_attempted"])
+
+    def executor_args(
+        self,
+        *,
+        side="BUY",
+        quantity="0.013",
+        order_type="MARKET",
+        price=None,
+        send=True,
+        reduce_only=False,
+        close_position=False,
+    ):
+        return argparse.Namespace(
+            status=False,
+            account=False,
+            positions=False,
+            symbol="ETHUSDT",
+            side=side,
+            quantity=quantity,
+            order_type=order_type,
+            price=price,
+            dry_run=False,
+            send=send,
+            order_test=False,
+            reduce_only=reduce_only,
+            close_position=close_position,
+            from_overlay=False,
+            auto_from_overlay=False,
+            allow_need_review=False,
+        )
+
+    def run_executor_order(self, args, fake_client=None, order_count=0):
+        result_path = str(self.root / "logs" / "binance_testnet_executor_result.json")
+        orders_path = str(self.root / "logs" / "binance_testnet_orders.jsonl")
+        fake_client = fake_client or FakeExecutorClient()
+        with mock.patch.multiple(executor, RESULT_PATH=result_path, ORDERS_PATH=orders_path):
+            with mock.patch.object(executor, "client", return_value=fake_client):
+                with mock.patch.object(executor, "today_actual_order_count", return_value=order_count):
+                    rc = executor.run_close_position(args) if args.close_position else executor.run_order_action(args)
+        return rc, json.loads(Path(result_path).read_text()), fake_client, Path(orders_path)
+
+    def test_executor_send_entry_below_minimum_notional_blocks(self):
+        args = self.executor_args(quantity="0.009")
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1664.45"))
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(result["notional_policy_scope"], executor.NOTIONAL_SCOPE_ENTRY)
+        self.assertFalse(result["minimum_notional_passed"])
+        self.assertFalse(result["notional_limit_passed"])
+        self.assertEqual(result["blocked_reason"], "notional below TESTNET_MIN_NOTIONAL_USDT")
+        self.assertFalse(result["order_attempted"])
+        self.assertEqual(fake_client.orders, [])
+
+    def test_executor_send_entry_above_maximum_notional_blocks(self):
+        args = self.executor_args(quantity="0.016")
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1664.45"))
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(result["minimum_notional_passed"])
+        self.assertFalse(result["maximum_notional_passed"])
+        self.assertFalse(result["notional_limit_passed"])
+        self.assertEqual(result["blocked_reason"], "notional exceeds TESTNET_MAX_NOTIONAL_USDT")
+        self.assertFalse(result["order_attempted"])
+        self.assertEqual(fake_client.orders, [])
+
+    def test_close_position_below_minimum_notional_is_exempt_and_allowed(self):
+        args = self.executor_args(side=None, quantity=None, order_type=None, close_position=True)
+        rc, result, fake_client, orders_path = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(result["notional_policy_scope"], executor.NOTIONAL_SCOPE_REDUCE_ONLY_CLOSE)
+        self.assertFalse(result["minimum_notional_passed"])
+        self.assertTrue(result["reduce_only_notional_exempt"])
+        self.assertTrue(result["reduce_only_validation_passed"])
+        self.assertEqual(result["reduce_only_validation_reason"], executor.REDUCE_ONLY_NOTIONAL_EXEMPT_REASON)
+        self.assertTrue(result["notional_limit_passed"])
+        self.assertTrue(result["order_success"])
+        self.assertEqual(len(fake_client.orders), 1)
+        self.assertEqual(fake_client.orders[0][1], "SELL")
+        self.assertTrue(fake_client.orders[0][5])
+        self.assertEqual(len(orders_path.read_text().splitlines()), 1)
+
+    def test_close_position_above_maximum_notional_is_exempt_and_allowed(self):
+        args = self.executor_args(side=None, quantity=None, order_type=None, close_position=True)
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="3000", position_amt="0.013"))
+
+        self.assertEqual(rc, 0)
+        self.assertFalse(result["maximum_notional_passed"])
+        self.assertTrue(result["reduce_only_notional_exempt"])
+        self.assertTrue(result["notional_limit_passed"])
+        self.assertTrue(result["order_success"])
+        self.assertEqual(len(fake_client.orders), 1)
+
+    def test_generic_reduce_only_wrong_side_blocks(self):
+        args = self.executor_args(side="BUY", quantity="0.013", reduce_only=True)
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"))
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["reduce_only_validation_passed"])
+        self.assertFalse(result["reduce_only_notional_exempt"])
+        self.assertEqual(result["blocked_reason"], "reduce-only BUY would not reduce the current position.")
+        self.assertEqual(fake_client.orders, [])
+
+    def test_generic_reduce_only_quantity_exceeding_live_position_blocks(self):
+        args = self.executor_args(side="SELL", quantity="0.014", reduce_only=True)
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"))
+
+        self.assertEqual(rc, 1)
+        self.assertFalse(result["reduce_only_validation_passed"])
+        self.assertEqual(result["blocked_reason"], "reduce-only quantity exceeds current position size.")
+        self.assertEqual(fake_client.orders, [])
+
+    def test_reduce_only_while_flat_blocks_or_reports_already_flat(self):
+        generic = self.executor_args(side="SELL", quantity="0.013", reduce_only=True)
+        rc, result, _, _ = self.run_executor_order(generic, FakeExecutorClient(mark_price="1000", position_amt="0"))
+        self.assertEqual(rc, 1)
+        self.assertEqual(result["blocked_reason"], "reduce-only order blocked because position is already flat.")
+
+        close = self.executor_args(side=None, quantity=None, order_type=None, close_position=True)
+        rc, result, fake_client, _ = self.run_executor_order(close, FakeExecutorClient(mark_price="1000", position_amt="0"))
+        self.assertEqual(rc, 0)
+        self.assertTrue(result["already_flat"])
+        self.assertFalse(result["order_attempted"])
+        self.assertEqual(fake_client.orders, [])
+
+    def test_generic_reduce_only_gets_exemption_after_reduction_validation(self):
+        args = self.executor_args(side="SELL", quantity="0.013", reduce_only=True)
+        rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(result["notional_policy_scope"], executor.NOTIONAL_SCOPE_REDUCE_ONLY_CLOSE)
+        self.assertFalse(result["minimum_notional_passed"])
+        self.assertTrue(result["reduce_only_notional_exempt"])
+        self.assertTrue(result["notional_limit_passed"])
+        self.assertTrue(result["order_success"])
+        self.assertEqual(len(fake_client.orders), 1)
+
+    def test_successful_actual_reduce_only_close_counts_daily_order(self):
+        args = self.executor_args(side=None, quantity=None, order_type=None, close_position=True)
+        rc, result, fake_client, orders_path = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"), order_count=2)
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(result["daily_actual_order_count"], 2)
+        self.assertTrue(result["order_success"])
+        appended = [json.loads(line) for line in orders_path.read_text().splitlines()]
+        self.assertEqual(len(appended), 1)
+        self.assertEqual(appended[0]["mode"], "actual_close_position")
+        self.assertTrue(appended[0]["order_success"])
+        self.assertEqual(len(fake_client.orders), 1)
+
+    def test_reduce_only_real_binance_and_production_urls_remain_blocked(self):
+        args = self.executor_args(side="SELL", quantity="0.013", reduce_only=True)
+        for env_updates in (
+            {"REAL_BINANCE_ENABLED": "true"},
+            {"ALLOW_REAL_BINANCE_ORDER": "true"},
+            {"BINANCE_FUTURES_TESTNET_BASE_URL": "https://fapi.binance.com"},
+        ):
+            with self.subTest(env_updates=env_updates):
+                with mock.patch.dict(os.environ, env_updates, clear=False):
+                    rc, result, fake_client, _ = self.run_executor_order(args, FakeExecutorClient(mark_price="1000", position_amt="0.013"))
+                self.assertEqual(rc, 1)
+                self.assertFalse(result["order_attempted"])
+                self.assertTrue(result["blocked_reason"])
+                self.assertEqual(fake_client.orders, [])
 
     def test_manual_executor_command_is_order_test_only(self):
         payload = {"symbol": "ETHUSDT", "side": "BUY", "quantity": "0.014"}
