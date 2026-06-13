@@ -84,13 +84,18 @@ def latest_signals(c):
     q="SELECT s.* FROM signals s JOIN (SELECT symbol,MAX(id) max_id FROM signals GROUP BY symbol)x ON x.max_id=s.id WHERE s.symbol IS NOT NULL AND s.symbol!='' ORDER BY s.id DESC"
     return [dict(r) for r in c.execute(q).fetchall()]
 def exposures(c):
-    table="paper_trades" if table_exists(c,"paper_trades") else ("internal_paper_trades" if table_exists(c,"internal_paper_trades") else None)
-    if not table:return {},[]
-    out={}
-    for r in c.execute(f"SELECT symbol,status FROM {table}"):
-        s=base.normalize_symbol(r["symbol"]);st=str(r["status"] or "").strip().upper()
-        if s and st in OPEN:out[s]=out.get(s,0)+1
-    return out,[table]
+    tables=[t for t in ("paper_trades","internal_paper_trades") if table_exists(c,t)]
+    if not tables:return {},[]
+    per_table=[]
+    for table in tables:
+        counts={}
+        for r in c.execute(f"SELECT symbol,status FROM {table}"):
+            s=base.normalize_symbol(r["symbol"]);st=str(r["status"] or "").strip().upper()
+            if s and st in OPEN:counts[s]=counts.get(s,0)+1
+        per_table.append(counts)
+    symbols=set().union(*(set(counts) for counts in per_table))
+    out={symbol:max(counts.get(symbol,0) for counts in per_table) for symbol in symbols}
+    return out,tables
 def live_overlay(db,now,hb_limit,signal_limit):
     if not os.path.isfile(db):return {"status":"BLOCKED_LIVE_OVERLAY","blocked_reasons":[f"runtime database not found: {db}"],"database_path":db}
     try:
@@ -113,10 +118,10 @@ def live_overlay(db,now,hb_limit,signal_limit):
     return {"status":"BLOCKED_LIVE_OVERLAY" if blocked else "LIVE_READY","blocked_reasons":blocked,"database_path":db,"heartbeat":hb,"heartbeat_age_minutes":hb_age,"regime":reg,"signals":signals,"signal_age_minutes":sig_age,"active_exposures":exp,"active_exposure_count":sum(exp.values()),"exposure_sources":sources}
 def score(signal):return base.safe_float(base.first_value(signal or {},("adaptive_confidence_score","calculated_score","score","shadow_score")))
 def rank(alloc,live):
-    sig=live.get("signals") or {};exp=live.get("active_exposures") or {};order={"TOP_WATCH":0,"WATCH":1,"HOLD_NO_ADD":2,"WAIT_LOW_SCORE":3,"WAIT_NO_LIVE_SIGNAL":4};out=[]
+    sig=live.get("signals") or {};exp=live.get("active_exposures") or {};order={"TOP_WATCH":0,"WATCH":1,"HOLD_NO_ADD":2,"WAIT_LOW_SCORE":3,"WAIT_NO_LIVE_SIGNAL":4,"BASELINE_EXCLUDED":5};out=[]
     for item in alloc:
         s=item["symbol"];row=sig.get(s);sc=score(row);n=int(exp.get(s,0))
-        action="HOLD_NO_ADD" if n else "WAIT_NO_LIVE_SIGNAL" if row is None else "TOP_WATCH" if sc is not None and sc>=70 else "WATCH" if sc is not None and sc>=55 else "WAIT_LOW_SCORE"
+        action="HOLD_NO_ADD" if n else "BASELINE_EXCLUDED" if float(item.get("allocation_pct") or 0)<=0 else "WAIT_NO_LIVE_SIGNAL" if row is None else "TOP_WATCH" if sc is not None and sc>=70 else "WATCH" if sc is not None and sc>=55 else "WAIT_LOW_SCORE"
         out.append({**item,"live_score":sc,"live_regime":(row or {}).get("regime_name") or "UNKNOWN","active_exposure_count":n,"advisory_action":action})
     return sorted(out,key=lambda x:(order[x["advisory_action"]],-(x["live_score"] if x["live_score"] is not None else -1),-x["allocation_pct"],x["symbol"]))
 def render(r):
