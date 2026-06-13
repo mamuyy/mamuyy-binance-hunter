@@ -23,6 +23,7 @@ from binance_futures_testnet_client import (
     load_dotenv_file,
 )
 from binance_testnet_executor import BROKER_MODE_REQUIRED, DEFAULT_MAX_NOTIONAL, env_float, env_list
+from testnet_approval_identity import canonical_bridge_signal_metadata
 
 BRIDGE_RESULT_PATH = "logs/semi_auto_testnet_bridge_result.json"
 TELEGRAM_PREVIEW_PATH = "logs/semi_auto_testnet_bridge_telegram_preview.json"
@@ -337,17 +338,6 @@ def normalize_execution_quantity(
     return quantity, True, f"normalized quantity satisfies {source} and notional policy."
 
 
-def bridge_signal_metadata(bridge: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "bridge_status": bridge.get("status"),
-        "signal_score": bridge.get("signal_score"),
-        "overlay_decision": bridge.get("overlay_decision"),
-        "trade_rank": bridge.get("trade_rank"),
-        "suggested_risk": bridge.get("suggested_risk"),
-        "source_report_path": bridge.get("overlay_report_path"),
-    }
-
-
 def source_fixture_allowlist(symbol: Optional[str], bridge: Dict[str, Any]) -> bool:
     """Keep the documented positive fixture path runnable without enabling execution gates."""
     source = str(bridge.get("overlay_report_path") or bridge.get("source_report_path") or "")
@@ -503,7 +493,7 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
         reasons.append(str(policy_reason))
         return reasons, None
 
-    metadata = bridge_signal_metadata(safe_bridge)
+    metadata = canonical_bridge_signal_metadata(safe_bridge)
     payload = {
         "symbol": symbol,
         "side": side,
@@ -700,7 +690,7 @@ def bridge_matches_payload(payload: Dict[str, Any]) -> bool:
     reasons, bridge = validate_bridge_safety(read_json(BRIDGE_RESULT_PATH))
     if reasons or bridge is None:
         return False
-    return canonical_json(bridge_signal_metadata(bridge)) == canonical_json(payload.get("bridge_signal_metadata") or {})
+    return canonical_json(canonical_bridge_signal_metadata(bridge)) == canonical_json(payload.get("bridge_signal_metadata") or {})
 
 
 def approval_revalidation(payload: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
