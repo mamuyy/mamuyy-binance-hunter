@@ -1,5 +1,5 @@
 {
-  "fixture_note": "Advisory-only positive-path fixture for semi_auto_testnet_bridge.py; validates WOULD_ORDER with ETHUSDT notional safely between the 20 USDT minimum and 25 USDT maximum without enabling or attempting execution.",
+  "fixture_note": "Positive-path fixture for Phase 2.95 manual approval gate; ETHUSDT LONG/BUY notional is 21.6 USDT, above the default 20 USDT minimum and below the 25 USDT safety cap.",
   "symbol": "ETHUSDT",
   "signal": {
     "symbol": "ETHUSDT",
