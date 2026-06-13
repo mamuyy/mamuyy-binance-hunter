@@ -7,3 +7,4 @@
 * 2026-06-13 — Phase 2.95 Manual Approval Testnet Order-Test Gate — PASS
 * 2026-06-13 — Phase 2.96 Testnet Execution Safety Supervisor — PASS
 * 2026-06-13 — Phase 2.97A Manual Testnet Dummy Roundtrip Mock Controller — PASS
+* 2026-06-13 — Phase 2.97B Manual Actual Binance Futures Demo Roundtrip — PASS
