@@ -54,6 +54,7 @@ BRIDGE_RESULT_PATH = "logs/semi_auto_testnet_bridge_result.json"
 EXECUTOR_RESULT_PATH = "logs/binance_testnet_executor_result.json"
 PLAN_PATH = "logs/manual_actual_testnet_roundtrip_plan.json"
 RESULT_PATH = "logs/manual_actual_testnet_roundtrip_result.json"
+STATUS_PATH = "logs/manual_actual_testnet_roundtrip_status.json"
 STATE_PATH = "logs/manual_actual_testnet_roundtrip_state.json"
 AUDIT_PATH = "logs/manual_actual_testnet_roundtrip_audit.jsonl"
 LOCK_FILE_PATH = "runtime/MANUAL_ACTUAL_TESTNET_ROUNDTRIP.lock"
@@ -882,17 +883,74 @@ def recover_close(args: argparse.Namespace) -> int:
         return handle_close_failure(plan, result)
 
 
+def abbreviated_identifier(value: Any, prefix: int = 8, suffix: int = 4) -> str:
+    if not isinstance(value, str) or not value:
+        return "none"
+    if len(value) <= prefix + suffix + 3:
+        return "REDACTED"
+    return f"{value[:prefix]}...{value[-suffix:]}"
+
+
 def status() -> int:
     plan = read_json(PLAN_PATH)
     state = read_json(STATE_PATH)
-    result = build_result("status", state.get("state") or (PREPARED if plan else NO_PLAN), plan if plan else None, [])
-    result["next_action"] = "No actual roundtrip plan available." if not plan else "Review plan/result state; execute only with explicit manual gates."
-    write_json(RESULT_PATH, result)
-    print(f"state={result['state']}")
-    print(f"plan={plan.get('actual_roundtrip_plan_id', 'none') if plan else 'none'}")
-    print(f"sha={plan.get('actual_roundtrip_payload_sha256', 'none') if plan else 'none'}")
-    print(f"consumed={result['plan_consumed']}")
-    print(f"expired={result['plan_expired']}")
+    execution_result = read_json(RESULT_PATH)
+    execution_result_available = bool(execution_result)
+    payload = plan.get("actual_roundtrip_payload", {}) if plan else {}
+    persistent_state = state.get("state") or (PREPARED if plan else NO_PLAN)
+    current = posture()
+    status_payload = {
+        "generated_at": utc_now(),
+        "mode": "status",
+        "persistent_state": persistent_state,
+        "plan_available": bool(plan),
+        "plan_consumed": bool(plan.get("consumed")) if plan else False,
+        "plan_completed": bool(plan.get("completed")) if plan else False,
+        "plan_expired": plan_expired(plan) if plan else False,
+        "actual_testnet_only": bool(plan.get("actual_testnet_only", True)) if plan else True,
+        "symbol": payload.get("symbol") or execution_result.get("symbol"),
+        "planned_entry_quantity": payload.get("entry_quantity") or execution_result.get("planned_entry_quantity"),
+        "last_execution_status": execution_result.get("status") if execution_result_available else None,
+        "last_execution_state": execution_result.get("state") if execution_result_available else None,
+        "last_entry_attempt_count": execution_result.get("entry_attempt_count") if execution_result_available else None,
+        "last_entry_order_success": execution_result.get("entry_order_success") if execution_result_available else None,
+        "last_entry_position_verified": execution_result.get("entry_position_verified") if execution_result_available else None,
+        "last_live_position_after_entry": execution_result.get("live_position_after_entry") if execution_result_available else None,
+        "last_primary_close_attempt_count": execution_result.get("primary_close_attempt_count") if execution_result_available else None,
+        "last_primary_close_reduce_only": execution_result.get("primary_close_reduce_only") if execution_result_available else None,
+        "last_emergency_close_attempt_count": execution_result.get("emergency_close_attempt_count") if execution_result_available else None,
+        "last_live_position_after_close": execution_result.get("live_position_after_close") if execution_result_available else None,
+        "last_final_flat_verified": execution_result.get("final_flat_verified") if execution_result_available else None,
+        "operator_review_required": bool(execution_result.get("operator_review_required")) if execution_result_available else False,
+        "execution_result_available": execution_result_available,
+        "execution_result_preserved": True,
+        "current_read_only_status": {
+            "real_binance_enabled": current["real_binance_enabled"],
+            "auto_execution_enabled": current["allow_auto_testnet_order"],
+            "execution_halt_active": current["execution_halt_active"],
+        },
+        "plan_lifecycle": {
+            "available": bool(plan),
+            "consumed": bool(plan.get("consumed")) if plan else False,
+            "completed": bool(plan.get("completed")) if plan else False,
+            "expired": plan_expired(plan) if plan else False,
+        },
+        "last_execution_result": {
+            "available": execution_result_available,
+            "status": execution_result.get("status") if execution_result_available else None,
+            "state": execution_result.get("state") if execution_result_available else None,
+        },
+        "next_action": "No actual roundtrip plan available." if not plan else "Review status/result state; execute only with explicit manual gates.",
+    }
+    write_json(STATUS_PATH, redact(status_payload))
+    print(f"persistent_state={status_payload['persistent_state']}")
+    print(f"plan={abbreviated_identifier(plan.get('actual_roundtrip_plan_id')) if plan else 'none'}")
+    print(f"sha={abbreviated_identifier(plan.get('actual_roundtrip_payload_sha256')) if plan else 'none'}")
+    print(f"consumed={status_payload['plan_consumed']}")
+    print(f"completed={status_payload['plan_completed']}")
+    print(f"expired={status_payload['plan_expired']}")
+    print(f"execution_result_available={status_payload['execution_result_available']}")
+    print(f"last_execution_state={status_payload['last_execution_state']}")
     return 0
 
 

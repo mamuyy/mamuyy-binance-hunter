@@ -1,10 +1,13 @@
 import argparse
 import copy
+import contextlib
 import fcntl
+import hashlib
 import json
 import os
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -124,6 +127,7 @@ class ActualRoundtripControllerTest(unittest.TestCase):
             EXECUTOR_RESULT_PATH=str(self.root / "logs" / "binance_testnet_executor_result.json"),
             PLAN_PATH=str(self.root / "logs" / "manual_actual_testnet_roundtrip_plan.json"),
             RESULT_PATH=str(self.root / "logs" / "manual_actual_testnet_roundtrip_result.json"),
+            STATUS_PATH=str(self.root / "logs" / "manual_actual_testnet_roundtrip_status.json"),
             STATE_PATH=str(self.root / "logs" / "manual_actual_testnet_roundtrip_state.json"),
             AUDIT_PATH=str(self.root / "logs" / "manual_actual_testnet_roundtrip_audit.jsonl"),
             LOCK_FILE_PATH=str(self.root / "runtime" / "MANUAL_ACTUAL_TESTNET_ROUNDTRIP.lock"),
@@ -147,7 +151,7 @@ class ActualRoundtripControllerTest(unittest.TestCase):
         self.env.start()
         self.client = FakeClient()
         self.client_patch = mock.patch.object(arc, "client", return_value=self.client)
-        self.client_patch.start()
+        self.client_factory = self.client_patch.start()
         self.sleep_patch = mock.patch.object(arc.time, "sleep", return_value=None)
         self.sleep_patch.start()
         self.write_sources()
@@ -165,6 +169,13 @@ class ActualRoundtripControllerTest(unittest.TestCase):
 
     def read_result(self):
         return json.loads(Path(arc.RESULT_PATH).read_text())
+
+    def read_status(self):
+        return json.loads(Path(arc.STATUS_PATH).read_text())
+
+    def file_bytes_and_sha(self, path):
+        data = Path(path).read_bytes() if Path(path).exists() else None
+        return data, hashlib.sha256(data).hexdigest() if data is not None else None
 
     def read_plan(self):
         return json.loads(Path(arc.PLAN_PATH).read_text())
@@ -372,6 +383,114 @@ class ActualRoundtripControllerTest(unittest.TestCase):
         self.assertTrue(result["final_flat_verified"])
         self.assertEqual(result["live_position_after_close"], "0")
         self.assertEqual(len(calls), 2)
+
+
+    def test_status_preserves_completed_execution_result_and_writes_separate_status(self):
+        plan = self.prepare_plan()
+        calls, patcher = self.mock_run_sequence(position_after_entry="0.013", final_position="0")
+        with patcher, mock.patch.dict(os.environ, {"ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP": "1", "ALLOW_TESTNET_ORDER": "true"}, clear=False):
+            self.assertEqual(arc.execute_roundtrip(self.exec_args(plan)), 0)
+        original_bytes, original_sha = self.file_bytes_and_sha(arc.RESULT_PATH)
+        plan_bytes, plan_sha = self.file_bytes_and_sha(arc.PLAN_PATH)
+        state_bytes, state_sha = self.file_bytes_and_sha(arc.STATE_PATH)
+        audit_bytes, audit_sha = self.file_bytes_and_sha(arc.AUDIT_PATH)
+        self.client_factory.reset_mock()
+        with mock.patch.object(arc.subprocess, "run") as run:
+            self.assertEqual(arc.status(), 0)
+        run.assert_not_called()
+        self.client_factory.assert_not_called()
+        self.assertEqual(self.file_bytes_and_sha(arc.RESULT_PATH), (original_bytes, original_sha))
+        self.assertEqual(self.file_bytes_and_sha(arc.PLAN_PATH), (plan_bytes, plan_sha))
+        self.assertEqual(self.file_bytes_and_sha(arc.STATE_PATH), (state_bytes, state_sha))
+        self.assertEqual(self.file_bytes_and_sha(arc.AUDIT_PATH), (audit_bytes, audit_sha))
+        self.assertTrue(Path(arc.STATUS_PATH).exists())
+        status = self.read_status()
+        self.assertEqual(status["mode"], "status")
+        self.assertEqual(status["persistent_state"], arc.COMPLETED)
+        self.assertTrue(status["plan_consumed"])
+        self.assertTrue(status["plan_completed"])
+        self.assertEqual(status["last_execution_status"], "COMPLETED")
+        self.assertEqual(status["last_execution_state"], arc.COMPLETED)
+        self.assertEqual(status["last_entry_attempt_count"], 1)
+        self.assertTrue(status["last_entry_order_success"])
+        self.assertTrue(status["last_entry_position_verified"])
+        self.assertEqual(status["last_live_position_after_entry"], "0.013")
+        self.assertEqual(status["last_primary_close_attempt_count"], 1)
+        self.assertTrue(status["last_primary_close_reduce_only"])
+        self.assertEqual(status["last_emergency_close_attempt_count"], 0)
+        self.assertEqual(status["last_live_position_after_close"], "0")
+        self.assertTrue(status["last_final_flat_verified"])
+        self.assertTrue(status["execution_result_available"])
+        self.assertTrue(status["execution_result_preserved"])
+        self.assertEqual(len(calls), 2)
+
+    def test_status_preserves_failed_execution_result(self):
+        plan = self.prepare_plan()
+        calls, patcher = self.mock_run_sequence(position_after_entry="0", entry_rc=1)
+        with patcher, mock.patch.dict(os.environ, {"ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP": "1", "ALLOW_TESTNET_ORDER": "true"}, clear=False):
+            self.assertEqual(arc.execute_roundtrip(self.exec_args(plan)), 1)
+        original_bytes, original_sha = self.file_bytes_and_sha(arc.RESULT_PATH)
+        self.client_factory.reset_mock()
+        with mock.patch.object(arc.subprocess, "run") as run:
+            self.assertEqual(arc.status(), 0)
+        run.assert_not_called()
+        self.client_factory.assert_not_called()
+        self.assertEqual(self.file_bytes_and_sha(arc.RESULT_PATH), (original_bytes, original_sha))
+        status = self.read_status()
+        self.assertEqual(status["last_execution_status"], "FAILED")
+        self.assertEqual(status["last_execution_state"], arc.ENTRY_FAILED)
+        self.assertEqual(status["last_entry_attempt_count"], 1)
+        self.assertFalse(status["last_entry_order_success"])
+        self.assertFalse(status["last_final_flat_verified"])
+        self.assertTrue(status["execution_result_preserved"])
+        self.assertEqual(len(calls), 1)
+
+    def test_no_plan_status_writes_only_status_without_subprocess_or_client(self):
+        self.client_factory.reset_mock()
+        with mock.patch.object(arc.subprocess, "run") as run:
+            self.assertEqual(arc.status(), 0)
+        run.assert_not_called()
+        self.client_factory.assert_not_called()
+        self.assertFalse(Path(arc.RESULT_PATH).exists())
+        self.assertFalse(Path(arc.PLAN_PATH).exists())
+        self.assertFalse(Path(arc.STATE_PATH).exists())
+        self.assertFalse(Path(arc.AUDIT_PATH).exists())
+        status = self.read_status()
+        self.assertEqual(status["persistent_state"], arc.NO_PLAN)
+        self.assertFalse(status["plan_available"])
+        self.assertFalse(status["execution_result_available"])
+        self.assertTrue(status["execution_result_preserved"])
+
+    def test_status_console_redacts_full_uuid_sha_and_secrets(self):
+        plan = self.prepare_plan()
+        result = arc.build_result("execute-roundtrip", arc.COMPLETED, plan, [])
+        result.update(
+            {
+                "status": "COMPLETED",
+                "state": arc.COMPLETED,
+                "entry_attempt_count": 1,
+                "entry_order_success": True,
+                "entry_position_verified": True,
+                "live_position_after_entry": "0.013",
+                "primary_close_attempt_count": 1,
+                "live_position_after_close": "0",
+                "final_flat_verified": True,
+                "entry_command_redacted": {"api_key": "secret-value"},
+            }
+        )
+        self.write_json(arc.RESULT_PATH, result)
+        plan_id = plan["actual_roundtrip_plan_id"]
+        sha = plan["actual_roundtrip_payload_sha256"]
+        output = StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(arc.status(), 0)
+        text = output.getvalue()
+        self.assertNotIn(plan_id, text)
+        self.assertNotIn(sha, text)
+        self.assertIn(plan_id[:8], text)
+        self.assertIn(sha[:8], text)
+        self.assertNotIn("secret-value", text)
+        self.assertNotIn("api_key", json.dumps(self.read_status()).lower())
 
     def test_entry_executor_failure_zero_ends_entry_failed(self):
         plan = self.prepare_plan()
