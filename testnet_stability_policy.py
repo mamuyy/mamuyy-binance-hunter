@@ -103,7 +103,8 @@ def verify_checksums(directory: str) -> Tuple[bool, List[str]]:
         return False, ["checksum file missing"]
     seen = set()
     try:
-        lines = open(path, "r", encoding="utf-8").readlines()
+        with open(path, "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
     except OSError:
         return False, ["checksum file unreadable"]
     for raw in lines:
