@@ -11,13 +11,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from binance_futures_testnet_client import load_dotenv_file
-from binance_testnet_executor import daily_order_limit
 from testnet_stability_policy import evaluate_policy
 
 RESULT_PATH = "logs/testnet_stability_limit_expansion_gate_result.json"
 TELEGRAM_PREVIEW_PATH = "logs/testnet_stability_limit_expansion_gate_telegram_preview.json"
 OPERATIONS_RESULT_PATH = "logs/testnet_operations_evidence_supervisor_result.json"
 EVIDENCE_ROOT = "evidence"
+DEFAULT_POLICY_LIMIT = 3
 
 
 def utc_now() -> str:
@@ -31,13 +31,23 @@ def write_json(path: str, payload: Dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def configured_daily_limit() -> int:
+    raw = os.getenv("TESTNET_MAX_ORDERS_PER_DAY") or os.getenv("TESTNET_DAILY_ORDER_LIMIT")
+    if raw in (None, ""):
+        return DEFAULT_POLICY_LIMIT
+    try:
+        return int(raw)
+    except ValueError:
+        return -1
+
+
 def evaluate(
     evidence_root: str = EVIDENCE_ROOT,
     operations_result_path: str = OPERATIONS_RESULT_PATH,
     configured_limit: int | None = None,
 ) -> Dict[str, Any]:
     load_dotenv_file()
-    current_limit = daily_order_limit() if configured_limit is None else configured_limit
+    current_limit = configured_daily_limit() if configured_limit is None else configured_limit
     result = evaluate_policy(current_limit, evidence_root, operations_result_path)
     result.update({
         "generated_at": utc_now(),
