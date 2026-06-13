@@ -338,6 +338,41 @@ class ActualRoundtripControllerTest(unittest.TestCase):
         self.assertIn("--close-position", calls[1])
         self.assertNotIn("--order-test", " ".join(" ".join(c) for c in calls))
 
+    def test_successful_entry_and_below_minimum_reduce_only_close_completes_flat(self):
+        plan = self.prepare_plan()
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            is_close = "--close-position" in command
+            if not is_close:
+                self.write_json(arc.EXECUTOR_RESULT_PATH, {"mode": "actual_order", "order_success": True})
+                self.client.positions = [{"symbol": "ETHUSDT", "positionAmt": "0.013"}]
+                return subprocess_completed(0)
+            self.write_json(
+                arc.EXECUTOR_RESULT_PATH,
+                {
+                    "mode": "actual_close_position",
+                    "order_success": True,
+                    "estimated_notional_usdt": 19.5,
+                    "minimum_notional_passed": False,
+                    "notional_policy_scope": "REDUCE_ONLY_CLOSE",
+                    "reduce_only_notional_exempt": True,
+                    "reduce_only_validation_passed": True,
+                    "notional_limit_passed": True,
+                },
+            )
+            self.client.positions = [{"symbol": "ETHUSDT", "positionAmt": "0"}]
+            return subprocess_completed(0)
+
+        with mock.patch.object(arc.subprocess, "run", side_effect=fake_run), mock.patch.dict(os.environ, {"ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP": "1", "ALLOW_TESTNET_ORDER": "true"}, clear=False):
+            self.assertEqual(arc.execute_roundtrip(self.exec_args(plan)), 0)
+        result = self.read_result()
+        self.assertEqual(result["state"], arc.COMPLETED)
+        self.assertTrue(result["final_flat_verified"])
+        self.assertEqual(result["live_position_after_close"], "0")
+        self.assertEqual(len(calls), 2)
+
     def test_entry_executor_failure_zero_ends_entry_failed(self):
         plan = self.prepare_plan()
         calls, patcher = self.mock_run_sequence(position_after_entry="0", entry_rc=1)
@@ -382,6 +417,43 @@ class ActualRoundtripControllerTest(unittest.TestCase):
         result = self.read_result()
         self.assertEqual(result["emergency_close_attempt_count"], 1)
         self.assertTrue(Path(arc.HALT_FILE_PATH).exists())
+
+    def test_primary_close_failure_emergency_below_minimum_close_not_policy_blocked(self):
+        plan = self.prepare_plan()
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            is_close = "--close-position" in command
+            if not is_close:
+                self.write_json(arc.EXECUTOR_RESULT_PATH, {"mode": "actual_order", "order_success": True})
+                self.client.positions = [{"symbol": "ETHUSDT", "positionAmt": "0.013"}]
+                return subprocess_completed(0)
+            close_success = len(calls) == 3
+            self.write_json(
+                arc.EXECUTOR_RESULT_PATH,
+                {
+                    "mode": "actual_close_position",
+                    "order_success": close_success,
+                    "estimated_notional_usdt": 19.5,
+                    "minimum_notional_passed": False,
+                    "notional_policy_scope": "REDUCE_ONLY_CLOSE",
+                    "reduce_only_notional_exempt": close_success,
+                    "reduce_only_validation_passed": close_success,
+                    "notional_limit_passed": close_success,
+                    "blocked_reason": None if close_success else "simulated primary close transport failure",
+                },
+            )
+            self.client.positions = [{"symbol": "ETHUSDT", "positionAmt": "0" if close_success else "0.013"}]
+            return subprocess_completed(0 if close_success else 1)
+
+        with mock.patch.object(arc.subprocess, "run", side_effect=fake_run), mock.patch.dict(os.environ, {"ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP": "1", "ALLOW_TESTNET_ORDER": "true"}, clear=False):
+            self.assertEqual(arc.execute_roundtrip(self.exec_args(plan)), 0)
+        result = self.read_result()
+        self.assertEqual(result["state"], arc.EMERGENCY_FLAT_VERIFIED)
+        self.assertEqual(result["emergency_close_attempt_count"], 1)
+        self.assertTrue(result["final_flat_verified"])
+        self.assertEqual(len([call for call in calls if "--close-position" in call]), 2)
 
     def test_emergency_close_failure_manual_action_required(self):
         plan = self.prepare_plan()

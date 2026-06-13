@@ -19,6 +19,9 @@ STATUS_PATH = "reports/binance_testnet_status.json"
 DEFAULT_DAILY_ORDER_LIMIT = 1
 DEFAULT_MAX_NOTIONAL = 25.0
 DEFAULT_MIN_NOTIONAL = 20.0
+NOTIONAL_SCOPE_ENTRY = "ENTRY"
+NOTIONAL_SCOPE_REDUCE_ONLY_CLOSE = "REDUCE_ONLY_CLOSE"
+REDUCE_ONLY_NOTIONAL_EXEMPT_REASON = "reduce-only close is exempt from entry minimum/maximum notional limits"
 
 
 def utc_now() -> str:
@@ -126,8 +129,12 @@ def build_result(args: argparse.Namespace, mode: str) -> Dict[str, Any]:
         "max_notional_usdt": env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL),
         "minimum_notional_passed": False,
         "maximum_notional_passed": False,
+        "notional_policy_scope": NOTIONAL_SCOPE_ENTRY,
         "notional_policy_passed": False,
         "notional_limit_passed": False,
+        "reduce_only_notional_exempt": False,
+        "reduce_only_validation_passed": False,
+        "reduce_only_validation_reason": None,
         "blocked_reason": None,
         "binance_response_redacted": None,
         "real_binance_enabled": False,
@@ -276,6 +283,50 @@ def reducing_order_blocked_reason(side: str, quantity: Any, position_amt: float)
     return None
 
 
+def reduce_only_validation_reason(
+    args: argparse.Namespace,
+    result: Dict[str, Any],
+    position_amt: float,
+    *,
+    close_position: bool = False,
+) -> Optional[str]:
+    if not args.reduce_only:
+        return "reduce-only flag is required for reduce-only notional exemption."
+    reduction_reason = reducing_order_blocked_reason(args.side, args.quantity, position_amt)
+    if reduction_reason:
+        return reduction_reason
+    if close_position and (args.order_type or "").upper() != "MARKET":
+        return "--close-position reduce-only close must use MARKET order type."
+    if result.get("base_url") != DEMO_FUTURES_BASE_URL:
+        return f"base URL must be exactly {DEMO_FUTURES_BASE_URL}."
+    if os.getenv("BROKER_MODE", BROKER_MODE_REQUIRED) != BROKER_MODE_REQUIRED:
+        return f"BROKER_MODE must be {BROKER_MODE_REQUIRED}."
+    if env_bool("REAL_BINANCE_ENABLED", False):
+        return "REAL_BINANCE_ENABLED must be false."
+    if env_bool("ALLOW_REAL_BINANCE_ORDER", False):
+        return "ALLOW_REAL_BINANCE_ORDER must be false."
+    if not env_bool("ALLOW_TESTNET_ORDER", False):
+        return "ALLOW_TESTNET_ORDER must be true for reduce-only notional exemption."
+    if not order_allowlist_passed(args.symbol):
+        return "Symbol is not in TESTNET_ORDER_ALLOWLIST."
+    return None
+
+
+def apply_reduce_only_notional_policy(
+    result: Dict[str, Any],
+    args: argparse.Namespace,
+    position_amt: float,
+    *,
+    close_position: bool = False,
+) -> None:
+    result["notional_policy_scope"] = NOTIONAL_SCOPE_REDUCE_ONLY_CLOSE
+    reason = reduce_only_validation_reason(args, result, position_amt, close_position=close_position)
+    passed = reason is None
+    result["reduce_only_validation_passed"] = passed
+    result["reduce_only_validation_reason"] = REDUCE_ONLY_NOTIONAL_EXEMPT_REASON if passed else reason
+    result["reduce_only_notional_exempt"] = passed
+
+
 def estimate_notional(quantity: Any, price: Any) -> Optional[float]:
     quantity_float = parse_float(quantity)
     price_float = parse_float(price)
@@ -318,7 +369,9 @@ def apply_notional_estimate(result: Dict[str, Any], args: argparse.Namespace, ap
     max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
     minimum_passed = estimated_notional is not None and estimated_notional >= min_notional
     maximum_passed = estimated_notional is not None and estimated_notional <= max_notional
-    policy_passed = minimum_passed and maximum_passed
+    entry_policy_passed = minimum_passed and maximum_passed
+    reduce_only_exempt = bool(result.get("reduce_only_notional_exempt"))
+    policy_passed = (estimated_notional is not None) and (reduce_only_exempt or entry_policy_passed)
     result["estimated_price"] = estimated_price
     result["estimated_price_source"] = estimated_price_source
     result["estimated_notional_usdt"] = estimated_notional
@@ -333,6 +386,8 @@ def apply_notional_estimate(result: Dict[str, Any], args: argparse.Namespace, ap
 def notional_blocked_reason(result: Dict[str, Any]) -> Optional[str]:
     if result.get("estimated_notional_usdt") is None:
         return "notional estimate missing"
+    if result.get("reduce_only_notional_exempt") is True:
+        return None
     if not result.get("minimum_notional_passed"):
         return "notional below TESTNET_MIN_NOTIONAL_USDT"
     if not result.get("maximum_notional_passed"):
@@ -359,8 +414,12 @@ def order_payload(args: argparse.Namespace, result: Optional[Dict[str, Any]] = N
                 "max_notional_usdt": result.get("max_notional_usdt"),
                 "minimum_notional_passed": result.get("minimum_notional_passed"),
                 "maximum_notional_passed": result.get("maximum_notional_passed"),
+                "notional_policy_scope": result.get("notional_policy_scope"),
                 "notional_policy_passed": result.get("notional_policy_passed"),
                 "notional_limit_passed": result.get("notional_limit_passed"),
+                "reduce_only_notional_exempt": result.get("reduce_only_notional_exempt"),
+                "reduce_only_validation_passed": result.get("reduce_only_validation_passed"),
+                "reduce_only_validation_reason": result.get("reduce_only_validation_reason"),
                 "blocked_reason": result.get("blocked_reason"),
                 "daily_actual_order_count": result.get("daily_actual_order_count"),
                 "daily_order_limit": result.get("daily_order_limit"),
@@ -523,6 +582,7 @@ def run_close_position(args: argparse.Namespace) -> int:
     result["order_type"] = "MARKET"
     result["close_side"] = close_side
     result["close_quantity"] = close_quantity
+    apply_reduce_only_notional_policy(result, args, position_amt, close_position=True)
     apply_notional_estimate(result, args, api)
     result["binance_response_redacted"] = {
         "position_before": redact_binance_response(position),
@@ -628,7 +688,8 @@ def run_order_action(args: argparse.Namespace) -> int:
     if args.reduce_only:
         _, position_amt = fetch_symbol_position(api, args.symbol)
         result["position_before_amt"] = format_quantity(position_amt)
-        blocked_reason = reducing_order_blocked_reason(args.side, args.quantity, position_amt)
+        apply_reduce_only_notional_policy(result, args, position_amt)
+        blocked_reason = None if result["reduce_only_validation_passed"] else result["reduce_only_validation_reason"]
         if blocked_reason:
             result["blocked_reason"] = blocked_reason
             result["binance_response_redacted"] = {"estimate": order_payload(args, result)}
