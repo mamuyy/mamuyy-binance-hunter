@@ -28,6 +28,8 @@ MODE = "semi_auto_testnet_bridge_dry_run"
 VALID_LONG_DIRECTIONS = {"BUY", "LONG"}
 VALID_SHORT_DIRECTIONS = {"SELL", "SHORT"}
 VALID_SUGGESTED_RISK = {"NORMAL", "NEED_REVIEW"}
+DEFAULT_MIN_NOTIONAL = 20.0
+MIN_NOTIONAL_BLOCKED_REASON = "estimated notional is below TESTNET_MIN_NOTIONAL_USDT"
 SECRET_KEY_FRAGMENTS = ("SECRET", "KEY", "TOKEN", "PASSWORD", "SIGNATURE")
 
 
@@ -232,7 +234,7 @@ def safety_check() -> Tuple[bool, List[str], Dict[str, Any]]:
     return not reasons, reasons, details
 
 
-def estimate_quantity_and_notional(inputs: Dict[str, Any], max_notional: float) -> Tuple[Optional[str], Optional[float], List[str]]:
+def estimate_quantity_and_notional(inputs: Dict[str, Any], min_notional: float, max_notional: float) -> Tuple[Optional[str], Optional[float], List[str]]:
     reasons: List[str] = []
     quantity = inputs.get("quantity")
     price = inputs.get("price")
@@ -242,7 +244,8 @@ def estimate_quantity_and_notional(inputs: Dict[str, Any], max_notional: float) 
     elif quantity is not None and quantity > 0:
         reasons.append("estimated notional unavailable because overlay price is missing.")
     elif price is not None and price > 0:
-        requested_notional = env_float("TESTNET_BRIDGE_ORDER_NOTIONAL_USDT", min(max_notional, 10.0))
+        default_notional = min(max_notional, max(min_notional, 21.5))
+        requested_notional = env_float("TESTNET_BRIDGE_ORDER_NOTIONAL_USDT", default_notional)
         quantity = requested_notional / price
         notional = requested_notional
     else:
@@ -254,11 +257,36 @@ def estimate_quantity_and_notional(inputs: Dict[str, Any], max_notional: float) 
     return quantity_text, notional, reasons
 
 
+def notional_policy_fields(estimated_notional: Optional[float], min_notional: float, max_notional: float) -> Dict[str, Any]:
+    minimum_passed = estimated_notional is not None and estimated_notional >= min_notional
+    maximum_passed = estimated_notional is not None and estimated_notional <= max_notional
+    policy_passed = minimum_passed and maximum_passed
+    reason = None
+    if estimated_notional is None:
+        reason = "estimated_notional_usdt unavailable."
+    elif estimated_notional <= 0:
+        reason = "estimated_notional_usdt must be positive."
+    elif not minimum_passed:
+        reason = MIN_NOTIONAL_BLOCKED_REASON
+    elif not maximum_passed:
+        reason = "estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT."
+    return {
+        "min_notional_usdt": min_notional,
+        "max_notional_usdt": max_notional,
+        "estimated_notional_usdt": estimated_notional,
+        "minimum_notional_passed": minimum_passed,
+        "maximum_notional_passed": maximum_passed,
+        "notional_policy_passed": policy_passed,
+        "notional_policy_reason": reason,
+    }
+
+
 def policy_check(
     inputs: Dict[str, Any],
     overlay_report_path: str,
     quantity: Optional[str],
     estimated_notional: Optional[float],
+    min_notional: float,
     max_notional: float,
     daily_limit_passed: bool,
     allow_need_review: bool,
@@ -290,10 +318,9 @@ def policy_check(
         reasons.append("direction must be BUY/LONG or SELL/SHORT.")
     if quantity is None:
         reasons.append("quantity unavailable for advisory order payload.")
-    if estimated_notional is None:
-        reasons.append("estimated_notional_usdt unavailable.")
-    elif estimated_notional > max_notional:
-        reasons.append("estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT.")
+    notional_policy = notional_policy_fields(estimated_notional, min_notional, max_notional)
+    if not notional_policy["notional_policy_passed"]:
+        reasons.append(str(notional_policy["notional_policy_reason"]))
     if not daily_limit_passed:
         reasons.append("daily testnet order limit would block an actual order.")
     return not reasons, reasons
@@ -354,10 +381,12 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     inputs = extract_decision_inputs(overlay_report, overlay_telegram, args.symbol or "")
     safety_passed, safety_reasons, safety = safety_check()
     daily_count, daily_limit, daily_passed, daily_reason = daily_limit_status()
+    min_notional = env_float("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL)
     max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
-    quantity, estimated_notional, sizing_reasons = estimate_quantity_and_notional(inputs, max_notional)
+    quantity, estimated_notional, sizing_reasons = estimate_quantity_and_notional(inputs, min_notional, max_notional)
+    notional_policy = notional_policy_fields(estimated_notional, min_notional, max_notional)
     policy_passed, policy_reasons = policy_check(
-        inputs, args.overlay_report_path, quantity, estimated_notional, max_notional, daily_passed, args.allow_need_review
+        inputs, args.overlay_report_path, quantity, estimated_notional, min_notional, max_notional, daily_passed, args.allow_need_review
     )
 
     blocked_reasons: List[str] = []
@@ -390,7 +419,12 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
         "side": inputs.get("side"),
         "quantity": quantity,
         "estimated_notional_usdt": estimated_notional,
+        "min_notional_usdt": min_notional,
         "max_notional_usdt": max_notional,
+        "minimum_notional_passed": notional_policy["minimum_notional_passed"],
+        "maximum_notional_passed": notional_policy["maximum_notional_passed"],
+        "notional_policy_passed": notional_policy["notional_policy_passed"],
+        "notional_policy_reason": notional_policy["notional_policy_reason"],
         "signal_score": inputs.get("signal_score"),
         "portfolio_eligible": inputs.get("portfolio_eligible"),
         "overlay_decision": inputs.get("overlay_decision"),

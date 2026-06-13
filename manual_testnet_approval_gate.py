@@ -30,6 +30,8 @@ MODE_PREPARE = "manual_approval_prepare"
 MODE_APPROVAL = "manual_approval_order_test"
 MODE_STATUS = "manual_approval_status"
 APPROVAL_TTL_MINUTES = 10
+DEFAULT_MIN_NOTIONAL = 20.0
+MIN_NOTIONAL_BLOCKED_REASON = "estimated notional is below TESTNET_MIN_NOTIONAL_USDT"
 SECRET_KEY_FRAGMENTS = ("SECRET", "KEY", "TOKEN", "PASSWORD", "SIGNATURE", "CHAT_ID")
 
 
@@ -211,6 +213,32 @@ def safety_reasons(require_manual: bool = False, require_testnet_order: bool = F
     return reasons
 
 
+def notional_policy_fields(estimated_notional: Optional[float]) -> Dict[str, Any]:
+    min_notional = env_float("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL)
+    max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
+    minimum_passed = estimated_notional is not None and estimated_notional >= min_notional
+    maximum_passed = estimated_notional is not None and estimated_notional <= max_notional
+    policy_passed = minimum_passed and maximum_passed
+    reason = None
+    if estimated_notional is None:
+        reason = "estimated_notional_usdt must be positive."
+    elif estimated_notional <= 0:
+        reason = "estimated_notional_usdt must be positive."
+    elif not minimum_passed:
+        reason = MIN_NOTIONAL_BLOCKED_REASON
+    elif not maximum_passed:
+        reason = "estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT."
+    return {
+        "min_notional_usdt": min_notional,
+        "max_notional_usdt": max_notional,
+        "estimated_notional_usdt": estimated_notional,
+        "minimum_notional_passed": minimum_passed,
+        "maximum_notional_passed": maximum_passed,
+        "notional_policy_passed": policy_passed,
+        "notional_policy_reason": reason,
+    }
+
+
 def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[str], Optional[Dict[str, Any]]]:
     reasons: List[str] = []
     if not bridge:
@@ -237,7 +265,7 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
     side = str(bridge.get("side") or "").upper().strip()
     quantity = bridge.get("quantity")
     estimated_notional = safe_float(bridge.get("estimated_notional_usdt"))
-    max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
+    notional_policy = notional_policy_fields(estimated_notional)
 
     if not symbol:
         reasons.append("symbol is required.")
@@ -245,10 +273,8 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
         reasons.append("side must be BUY or SELL.")
     if not decimal_positive(quantity):
         reasons.append("quantity must be positive.")
-    if estimated_notional is None or estimated_notional <= 0:
-        reasons.append("estimated_notional_usdt must be positive.")
-    elif estimated_notional > max_notional:
-        reasons.append("estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT.")
+    if not notional_policy["notional_policy_passed"]:
+        reasons.append(str(notional_policy["notional_policy_reason"]))
     if symbol and not symbol_allowlisted(symbol, bridge):
         reasons.append("symbol is not in TESTNET_ORDER_ALLOWLIST.")
 
@@ -260,6 +286,12 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
         "quantity": str(quantity),
         "order_type": "MARKET",
         "estimated_notional_usdt": estimated_notional,
+        "min_notional_usdt": notional_policy["min_notional_usdt"],
+        "max_notional_usdt": notional_policy["max_notional_usdt"],
+        "minimum_notional_passed": notional_policy["minimum_notional_passed"],
+        "maximum_notional_passed": notional_policy["maximum_notional_passed"],
+        "notional_policy_passed": notional_policy["notional_policy_passed"],
+        "notional_policy_reason": notional_policy["notional_policy_reason"],
         "bridge_status": bridge.get("status"),
         "signal_score": bridge.get("signal_score"),
         "overlay_decision": bridge.get("overlay_decision"),
@@ -300,6 +332,8 @@ def request_used(request: Optional[Dict[str, Any]]) -> bool:
 def base_result(mode: str, request: Optional[Dict[str, Any]] = None, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     posture = safety_posture()
     bridge = read_json(BRIDGE_RESULT_PATH) or {}
+    estimated_notional = payload.get("estimated_notional_usdt") if payload else bridge.get("estimated_notional_usdt")
+    derived_notional_policy = notional_policy_fields(safe_float(estimated_notional))
     return {
         "generated_at": utc_now(),
         "mode": mode,
@@ -317,8 +351,13 @@ def base_result(mode: str, request: Optional[Dict[str, Any]] = None, payload: Op
         "side": payload.get("side") if payload else bridge.get("side"),
         "quantity": payload.get("quantity") if payload else bridge.get("quantity"),
         "order_type": payload.get("order_type") if payload else "MARKET",
-        "estimated_notional_usdt": payload.get("estimated_notional_usdt") if payload else bridge.get("estimated_notional_usdt"),
-        "max_notional_usdt": env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL),
+        "estimated_notional_usdt": estimated_notional,
+        "min_notional_usdt": (payload.get("min_notional_usdt") if payload else None) or derived_notional_policy["min_notional_usdt"],
+        "max_notional_usdt": (payload.get("max_notional_usdt") if payload else None) or derived_notional_policy["max_notional_usdt"],
+        "minimum_notional_passed": payload.get("minimum_notional_passed") if payload else derived_notional_policy["minimum_notional_passed"],
+        "maximum_notional_passed": payload.get("maximum_notional_passed") if payload else derived_notional_policy["maximum_notional_passed"],
+        "notional_policy_passed": payload.get("notional_policy_passed") if payload else derived_notional_policy["notional_policy_passed"],
+        "notional_policy_reason": payload.get("notional_policy_reason") if payload else derived_notional_policy["notional_policy_reason"],
         "broker_mode": posture["broker_mode"],
         "base_url": posture["base_url"],
         "real_binance_enabled": posture["real_binance_enabled"],
