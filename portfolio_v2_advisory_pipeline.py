@@ -1,9 +1,9 @@
 """Phase 3.01 fresh Portfolio Engine V2 advisory pipeline.
 
-The pipeline discovers the newest Portfolio V2 artifacts, validates freshness and
-source integrity, renders a Telegram-style advisory, and optionally sends it
-through a manual environment gate. It is intentionally isolated from Portfolio
-Engine V1 and from all broker or order execution paths.
+This module reads Portfolio V2 research artifacts, validates freshness and
+allocation integrity, renders a separate advisory message, and optionally sends
+that message through a manual Telegram gate. Portfolio Engine V1 and all broker
+execution paths remain untouched.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import requests
 
 try:
     from config import config
-except ImportError:  # pragma: no cover - defensive standalone fallback
+except ImportError:  # pragma: no cover - standalone fallback
     config = SimpleNamespace(
         telegram_bot_token="",
         telegram_chat_id="",
@@ -72,9 +72,20 @@ ALLOCATION_COLUMNS = (
     "weight_pct",
     "weight",
 )
+PERCENT_POINT_ALLOCATION_COLUMNS = {
+    "capital_pct_v2",
+    "allocation_pct_v2",
+    "allocation_pct",
+    "weight_pct",
+}
+FRACTION_ALLOCATION_COLUMNS = {"allocation", "weight"}
 EV_COLUMNS = ("ev_pct", "expected_value", "expected_value_pct", "ev")
 WINRATE_COLUMNS = ("winrate", "win_rate", "wr", "historical_winrate")
 ACTION_COLUMNS = ("action", "recommendation", "rebalance_action", "bucket", "decision")
+MIN_VALID_SYMBOLS = 5
+MIN_ROWS_FOR_TOTAL_SANITY = 15
+TOTAL_ALLOCATION_MIN = 95.0
+TOTAL_ALLOCATION_MAX = 105.0
 
 
 def utc_now() -> datetime:
@@ -129,33 +140,45 @@ def normalize_symbol(value: Any) -> str:
     return text
 
 
-def first_value(row: Dict[str, Any], names: Iterable[str], default: Any = None) -> Any:
+def first_named_value(row: Dict[str, Any], names: Iterable[str]) -> Tuple[Optional[str], Any]:
     lowered = {str(key).lower(): value for key, value in row.items()}
     for name in names:
         value = lowered.get(name.lower())
         if value not in (None, ""):
-            return value
-    return default
+            return name.lower(), value
+    return None, None
 
 
-def normalize_percent(value: Any, *, fraction_allowed: bool = True) -> Optional[float]:
+def first_value(row: Dict[str, Any], names: Iterable[str], default: Any = None) -> Any:
+    _name, value = first_named_value(row, names)
+    return default if value in (None, "") else value
+
+
+def normalize_fraction_or_percent(value: Any) -> Optional[float]:
     number = safe_float(value)
     if number is None:
         return None
-    if fraction_allowed and 0 < abs(number) <= 1:
-        number *= 100
+    if 0 < abs(number) <= 1:
+        return number * 100
     return number
+
+
+def allocation_percent_from_row(row: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]:
+    column, raw = first_named_value(row, ALLOCATION_COLUMNS)
+    number = safe_float(raw)
+    if column is None or number is None:
+        return None, column
+    if column in PERCENT_POINT_ALLOCATION_COLUMNS:
+        return number, column
+    if column in FRACTION_ALLOCATION_COLUMNS and 0 < abs(number) <= 1:
+        return number * 100, column
+    return number, column
 
 
 def source_metadata(path: Optional[str], now: Optional[datetime] = None) -> Dict[str, Any]:
     current = now or utc_now()
     if not path or not os.path.exists(path):
-        return {
-            "path": path,
-            "available": False,
-            "modified_at": None,
-            "age_minutes": None,
-        }
+        return {"path": path, "available": False, "modified_at": None, "age_minutes": None}
     modified = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
     return {
         "path": path,
@@ -171,9 +194,7 @@ def discover_latest(patterns: Sequence[str]) -> Optional[str]:
     for pattern in patterns:
         candidates.extend(glob.glob(pattern))
     files = [path for path in candidates if os.path.isfile(path)]
-    if not files:
-        return None
-    return max(files, key=lambda path: (os.path.getmtime(path), path))
+    return max(files, key=lambda path: (os.path.getmtime(path), path)) if files else None
 
 
 def extract_records(payload: Any) -> List[Dict[str, Any]]:
@@ -202,9 +223,7 @@ def extract_records(payload: Any) -> List[Dict[str, Any]]:
 def load_records(path: Optional[str]) -> List[Dict[str, Any]]:
     if not path:
         return []
-    if Path(path).suffix.lower() == ".csv":
-        return read_csv(path)
-    return extract_records(read_json(path))
+    return read_csv(path) if Path(path).suffix.lower() == ".csv" else extract_records(read_json(path))
 
 
 def canonicalize_allocations(rows: Sequence[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -213,20 +232,24 @@ def canonicalize_allocations(rows: Sequence[Dict[str, Any]]) -> Tuple[List[Dict[
     seen: Dict[str, int] = {}
     for index, row in enumerate(rows, 1):
         symbol = normalize_symbol(first_value(row, SYMBOL_COLUMNS))
-        allocation = normalize_percent(first_value(row, ALLOCATION_COLUMNS))
+        allocation, allocation_column = allocation_percent_from_row(row)
         if not symbol:
             errors.append(f"row {index}: symbol missing")
             continue
         if allocation is None:
             errors.append(f"row {index} {symbol}: allocation missing or invalid")
             continue
+        if allocation < 0 or allocation > 100:
+            errors.append(f"row {index} {symbol}: allocation {allocation} outside 0..100")
+            continue
         seen[symbol] = seen.get(symbol, 0) + 1
         records.append(
             {
                 "symbol": symbol,
                 "allocation_pct": round(allocation, 6),
+                "allocation_source_column": allocation_column,
                 "expected_value": safe_float(first_value(row, EV_COLUMNS)),
-                "winrate_pct": normalize_percent(first_value(row, WINRATE_COLUMNS)),
+                "winrate_pct": normalize_fraction_or_percent(first_value(row, WINRATE_COLUMNS)),
                 "position_multiplier": safe_float(first_value(row, ("position_multiplier", "size_multiplier"))),
                 "allocation_score": safe_float(first_value(row, ("allocation_score_v2", "allocation_score"))),
             }
@@ -238,6 +261,10 @@ def canonicalize_allocations(rows: Sequence[Dict[str, Any]]) -> Tuple[List[Dict[
     return records, errors
 
 
+def allocation_total(allocations: Sequence[Dict[str, Any]]) -> float:
+    return round(sum(max(0.0, float(item["allocation_pct"])) for item in allocations), 6)
+
+
 def derived_health(allocations: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     positives = [max(0.0, float(item["allocation_pct"])) for item in allocations]
     total = sum(positives)
@@ -247,18 +274,19 @@ def derived_health(allocations: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     effective_assets = (1.0 / hhi) if hhi > 0 else 0.0
     target_assets = min(max(len(normalized), 1), 15)
     diversification = min(100.0, (effective_assets / target_assets) * 100.0) if normalized else 0.0
-    healthy_total = 95.0 <= total <= 105.0
+    healthy_total = TOTAL_ALLOCATION_MIN <= total <= TOTAL_ALLOCATION_MAX
     if allocations and healthy_total and largest <= 15.0 and diversification >= 55.0:
         status = "GREEN"
     elif allocations and total > 0 and largest <= 25.0:
         status = "YELLOW"
     else:
         status = "RED"
+    largest_record = max(allocations, key=lambda item: item["allocation_pct"], default=None)
     return {
         "portfolio_health": status,
         "risk_score": round(largest, 2),
         "diversification_score": round(diversification, 2),
-        "largest_exposure_symbol": allocations[0]["symbol"] if allocations else None,
+        "largest_exposure_symbol": largest_record["symbol"] if largest_record else None,
         "largest_exposure_pct": round(largest, 2),
         "total_allocation_pct": round(total, 2),
         "active_symbols": len(normalized),
@@ -266,8 +294,20 @@ def derived_health(allocations: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def parse_health(path: Optional[str], allocations: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def source_is_fresh(meta: Dict[str, Any], max_age_minutes: int) -> bool:
+    age = meta.get("age_minutes")
+    return bool(meta.get("available") and age is not None and float(age) <= max_age_minutes)
+
+
+def parse_health(
+    path: Optional[str],
+    allocations: Sequence[Dict[str, Any]],
+    meta: Dict[str, Any],
+    max_age_minutes: int,
+) -> Dict[str, Any]:
     derived = derived_health(allocations)
+    if not source_is_fresh(meta, max_age_minutes):
+        return {**derived, "health_source": "DERIVED_FROM_ALLOCATION_STALE_OR_MISSING_EXPLICIT_SOURCE"}
     payload = read_json(path) if path else None
     if not isinstance(payload, dict):
         return derived
@@ -276,26 +316,23 @@ def parse_health(path: Optional[str], allocations: Sequence[Dict[str, Any]]) -> 
     ).upper()
     if status not in {"GREEN", "YELLOW", "RED"}:
         status = derived["portfolio_health"]
-    result = {
+    risk_value = safe_float(first_value(payload, ("risk_score", "portfolio_risk_score")))
+    diversification_value = safe_float(first_value(payload, ("diversification", "diversification_score")))
+    largest_value = safe_float(first_value(payload, ("largest_exposure_pct", "largest_weight_pct")))
+    return {
         **derived,
         "portfolio_health": status,
-        "risk_score": safe_float(first_value(payload, ("risk_score", "portfolio_risk_score")))
-        or derived["risk_score"],
-        "diversification_score": safe_float(
-            first_value(payload, ("diversification", "diversification_score"))
-        )
-        or derived["diversification_score"],
+        "risk_score": risk_value if risk_value is not None else derived["risk_score"],
+        "diversification_score": (
+            diversification_value if diversification_value is not None else derived["diversification_score"]
+        ),
         "largest_exposure_symbol": normalize_symbol(
             first_value(payload, ("largest_exposure", "largest_exposure_symbol", "largest_symbol"))
         )
         or derived["largest_exposure_symbol"],
-        "largest_exposure_pct": safe_float(
-            first_value(payload, ("largest_exposure_pct", "largest_weight_pct"))
-        )
-        or derived["largest_exposure_pct"],
+        "largest_exposure_pct": largest_value if largest_value is not None else derived["largest_exposure_pct"],
         "health_source": path,
     }
-    return result
 
 
 def action_name(value: Any) -> str:
@@ -330,17 +367,18 @@ def parse_explicit_rebalancing(path: Optional[str]) -> Optional[Dict[str, List[D
         for target, aliases in key_aliases.items():
             for alias in aliases:
                 values = lowered.get(alias)
-                if isinstance(values, list):
-                    matched = True
-                    for value in values:
-                        if isinstance(value, dict):
-                            symbol = normalize_symbol(first_value(value, SYMBOL_COLUMNS))
-                            allocation = normalize_percent(first_value(value, ALLOCATION_COLUMNS))
-                        else:
-                            symbol = normalize_symbol(value)
-                            allocation = None
-                        if symbol:
-                            buckets[target].append({"symbol": symbol, "allocation_pct": allocation})
+                if not isinstance(values, list):
+                    continue
+                matched = True
+                for value in values:
+                    if isinstance(value, dict):
+                        symbol = normalize_symbol(first_value(value, SYMBOL_COLUMNS))
+                        allocation, _column = allocation_percent_from_row(value)
+                    else:
+                        symbol = normalize_symbol(value)
+                        allocation = None
+                    if symbol:
+                        buckets[target].append({"symbol": symbol, "allocation_pct": allocation})
         if matched:
             return buckets
     rows = load_records(path)
@@ -352,13 +390,9 @@ def parse_explicit_rebalancing(path: Optional[str]) -> Optional[Dict[str, List[D
         symbol = normalize_symbol(first_value(row, SYMBOL_COLUMNS))
         if not symbol:
             continue
+        allocation, _column = allocation_percent_from_row(row)
         matched = True
-        buckets[action].append(
-            {
-                "symbol": symbol,
-                "allocation_pct": normalize_percent(first_value(row, ALLOCATION_COLUMNS)),
-            }
-        )
+        buckets[action].append({"symbol": symbol, "allocation_pct": allocation})
     return buckets if matched else None
 
 
@@ -366,8 +400,8 @@ def derived_rebalancing(allocations: Sequence[Dict[str, Any]]) -> Dict[str, List
     positives = [item for item in allocations if item["allocation_pct"] > 0]
     zeros = [item for item in allocations if item["allocation_pct"] <= 0]
     buy_more = positives[:5]
-    reduce_candidates = [item for item in reversed(positives) if item not in buy_more]
-    reduce = list(reversed(reduce_candidates[:5]))
+    remaining = [item for item in positives if item not in buy_more]
+    reduce = sorted(remaining, key=lambda item: (item["allocation_pct"], item["symbol"]))[:5]
     return {
         "BUY MORE": [dict(item) for item in buy_more],
         "REDUCE": [dict(item) for item in reduce],
@@ -375,11 +409,17 @@ def derived_rebalancing(allocations: Sequence[Dict[str, Any]]) -> Dict[str, List
     }
 
 
-def build_rebalancing(path: Optional[str], allocations: Sequence[Dict[str, Any]]) -> Tuple[Dict[str, Any], str]:
-    explicit = parse_explicit_rebalancing(path)
-    if explicit is not None:
-        return explicit, str(path)
-    return derived_rebalancing(allocations), "DERIVED_FROM_ALLOCATION"
+def build_rebalancing(
+    path: Optional[str],
+    allocations: Sequence[Dict[str, Any]],
+    meta: Dict[str, Any],
+    max_age_minutes: int,
+) -> Tuple[Dict[str, Any], str]:
+    if source_is_fresh(meta, max_age_minutes):
+        explicit = parse_explicit_rebalancing(path)
+        if explicit is not None:
+            return explicit, str(path)
+    return derived_rebalancing(allocations), "DERIVED_FROM_ALLOCATION_STALE_OR_MISSING_EXPLICIT_SOURCE"
 
 
 def env_true(name: str) -> bool:
@@ -413,9 +453,18 @@ def validate_sources(
             reasons.append(
                 f"allocation source stale: {allocation_meta['age_minutes']} minutes old; limit {max_age_minutes}"
             )
-    if len(allocation_rows) < 5:
-        reasons.append(f"allocation source has only {len(allocation_rows)} valid symbols; minimum 5")
+    if len(allocation_rows) < MIN_VALID_SYMBOLS:
+        reasons.append(
+            f"allocation source has only {len(allocation_rows)} valid symbols; minimum {MIN_VALID_SYMBOLS}"
+        )
     reasons.extend(allocation_errors)
+    total = allocation_total(allocation_rows)
+    if len(allocation_rows) >= MIN_ROWS_FOR_TOTAL_SANITY and not (
+        TOTAL_ALLOCATION_MIN <= total <= TOTAL_ALLOCATION_MAX
+    ):
+        reasons.append(
+            f"allocation total {total:.2f}% outside {TOTAL_ALLOCATION_MIN:.0f}..{TOTAL_ALLOCATION_MAX:.0f}%"
+        )
     if any("stale:" in reason for reason in reasons):
         return "BLOCKED_STALE_DATA", reasons
     if reasons:
@@ -452,6 +501,7 @@ def render_message(report: Dict[str, Any]) -> str:
         f"Generated: {report['generated_at']}",
         f"Data Age: {sources['allocation'].get('age_minutes')} minutes",
         f"Rows Evaluated: {report['rows_evaluated']}",
+        f"Allocation Total: {report['allocation_total_pct']:.2f}%",
         "",
         f"Portfolio Health: {health['portfolio_health']}",
         f"Risk Score: {health['risk_score']:.2f}/100",
@@ -470,11 +520,9 @@ def render_message(report: Dict[str, Any]) -> str:
             )
         lines.extend(["", "🔄 Rebalancing:", "BUY MORE:"])
         lines.extend(bucket_lines(report["rebalancing"]["BUY MORE"], 5))
-        lines.append("")
-        lines.append("REDUCE:")
+        lines.extend(["", "REDUCE:"])
         lines.extend(bucket_lines(report["rebalancing"]["REDUCE"], 5))
-        lines.append("")
-        lines.append("REMOVE:")
+        lines.extend(["", "REMOVE:"])
         lines.extend(bucket_lines(report["rebalancing"]["REMOVE"], 10))
     lines.extend(
         [
@@ -484,6 +532,7 @@ def render_message(report: Dict[str, Any]) -> str:
             "Broker Routing: NO",
             "Order Attempted: NO",
             f"Allocation Source: {sources['allocation'].get('path') or 'NONE'}",
+            f"Health Source: {health.get('health_source')}",
             f"Rebalancing Source: {report['rebalancing_source']}",
         ]
     )
@@ -499,6 +548,7 @@ def build_report(
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     current = now or utc_now()
+    max_age = max(0, int(max_age_minutes))
     selected_allocation = allocation_path or discover_latest(ALLOCATION_PATTERNS)
     selected_health = health_path or discover_latest(HEALTH_PATTERNS)
     selected_rebalancing = rebalancing_path or discover_latest(REBALANCING_PATTERNS)
@@ -506,21 +556,22 @@ def build_report(
     health_meta = source_metadata(selected_health, current)
     rebalancing_meta = source_metadata(selected_rebalancing, current)
     allocations, errors = canonicalize_allocations(load_records(selected_allocation))
-    status, blocked_reasons = validate_sources(
-        allocation_meta, allocations, errors, max(0, int(max_age_minutes))
+    status, blocked_reasons = validate_sources(allocation_meta, allocations, errors, max_age)
+    health = parse_health(selected_health, allocations, health_meta, max_age)
+    rebalancing, rebalancing_source = build_rebalancing(
+        selected_rebalancing, allocations, rebalancing_meta, max_age
     )
-    health = parse_health(selected_health, allocations)
-    rebalancing, rebalancing_source = build_rebalancing(selected_rebalancing, allocations)
     gates_safe, active_gates = execution_gates_safe()
     if not gates_safe:
         status = "BLOCKED_EXECUTION_GATES_ACTIVE"
         blocked_reasons.append("execution-related environment gates active: " + ", ".join(active_gates))
-    report = {
+    report: Dict[str, Any] = {
         "generated_at": current.replace(microsecond=0).isoformat(),
         "phase": "3.01",
         "status": status,
         "blocked_reasons": blocked_reasons,
         "rows_evaluated": len(allocations),
+        "allocation_total_pct": round(allocation_total(allocations), 2),
         "top_allocations": allocations[:10],
         "portfolio_health": health,
         "rebalancing": rebalancing,
@@ -530,7 +581,7 @@ def build_report(
             "health": health_meta,
             "rebalancing": rebalancing_meta,
         },
-        "freshness_limit_minutes": max(0, int(max_age_minutes)),
+        "freshness_limit_minutes": max_age,
         "execution_gates_safe": gates_safe,
         "active_execution_gates": active_gates,
         "mode": "V2_ADVISORY_ONLY",
@@ -613,11 +664,11 @@ def send_or_preview(
     blocked_reason: Optional[str] = None
     attempted = False
     success = False
-    if not send_requested:
-        blocked_reason = "send flag not supplied"
-    elif dry_run:
+    if dry_run:
         status = "BLOCKED_DRY_RUN"
         blocked_reason = "--dry-run supplied"
+    elif not send_requested:
+        blocked_reason = "send flag not supplied"
     elif report["status"] != "READY":
         status = "BLOCKED_REPORT"
         blocked_reason = "; ".join(report["blocked_reasons"]) or "report is not READY"
@@ -711,7 +762,7 @@ def main() -> int:
     write_json(args.send_result_path, send_result)
     print(report["payload_text"])
     print(f"Telegram Result: {send_result['status']}")
-    return 0 if send_result["status"] not in {"ERROR"} else 1
+    return 0 if send_result["status"] != "ERROR" else 1
 
 
 if __name__ == "__main__":
