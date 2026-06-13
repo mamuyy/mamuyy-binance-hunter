@@ -13,10 +13,15 @@ import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 from typing import Any, Dict, List, Optional, Tuple
 
-from binance_futures_testnet_client import DEMO_FUTURES_BASE_URL, load_dotenv_file
+from binance_futures_testnet_client import (
+    DEMO_FUTURES_BASE_URL,
+    BinanceFuturesTestnetClient,
+    BinanceFuturesTestnetClientError,
+    load_dotenv_file,
+)
 from binance_testnet_executor import BROKER_MODE_REQUIRED, DEFAULT_MAX_NOTIONAL, env_float, env_list
 
 BRIDGE_RESULT_PATH = "logs/semi_auto_testnet_bridge_result.json"
@@ -31,6 +36,7 @@ MODE_APPROVAL = "manual_approval_order_test"
 MODE_STATUS = "manual_approval_status"
 APPROVAL_TTL_MINUTES = 10
 DEFAULT_MIN_NOTIONAL = 20.0
+DEFAULT_TARGET_NOTIONAL = 22.0
 MIN_NOTIONAL_BLOCKED_REASON = "estimated notional is below TESTNET_MIN_NOTIONAL_USDT"
 SECRET_KEY_FRAGMENTS = ("SECRET", "KEY", "TOKEN", "PASSWORD", "SIGNATURE", "CHAT_ID")
 
@@ -165,6 +171,183 @@ def safe_float(value: Any) -> Optional[float]:
     return number
 
 
+
+
+def env_decimal(name: str, default: float) -> Decimal:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return Decimal(str(default))
+    try:
+        return Decimal(value.strip())
+    except (InvalidOperation, ValueError):
+        return Decimal(str(default))
+
+
+def decimal_to_str(value: Decimal) -> str:
+    normalized = value.normalize()
+    text = format(normalized, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def decimal_to_float(value: Optional[Decimal]) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
+def parse_decimal(value: Any) -> Optional[Decimal]:
+    if value in (None, ""):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return number if number.is_finite() else None
+
+
+def ceil_to_step(value: Decimal, step: Decimal) -> Decimal:
+    if step <= 0:
+        return value
+    return (value / step).to_integral_value(rounding=ROUND_CEILING) * step
+
+
+def floor_to_step(value: Decimal, step: Decimal) -> Decimal:
+    if step <= 0:
+        return value
+    return (value / step).to_integral_value(rounding=ROUND_FLOOR) * step
+
+
+def approval_limits() -> Tuple[Decimal, Decimal, Decimal, List[str]]:
+    minimum = env_decimal("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL)
+    maximum = env_decimal("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
+    target = env_decimal("TESTNET_TARGET_NOTIONAL_USDT", DEFAULT_TARGET_NOTIONAL)
+    reasons: List[str] = []
+    if minimum <= 0:
+        reasons.append("TESTNET_MIN_NOTIONAL_USDT must be positive.")
+    if maximum <= 0:
+        reasons.append("TESTNET_MAX_NOTIONAL_USDT must be positive.")
+    if target <= 0:
+        reasons.append("TESTNET_TARGET_NOTIONAL_USDT must be positive.")
+    if minimum > maximum:
+        reasons.append("TESTNET_MIN_NOTIONAL_USDT must be <= TESTNET_MAX_NOTIONAL_USDT.")
+    if not (minimum <= target <= maximum):
+        reasons.append("TESTNET_TARGET_NOTIONAL_USDT must be between TESTNET_MIN_NOTIONAL_USDT and TESTNET_MAX_NOTIONAL_USDT.")
+    return minimum, maximum, target, reasons
+
+
+def live_client() -> BinanceFuturesTestnetClient:
+    return BinanceFuturesTestnetClient(base_url=DEMO_FUTURES_BASE_URL)
+
+
+def fetch_live_mark_price(api: BinanceFuturesTestnetClient, symbol: str) -> Tuple[Optional[Decimal], Optional[str]]:
+    try:
+        mark_price = parse_decimal(api.get_mark_price(symbol))
+    except BinanceFuturesTestnetClientError:
+        return None, None
+    if mark_price is None or mark_price <= 0:
+        return None, None
+    return mark_price, f"{DEMO_FUTURES_BASE_URL}/fapi/v1/premiumIndex"
+
+
+def symbol_exchange_item(exchange_info: Dict[str, Any], symbol: str) -> Optional[Dict[str, Any]]:
+    for item in exchange_info.get("symbols", []):
+        if isinstance(item, dict) and str(item.get("symbol", "")).upper() == symbol.upper():
+            return item
+    return None
+
+
+def filter_by_type(symbol_info: Dict[str, Any], filter_type: str) -> Optional[Dict[str, Any]]:
+    for item in symbol_info.get("filters", []):
+        if isinstance(item, dict) and item.get("filterType") == filter_type:
+            return item
+    return None
+
+
+def active_quantity_filter(symbol_info: Dict[str, Any], order_type: str) -> Tuple[Optional[Dict[str, Any]], str]:
+    market_filter = filter_by_type(symbol_info, "MARKET_LOT_SIZE")
+    lot_filter = filter_by_type(symbol_info, "LOT_SIZE")
+    if order_type.upper() == "MARKET" and market_filter:
+        step = parse_decimal(market_filter.get("stepSize")) or Decimal("0")
+        min_qty = parse_decimal(market_filter.get("minQty")) or Decimal("0")
+        max_qty = parse_decimal(market_filter.get("maxQty")) or Decimal("0")
+        if step > 0 or min_qty > 0 or max_qty > 0:
+            return market_filter, "MARKET_LOT_SIZE"
+    return lot_filter, "LOT_SIZE"
+
+
+def quantity_filter_status(quantity: Decimal, symbol_info: Dict[str, Any], order_type: str) -> Tuple[bool, str]:
+    filt, source = active_quantity_filter(symbol_info, order_type)
+    if not filt:
+        return False, "quantity filter unavailable."
+    step = parse_decimal(filt.get("stepSize")) or Decimal("0")
+    min_qty = parse_decimal(filt.get("minQty")) or Decimal("0")
+    max_qty = parse_decimal(filt.get("maxQty")) or Decimal("0")
+    precision = symbol_info.get("quantityPrecision")
+    if min_qty > 0 and quantity < min_qty:
+        return False, f"quantity below {source} minQty."
+    if max_qty > 0 and quantity > max_qty:
+        return False, f"quantity exceeds {source} maxQty."
+    if step > 0 and (quantity / step) != (quantity / step).to_integral_value():
+        return False, f"quantity is not aligned to {source} stepSize."
+    if isinstance(precision, int) and precision >= 0:
+        fractional = -quantity.as_tuple().exponent if quantity.as_tuple().exponent < 0 else 0
+        if fractional > precision:
+            return False, "quantity exceeds quantityPrecision."
+    return True, f"quantity satisfies {source}."
+
+
+def normalize_execution_quantity(
+    symbol_info: Dict[str, Any], order_type: str, target: Decimal, mark_price: Decimal, minimum: Decimal, maximum: Decimal
+) -> Tuple[Optional[Decimal], bool, str]:
+    filt, source = active_quantity_filter(symbol_info, order_type)
+    if not filt:
+        return None, False, "quantity filter unavailable."
+    step = parse_decimal(filt.get("stepSize")) or Decimal("0")
+    min_qty = parse_decimal(filt.get("minQty")) or Decimal("0")
+    max_qty = parse_decimal(filt.get("maxQty")) or Decimal("0")
+    if step <= 0:
+        return None, False, f"{source} stepSize unavailable."
+    raw = target / mark_price
+    quantity = ceil_to_step(raw, step)
+    if min_qty > 0 and quantity < min_qty:
+        quantity = ceil_to_step(min_qty, step)
+    precision = symbol_info.get("quantityPrecision")
+    if isinstance(precision, int) and precision >= 0:
+        precision_step = Decimal("1").scaleb(-precision)
+        if precision_step > step:
+            step = precision_step
+            quantity = ceil_to_step(quantity, step)
+    if max_qty > 0 and quantity > max_qty:
+        return None, False, f"normalized quantity exceeds {source} maxQty."
+    notional = quantity * mark_price
+    if notional > maximum:
+        candidate = floor_to_step(maximum / mark_price, step)
+        if min_qty > 0 and candidate < min_qty:
+            return None, False, "no safe quantity fits minQty and maximum notional."
+        if candidate * mark_price >= minimum:
+            quantity = candidate
+            notional = quantity * mark_price
+    passed, reason = quantity_filter_status(quantity, symbol_info, order_type)
+    if not passed:
+        return None, False, reason
+    if notional < minimum:
+        return None, False, MIN_NOTIONAL_BLOCKED_REASON
+    if notional > maximum:
+        return None, False, "estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT."
+    return quantity, True, f"normalized quantity satisfies {source} and notional policy."
+
+
+def bridge_signal_metadata(bridge: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "bridge_status": bridge.get("status"),
+        "signal_score": bridge.get("signal_score"),
+        "overlay_decision": bridge.get("overlay_decision"),
+        "trade_rank": bridge.get("trade_rank"),
+        "suggested_risk": bridge.get("suggested_risk"),
+        "source_report_path": bridge.get("overlay_report_path"),
+    }
+
+
 def source_fixture_allowlist(symbol: Optional[str], bridge: Dict[str, Any]) -> bool:
     """Keep the documented positive fixture path runnable without enabling execution gates."""
     source = str(bridge.get("overlay_report_path") or bridge.get("source_report_path") or "")
@@ -239,7 +422,7 @@ def notional_policy_fields(estimated_notional: Optional[float]) -> Dict[str, Any
     }
 
 
-def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+def validate_bridge_safety(bridge: Optional[Dict[str, Any]]) -> Tuple[List[str], Optional[Dict[str, Any]]]:
     reasons: List[str] = []
     if not bridge:
         return [f"bridge result missing or unreadable: {BRIDGE_RESULT_PATH}"], None
@@ -264,8 +447,6 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
     symbol = str(bridge.get("symbol") or "").upper().strip()
     side = str(bridge.get("side") or "").upper().strip()
     quantity = bridge.get("quantity")
-    estimated_notional = safe_float(bridge.get("estimated_notional_usdt"))
-    notional_policy = notional_policy_fields(estimated_notional)
 
     if not symbol:
         reasons.append("symbol is required.")
@@ -273,34 +454,83 @@ def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[
         reasons.append("side must be BUY or SELL.")
     if not decimal_positive(quantity):
         reasons.append("quantity must be positive.")
-    if not notional_policy["notional_policy_passed"]:
-        reasons.append(str(notional_policy["notional_policy_reason"]))
     if symbol and not symbol_allowlisted(symbol, bridge):
         reasons.append("symbol is not in TESTNET_ORDER_ALLOWLIST.")
+    return reasons, bridge
 
-    if reasons:
+
+def validate_bridge_for_payload(bridge: Optional[Dict[str, Any]]) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+    reasons, safe_bridge = validate_bridge_safety(bridge)
+    minimum, maximum, target, limit_reasons = approval_limits()
+    reasons.extend(limit_reasons)
+    if reasons or safe_bridge is None:
         return reasons, None
+
+    symbol = str(safe_bridge.get("symbol") or "").upper().strip()
+    side = str(safe_bridge.get("side") or "").upper().strip()
+    order_type = "MARKET"
+    api = live_client()
+    mark_price, mark_source = fetch_live_mark_price(api, symbol)
+    if mark_price is None or mark_source is None:
+        reasons.append("live mark price unavailable from Binance Futures Demo premiumIndex.")
+        return reasons, None
+    try:
+        exchange_info = api.get_exchange_info()
+    except BinanceFuturesTestnetClientError:
+        reasons.append("exchange filters unavailable from Binance Futures Demo exchangeInfo.")
+        return reasons, None
+    symbol_info = symbol_exchange_item(exchange_info, symbol)
+    if not symbol_info:
+        reasons.append("exchange filters unavailable for symbol.")
+        return reasons, None
+
+    quantity, quantity_passed, quantity_reason = normalize_execution_quantity(
+        symbol_info, order_type, target, mark_price, minimum, maximum
+    )
+    if quantity is None:
+        reasons.append(quantity_reason)
+        return reasons, None
+    estimated_notional = quantity * mark_price
+    minimum_passed = estimated_notional >= minimum
+    maximum_passed = estimated_notional <= maximum
+    policy_passed = minimum_passed and maximum_passed
+    policy_reason = None
+    if not minimum_passed:
+        policy_reason = MIN_NOTIONAL_BLOCKED_REASON
+    elif not maximum_passed:
+        policy_reason = "estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT."
+    if not policy_passed:
+        reasons.append(str(policy_reason))
+        return reasons, None
+
+    metadata = bridge_signal_metadata(safe_bridge)
     payload = {
         "symbol": symbol,
         "side": side,
-        "quantity": str(quantity),
-        "order_type": "MARKET",
-        "estimated_notional_usdt": estimated_notional,
-        "min_notional_usdt": notional_policy["min_notional_usdt"],
-        "max_notional_usdt": notional_policy["max_notional_usdt"],
-        "minimum_notional_passed": notional_policy["minimum_notional_passed"],
-        "maximum_notional_passed": notional_policy["maximum_notional_passed"],
-        "notional_policy_passed": notional_policy["notional_policy_passed"],
-        "notional_policy_reason": notional_policy["notional_policy_reason"],
-        "bridge_status": bridge.get("status"),
-        "signal_score": bridge.get("signal_score"),
-        "overlay_decision": bridge.get("overlay_decision"),
-        "trade_rank": bridge.get("trade_rank"),
-        "suggested_risk": bridge.get("suggested_risk"),
-        "source_report_path": bridge.get("overlay_report_path"),
+        "quantity": decimal_to_str(quantity),
+        "approved_quantity": decimal_to_str(quantity),
+        "order_type": order_type,
+        "live_mark_price_at_prepare": decimal_to_str(mark_price),
+        "estimated_notional_at_prepare": decimal_to_str(estimated_notional),
+        "live_estimated_notional_at_prepare": decimal_to_str(estimated_notional),
+        "estimated_notional_usdt": decimal_to_float(estimated_notional),
+        "target_notional_usdt": decimal_to_str(target),
+        "min_notional_usdt": decimal_to_str(minimum),
+        "max_notional_usdt": decimal_to_str(maximum),
+        "minimum_notional_passed": minimum_passed,
+        "maximum_notional_passed": maximum_passed,
+        "notional_policy_passed": policy_passed,
+        "notional_policy_reason": policy_reason,
+        "quantity_filter_passed": quantity_passed,
+        "quantity_filter_reason": quantity_reason,
+        "mark_price_source": mark_source,
+        "exchange_filter_source": f"{DEMO_FUTURES_BASE_URL}/fapi/v1/exchangeInfo",
+        "source_bridge_quantity": str(safe_bridge.get("quantity")),
+        "source_bridge_estimated_notional_usdt": safe_float(safe_bridge.get("estimated_notional_usdt")),
+        "bridge_signal_metadata": metadata,
+        **metadata,
     }
     return [], payload
-
 
 def load_state() -> Dict[str, Any]:
     state = read_json(STATE_PATH)
@@ -350,7 +580,17 @@ def base_result(mode: str, request: Optional[Dict[str, Any]] = None, payload: Op
         "symbol": payload.get("symbol") if payload else bridge.get("symbol"),
         "side": payload.get("side") if payload else bridge.get("side"),
         "quantity": payload.get("quantity") if payload else bridge.get("quantity"),
+        "approved_quantity": payload.get("approved_quantity") if payload else None,
+        "source_bridge_quantity": payload.get("source_bridge_quantity") if payload else bridge.get("quantity"),
+        "source_bridge_estimated_notional_usdt": payload.get("source_bridge_estimated_notional_usdt") if payload else bridge.get("estimated_notional_usdt"),
         "order_type": payload.get("order_type") if payload else "MARKET",
+        "live_mark_price_at_prepare": payload.get("live_mark_price_at_prepare") if payload else None,
+        "live_mark_price_at_approval": None,
+        "estimated_notional_at_prepare": payload.get("estimated_notional_at_prepare") if payload else None,
+        "live_estimated_notional_at_prepare": payload.get("live_estimated_notional_at_prepare") if payload else None,
+        "estimated_notional_at_approval": None,
+        "live_estimated_notional_at_approval": None,
+        "target_notional_usdt": payload.get("target_notional_usdt") if payload else decimal_to_str(env_decimal("TESTNET_TARGET_NOTIONAL_USDT", DEFAULT_TARGET_NOTIONAL)),
         "estimated_notional_usdt": estimated_notional,
         "min_notional_usdt": (payload.get("min_notional_usdt") if payload else None) or derived_notional_policy["min_notional_usdt"],
         "max_notional_usdt": (payload.get("max_notional_usdt") if payload else None) or derived_notional_policy["max_notional_usdt"],
@@ -358,6 +598,10 @@ def base_result(mode: str, request: Optional[Dict[str, Any]] = None, payload: Op
         "maximum_notional_passed": payload.get("maximum_notional_passed") if payload else derived_notional_policy["maximum_notional_passed"],
         "notional_policy_passed": payload.get("notional_policy_passed") if payload else derived_notional_policy["notional_policy_passed"],
         "notional_policy_reason": payload.get("notional_policy_reason") if payload else derived_notional_policy["notional_policy_reason"],
+        "quantity_filter_passed": payload.get("quantity_filter_passed") if payload else False,
+        "quantity_filter_reason": payload.get("quantity_filter_reason") if payload else None,
+        "mark_price_source": payload.get("mark_price_source") if payload else None,
+        "exchange_filter_source": payload.get("exchange_filter_source") if payload else None,
         "broker_mode": posture["broker_mode"],
         "base_url": posture["base_url"],
         "real_binance_enabled": posture["real_binance_enabled"],
@@ -453,10 +697,90 @@ def request_is_expired(request: Dict[str, Any]) -> bool:
 
 
 def bridge_matches_payload(payload: Dict[str, Any]) -> bool:
-    reasons, current_payload = validate_bridge_for_payload(read_json(BRIDGE_RESULT_PATH))
-    if reasons or current_payload is None:
+    reasons, bridge = validate_bridge_safety(read_json(BRIDGE_RESULT_PATH))
+    if reasons or bridge is None:
         return False
-    return canonical_json(current_payload) == canonical_json(payload)
+    return canonical_json(bridge_signal_metadata(bridge)) == canonical_json(payload.get("bridge_signal_metadata") or {})
+
+
+def approval_revalidation(payload: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+    updates: Dict[str, Any] = {}
+    reasons: List[str] = []
+    required_fields = [
+        "symbol",
+        "side",
+        "approved_quantity",
+        "order_type",
+        "live_mark_price_at_prepare",
+        "estimated_notional_at_prepare",
+        "target_notional_usdt",
+        "min_notional_usdt",
+        "max_notional_usdt",
+        "mark_price_source",
+        "exchange_filter_source",
+        "bridge_signal_metadata",
+        "quantity_filter_passed",
+        "minimum_notional_passed",
+        "maximum_notional_passed",
+        "notional_policy_passed",
+    ]
+    for field in required_fields:
+        if field not in payload or payload.get(field) in (None, ""):
+            reasons.append(f"required safety field absent: {field}")
+    quantity = parse_decimal(payload.get("approved_quantity") or payload.get("quantity"))
+    minimum = parse_decimal(payload.get("min_notional_usdt"))
+    maximum = parse_decimal(payload.get("max_notional_usdt"))
+    symbol = str(payload.get("symbol") or "").upper()
+    order_type = str(payload.get("order_type") or "MARKET").upper()
+    if quantity is None or quantity <= 0:
+        reasons.append("approved_quantity must be positive.")
+    if minimum is None or maximum is None or minimum <= 0 or maximum <= 0 or minimum > maximum:
+        reasons.append("frozen notional limits are invalid.")
+    if reasons:
+        return reasons, updates
+    api = live_client()
+    mark_price, mark_source = fetch_live_mark_price(api, symbol)
+    if mark_price is None or mark_source is None:
+        reasons.append("live mark price unavailable from Binance Futures Demo premiumIndex.")
+        return reasons, updates
+    try:
+        exchange_info = api.get_exchange_info()
+    except BinanceFuturesTestnetClientError:
+        reasons.append("exchange filters unavailable from Binance Futures Demo exchangeInfo.")
+        return reasons, updates
+    symbol_info = symbol_exchange_item(exchange_info, symbol)
+    if not symbol_info:
+        reasons.append("exchange filters unavailable for symbol.")
+        return reasons, updates
+    assert quantity is not None and minimum is not None and maximum is not None
+    estimated = quantity * mark_price
+    min_passed = estimated >= minimum
+    max_passed = estimated <= maximum
+    policy_passed = min_passed and max_passed
+    q_passed, q_reason = quantity_filter_status(quantity, symbol_info, order_type)
+    reason = None
+    if not min_passed:
+        reason = MIN_NOTIONAL_BLOCKED_REASON
+    elif not max_passed:
+        reason = "estimated_notional_usdt exceeds TESTNET_MAX_NOTIONAL_USDT."
+    if not q_passed:
+        reasons.append(q_reason)
+    if not policy_passed:
+        reasons.append(str(reason))
+    updates.update(
+        {
+            "live_mark_price_at_approval": decimal_to_str(mark_price),
+            "estimated_notional_at_approval": decimal_to_str(estimated),
+            "live_estimated_notional_at_approval": decimal_to_str(estimated),
+            "minimum_notional_passed": min_passed,
+            "maximum_notional_passed": max_passed,
+            "notional_policy_passed": policy_passed,
+            "notional_policy_reason": reason,
+            "quantity_filter_passed": q_passed,
+            "quantity_filter_reason": q_reason,
+        }
+    )
+    return reasons, updates
 
 
 def run_executor(payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]:
@@ -525,8 +849,11 @@ def approve(args: argparse.Namespace) -> int:
             reasons.append("request already used.")
         if not bridge_matches:
             reasons.append("bridge payload changed or is no longer safe.")
-        bridge_reasons, _ = validate_bridge_for_payload(read_json(BRIDGE_RESULT_PATH))
+        bridge_reasons, _ = validate_bridge_safety(read_json(BRIDGE_RESULT_PATH))
         reasons.extend(bridge_reasons)
+        revalidation_reasons, revalidation_updates = approval_revalidation(payload)
+        result.update(revalidation_updates)
+        reasons.extend(revalidation_reasons)
 
     result["safety_passed"] = not safety_reasons(require_manual=True, require_testnet_order=True)
     if reasons:
