@@ -1,0 +1,185 @@
+{
+  "mode": "PAPER_ONLY READ_ONLY NO_BROKER_API NO_REAL_CAPITAL NO_RUNTIME_MODIFICATION",
+  "database": "mamuyy_hunter.db",
+  "primary_table": "internal_paper_trades",
+  "generated_at_utc": "2026-06-15T07:43:52Z",
+  "critical_data_quality_failure": "database_not_found",
+  "data_quality": {
+    "total_rows": 0,
+    "closed_rows": 0,
+    "closed_trade_count": 0,
+    "non_closed_rows": 0,
+    "invalid_null_status_count": 0,
+    "invalid_unknown_status_count": 0,
+    "missing_pnl_count": 0,
+    "duplicate_count": 0,
+    "rows_usable_for_calculation": 0,
+    "date_range": [
+      null,
+      null
+    ],
+    "symbols": [],
+    "detected_columns": {},
+    "detected_units": {
+      "drawdown_pct": "missing_starting_equity_or_capital"
+    }
+  },
+  "core_performance": {
+    "sample_count": 0,
+    "wins": 0,
+    "losses": 0,
+    "breakeven": 0,
+    "win_rate": null,
+    "average_win": null,
+    "average_loss": null,
+    "payoff_ratio": null,
+    "expectancy_per_trade": null,
+    "gross_profit": 0,
+    "gross_loss": 0,
+    "profit_factor": null,
+    "profit_factor_reason": null,
+    "cumulative_pnl": 0,
+    "maximum_drawdown_absolute": 0.0,
+    "maximum_drawdown_pct": null,
+    "maximum_drawdown_pct_reason": "missing_starting_equity_or_capital",
+    "longest_winning_streak": 0,
+    "longest_losing_streak": 0
+  },
+  "edge_segmentation": {
+    "market_regime": {
+      "available": false
+    },
+    "trade_quality_rank": {
+      "available": false
+    }
+  },
+  "rank_validation": {
+    "available": false
+  },
+  "stability": {
+    "first_half": {
+      "sample_count": 0,
+      "wins": 0,
+      "losses": 0,
+      "breakeven": 0,
+      "win_rate": null,
+      "average_win": null,
+      "average_loss": null,
+      "payoff_ratio": null,
+      "expectancy_per_trade": null,
+      "gross_profit": 0,
+      "gross_loss": 0,
+      "profit_factor": null,
+      "profit_factor_reason": null,
+      "cumulative_pnl": 0,
+      "maximum_drawdown_absolute": 0.0,
+      "maximum_drawdown_pct": null,
+      "maximum_drawdown_pct_reason": "missing_starting_equity_or_capital",
+      "longest_winning_streak": 0,
+      "longest_losing_streak": 0
+    },
+    "second_half": {
+      "sample_count": 0,
+      "wins": 0,
+      "losses": 0,
+      "breakeven": 0,
+      "win_rate": null,
+      "average_win": null,
+      "average_loss": null,
+      "payoff_ratio": null,
+      "expectancy_per_trade": null,
+      "gross_profit": 0,
+      "gross_loss": 0,
+      "profit_factor": null,
+      "profit_factor_reason": null,
+      "cumulative_pnl": 0,
+      "maximum_drawdown_absolute": 0.0,
+      "maximum_drawdown_pct": null,
+      "maximum_drawdown_pct_reason": "missing_starting_equity_or_capital",
+      "longest_winning_streak": 0,
+      "longest_losing_streak": 0
+    },
+    "earliest_100": {
+      "sample_count": 0,
+      "wins": 0,
+      "losses": 0,
+      "breakeven": 0,
+      "win_rate": null,
+      "average_win": null,
+      "average_loss": null,
+      "payoff_ratio": null,
+      "expectancy_per_trade": null,
+      "gross_profit": 0,
+      "gross_loss": 0,
+      "profit_factor": null,
+      "profit_factor_reason": null,
+      "cumulative_pnl": 0,
+      "maximum_drawdown_absolute": 0.0,
+      "maximum_drawdown_pct": null,
+      "maximum_drawdown_pct_reason": "missing_starting_equity_or_capital",
+      "longest_winning_streak": 0,
+      "longest_losing_streak": 0
+    },
+    "latest_100": {
+      "sample_count": 0,
+      "wins": 0,
+      "losses": 0,
+      "breakeven": 0,
+      "win_rate": null,
+      "average_win": null,
+      "average_loss": null,
+      "payoff_ratio": null,
+      "expectancy_per_trade": null,
+      "gross_profit": 0,
+      "gross_loss": 0,
+      "profit_factor": null,
+      "profit_factor_reason": null,
+      "cumulative_pnl": 0,
+      "maximum_drawdown_absolute": 0.0,
+      "maximum_drawdown_pct": null,
+      "maximum_drawdown_pct_reason": "missing_starting_equity_or_capital",
+      "longest_winning_streak": 0,
+      "longest_losing_streak": 0
+    },
+    "earliest_100_to_latest_100_delta": {},
+    "latest_50": null,
+    "rolling_50": [],
+    "latest_rolling_50": null,
+    "assessment": "INCONCLUSIVE",
+    "recent_degradation_note": null
+  },
+  "uncertainty": {
+    "seed": 20260615,
+    "samples": 0,
+    "expectancy_ci_95": null,
+    "win_rate_ci_95": null,
+    "expectancy_gt_zero_pct": null
+  },
+  "edge_attribution": {
+    "method": "comparison groups only; ASSOCIATION / ATTRIBUTION INDICATION, not proven causation",
+    "largest_edge_contributor": "INCONCLUSIVE"
+  },
+  "readiness_references": {
+    "closed_trades_500": false,
+    "rolling_win_rate_ge_45": {
+      "window": "latest_rolling_50",
+      "value": null,
+      "passed": false
+    },
+    "rolling_profit_factor_ge_1_3": {
+      "window": "latest_rolling_50",
+      "value": null,
+      "passed": false
+    },
+    "maximum_drawdown_pct_le_15": {
+      "value": null,
+      "passed": "UNKNOWN",
+      "reason": "missing_starting_equity_or_capital"
+    }
+  },
+  "verdict": {
+    "research_audit_verdict": "INCONCLUSIVE",
+    "phase_3": "NOT UNLOCKED",
+    "real_trading": "LOCKED"
+  }
+}
