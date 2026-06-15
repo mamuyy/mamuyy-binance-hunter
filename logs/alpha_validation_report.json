@@ -1,0 +1,7 @@
+{
+  "mode": "PAPER_ONLY READ_ONLY NO_BROKER_API NO_REAL_CAPITAL NO_RUNTIME_MODIFICATION",
+  "database": "mamuyy_hunter.db",
+  "primary_table": "internal_paper_trades",
+  "generated_at_utc": "2026-06-15T05:55:14Z",
+  "critical_data_quality_failure": "database_not_found"
+}
