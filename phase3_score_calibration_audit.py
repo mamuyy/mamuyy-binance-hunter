@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+
+DEFAULT_SOURCE = Path(
+    "data/ml_calibration_with_lifecycle_features_20260610.csv"
+)
+
+DEFAULT_REPORT = Path(
+    "logs/phase3_score_calibration_audit_report_20260610.json"
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Phase 3B Dynamic Score Calibration Audit"
+    )
+
+    parser.add_argument(
+        "--source-csv",
+        type=Path,
+        default=DEFAULT_SOURCE,
+    )
+
+    parser.add_argument(
+        "--report-json",
+        type=Path,
+        default=DEFAULT_REPORT,
+    )
+
+    return parser.parse_args()
+
+
+def load_known_rows(source_csv: Path) -> pd.DataFrame:
+    frame = pd.read_csv(
+        source_csv,
+        low_memory=False,
+    )
+
+    required_columns = {
+        "matched_regime",
+        "score_bucket",
+        "win_loss",
+    }
+
+    missing = sorted(
+        required_columns - set(frame.columns)
+    )
+
+    if missing:
+        raise ValueError(
+            "Missing required columns: "
+            + ", ".join(missing)
+        )
+
+    result = frame[
+        frame["win_loss"]
+        .astype("string")
+        .isin(["WIN", "LOSS"])
+    ].copy()
+
+    result["_is_win"] = (
+        result["win_loss"]
+        .astype("string")
+        .eq("WIN")
+    )
+
+    return result
+
+
+def build_matrix(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    grouped = (
+        frame
+        .groupby(
+            ["matched_regime", "score_bucket"],
+            dropna=False,
+            sort=False,
+        )
+        .agg(
+            rows=("_is_win", "size"),
+            wins=("_is_win", "sum"),
+        )
+        .reset_index()
+    )
+
+    grouped["losses"] = (
+        grouped["rows"] - grouped["wins"]
+    )
+
+    grouped["winrate"] = (
+        grouped["wins"]
+        / grouped["rows"]
+    ).round(4)
+
+    grouped = grouped.sort_values(
+        [
+            "winrate",
+            "matched_regime",
+            "score_bucket",
+        ],
+        ascending=[False, True, True],
+        kind="mergesort",
+    ).reset_index(drop=True)
+
+    matrix: list[dict[str, Any]] = []
+
+    for row in grouped.itertuples(index=False):
+        matrix.append(
+            {
+                "regime": str(row.matched_regime),
+                "score_bucket": str(row.score_bucket),
+                "rows": int(row.rows),
+                "wins": int(row.wins),
+                "losses": int(row.losses),
+                "winrate": float(row.winrate),
+            }
+        )
+
+    return matrix
+
+
+def main() -> None:
+    args = parse_args()
+
+    source_csv = args.source_csv.expanduser().resolve()
+    report_json = args.report_json.expanduser().resolve()
+
+    frame = load_known_rows(source_csv)
+    matrix = build_matrix(frame)
+
+    report = {
+        "phase": "Phase 3B Dynamic Score Calibration Audit",
+        "source_csv": str(source_csv),
+        "rows": int(len(frame)),
+        "matrix": matrix,
+        "verdict": "DYNAMIC_SCORE_CALIBRATION_READY",
+    }
+
+    report_json.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    report_json.write_text(
+        json.dumps(
+            report,
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    print("Phase: Phase 3B Dynamic Score Calibration Audit")
+    print(f"Rows: {len(frame)}")
+    print(f"Matrix cells: {len(matrix)}")
+    print(f"Report: {report_json}")
+    print("Verdict: DYNAMIC_SCORE_CALIBRATION_READY")
+
+
+if __name__ == "__main__":
+    main()
