@@ -10,4 +10,7 @@
 * 2026-06-13 — Phase 2.97B Manual Actual Binance Futures Demo Roundtrip — PASS
 * 2026-06-13 — Phase 2.98 Testnet Operations Evidence Supervisor — PASS
 * 2026-06-13 — Phase 2.99 Testnet Safety Runbook — PASS
-* 2026-06-13 — Phase 3.00 Testnet Stability & Daily-Limit Expansion Gate — PASS (HOLD_AT_3)
+* 2026-06-13 — Phase 3.00 Testnet Stability & Daily-Limit Expansion Gate — PASS (`HOLD_AT_3`)
+* 2026-06-15 — Phase 3.01 Portfolio V2 Research Baseline + Fresh Live Advisory Overlay — PASS
+* 2026-06-15 — Alpha Validation & Edge Verification Report — PASS (read-only audit tooling; no Phase 3 unlock)
+* 2026-06-17 — Phase 3.02 PAPER_ONLY Operational Completion Gate — IMPLEMENTED (VPS runtime verdict generated after deployment)
