@@ -3,6 +3,7 @@ name: Phase 3.02 Completion Gate
 on:
   push:
     branches:
+      - main
       - phase3-02-paper-operational-completion-gate
   pull_request:
     paths:
