@@ -1,10 +1,8 @@
 {
-  "blockers": [
-    "Insufficient closed PAPER trades for Phase 3 readiness evidence.",
-    "Label quality audit is missing or failed.",
-    "No verified SQLite backup evidence is available.",
-    "System health is not stable, heartbeat is stale/missing, or daily ops evidence is stale/missing."
-  ],
+  "blockers": [],
+  "closed_paper_trades": 356,
+  "closed_paper_trades_progress": "356/100",
+  "closed_paper_trades_target": 100,
   "criteria_details": [
     {
       "blocker": "",
@@ -28,29 +26,29 @@
       "passed": true
     },
     {
-      "blocker": "Insufficient closed PAPER trades for Phase 3 readiness evidence.",
-      "detail": "closed_trades=0 (db=0, csv=0)",
-      "name": "paper closed trades >= 100",
-      "next_action": "Continue PAPER_ONLY collection until at least 100 closed paper trades are available.",
-      "passed": false
-    },
-    {
-      "blocker": "Label quality audit is missing or failed.",
-      "detail": "verdict=FAIL, path=reports/label_quality_audit.json",
-      "name": "label quality audit PASS/REVIEW",
-      "next_action": "Run label_quality_audit.py and remediate any FAIL verdict before Phase 3 review.",
-      "passed": false
-    },
-    {
-      "blocker": "No verified SQLite backup evidence is available.",
-      "detail": "verdict=FAIL, db_integrity=missing, backup=missing, backup_integrity=missing, backup_age_hours=None",
-      "name": "backup verification artifact PASS",
-      "next_action": "Run python backup_verification.py or python main.py --phase3-remediation; if no backup exists, create one through the approved maintenance path before review.",
-      "passed": false
+      "blocker": "",
+      "detail": "closed_paper_trades: 356/100 (internal_paper_trades=356, legacy_csv=0)",
+      "name": "internal_paper_trades closed >= 100",
+      "next_action": "",
+      "passed": true
     },
     {
       "blocker": "",
-      "detail": "verdict=PASS, path=reports/stress_test_report.json, age_minutes=0.14, fresh_minutes=1440",
+      "detail": "verdict=REVIEW, path=logs/label_quality_audit.json",
+      "name": "label quality audit PASS/REVIEW",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "verdict=PASS, db_integrity=ok, backup=db_backups/mamuyy_hunter_20260612_081943.db, backup_integrity=ok, backup_age_hours=180.5152",
+      "name": "backup verification artifact PASS",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "verdict=PASS, path=reports/stress_test_report.json, age_minutes=25.50, fresh_minutes=1440",
       "name": "stress test report PASS/REVIEW and fresh",
       "next_action": "",
       "passed": true
@@ -63,11 +61,11 @@
       "passed": true
     },
     {
-      "blocker": "System health is not stable, heartbeat is stale/missing, or daily ops evidence is stale/missing.",
-      "detail": "db_readable=False, heartbeat_age_minutes=999999.00, system_health_score=0, diagnostics=UNKNOWN, tmux_hunter=UNAVAILABLE, tmux_dashboard=UNAVAILABLE, daily_ops_report_age_minutes=999999.00",
+      "blocker": "",
+      "detail": "db_readable=True, heartbeat_age_minutes=0.05, system_health_score=100, diagnostics=UNKNOWN, tmux_hunter=RUNNING, tmux_dashboard=RUNNING, daily_ops_report_age_minutes=10.81",
       "name": "system health stable",
-      "next_action": "Stabilize orchestrator heartbeat, verify tmux sessions where available, refresh daily ops report, and resolve diagnostics before Phase 3 review.",
-      "passed": false
+      "next_action": "",
+      "passed": true
     },
     {
       "blocker": "",
@@ -77,13 +75,8 @@
       "passed": true
     }
   ],
-  "failed_criteria": [
-    "paper closed trades >= 100",
-    "label quality audit PASS/REVIEW",
-    "backup verification artifact PASS",
-    "system health stable"
-  ],
-  "generated_at": "2026-05-29T10:51:53.627478+00:00",
+  "failed_criteria": [],
+  "generated_at": "2026-06-19T21:16:09.349335+00:00",
   "governance_constraints": {
     "no_broker_routing": true,
     "no_execution_changes": true,
@@ -93,22 +86,21 @@
     "paper_only": "PAPER_ONLY",
     "read_only_analytics": true
   },
-  "next_actions": [
-    "Continue PAPER_ONLY collection until at least 100 closed paper trades are available.",
-    "Run label_quality_audit.py and remediate any FAIL verdict before Phase 3 review.",
-    "Run python backup_verification.py or python main.py --phase3-remediation; if no backup exists, create one through the approved maintenance path before review.",
-    "Stabilize orchestrator heartbeat, verify tmux sessions where available, refresh daily ops report, and resolve diagnostics before Phase 3 review."
-  ],
+  "next_actions": [],
   "paper_only": true,
   "passed_criteria": [
     "governance_audit consistency >= 95 and conflicts == 0",
     "portfolio_risk_budget recommendation not worse than DEFENSIVE",
     "promotion_scorecard readiness not FREEZE",
+    "internal_paper_trades closed >= 100",
+    "label quality audit PASS/REVIEW",
+    "backup verification artifact PASS",
     "stress test report PASS/REVIEW and fresh",
     "operator runbook complete",
+    "system health stable",
     "PAPER_ONLY enforced"
   ],
-  "readiness_percent": 60.0,
+  "readiness_percent": 100.0,
   "source_reports": {
     "backup_verification": "reports/backup_verification.json",
     "governance_audit": "reports/governance_audit.json",
@@ -117,5 +109,5 @@
     "promotion_scorecard": "reports/promotion_scorecard.json",
     "stress_test_report": "reports/stress_test_report.json"
   },
-  "status": "LOCKED"
+  "status": "READY_FOR_REVIEW"
 }

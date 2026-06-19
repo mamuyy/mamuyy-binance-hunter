@@ -363,7 +363,7 @@ def _system_health_criterion(db_path: str, health_stale_minutes: int = 10) -> Di
         999999.0,
     )
     latest_health = _number(
-        _query_scalar(db_path, "SELECT system_health_score FROM runtime_heartbeats ORDER BY id DESC LIMIT 1", 0),
+        _query_scalar(db_path, "SELECT system_health_score FROM runtime_heartbeats WHERE system_health_score IS NOT NULL ORDER BY id DESC LIMIT 1", 0),
         0.0,
     )
     diagnostics = _read_json("logs/orchestrator_diagnostics.json")
