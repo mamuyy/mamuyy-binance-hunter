@@ -55,3 +55,9 @@ The audit now emits four capital-normalized robustness scenarios using the same 
 Maximum concurrency is computed with a sweep-line algorithm that processes close events before open events at identical timestamps. The report retains pairwise overlap diagnostics separately and reports maximum total concurrency, maximum same-symbol concurrency, and the timestamp(s) where sweep-line maxima occurred.
 
 Readiness remains advisory and paper-only. Legacy temporal incompleteness is reported transparently and does not automatically become a PASS; blocking-invalid rows still block data quality, and execution plus automatic promotion remain disabled.
+
+### Readiness semantics after HOLD review
+
+The strict global data-quality block is driven by unavailable sources, empty CLOSED input, or `BLOCKING_INVALID` rows. `LEGACY_TEMPORAL_INCOMPLETE` rows are included in the core economic cohort, excluded from temporal simulation, disclosed as a legacy warning, and make temporal simulation readiness `REVIEW` rather than globally blocking data quality.
+
+Core economic readiness evaluates blocking-invalid status, sample adequacy, expectancy, profit factor, concentration, and outlier dependence on the core economic cohort. Temporal simulation readiness evaluates temporal-valid coverage, capital scenario completion, normalized net return, realized drawdown, sample adequacy, and legacy temporal incompleteness. Robustness readiness evaluates every required scenario for completion, accepted funded sample, cost-adjusted net return, profit factor, and maximum drawdown; completed scenarios with negative returns or excessive drawdown cannot pass.

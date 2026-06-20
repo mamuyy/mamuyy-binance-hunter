@@ -102,11 +102,12 @@ def _trade(row,cfg):
     if od and cd and cd<od: reasons.append('invalid_timestamp_ordering')
     if rec is None: reasons.append('return_unavailable')
     recon_ok=status in ('MATCH','SMALL_DIFFERENCE')
-    core_reasons=[r for r in reasons if r not in ('missing_closed_at','invalid_timestamp_ordering')]
-    core_valid=not core_reasons and recon_ok and od is not None
-    temporal_valid=core_valid and bool(closed) and cd is not None and 'invalid_timestamp_ordering' not in reasons
-    legacy_incomplete=core_valid and not temporal_valid and reasons==['missing_closed_at']
+    core_reasons=[r for r in reasons if r != 'missing_closed_at']
+    core_candidate=not core_reasons and recon_ok and od is not None
+    temporal_valid=core_candidate and bool(closed) and cd is not None
+    legacy_incomplete=core_candidate and not temporal_valid and reasons==['missing_closed_at']
     classification='CORE_AND_TEMPORAL_VALID' if temporal_valid else 'LEGACY_TEMPORAL_INCOMPLETE' if legacy_incomplete else 'BLOCKING_INVALID'
+    core_valid=classification in ('CORE_AND_TEMPORAL_VALID','LEGACY_TEMPORAL_INCOMPLETE')
     return {'trade_id':_get(row,'id'),'symbol':_get(row,'symbol') or 'UNKNOWN','side':_get(row,'side') or '', 'side_normalized':str(_get(row,'side','') or '').upper(),'status':str(_get(row,'status','') or '').upper(),'entry_price':_num(_get(row,'entry_price')),'exit_price':_num(_get(row,'exit_price')),'stored_return_pct':_round(stored),'recomputed_return_pct':_round(rec),'return_pct':rec,'return_difference_pct':_round(diff),'return_source':'recomputed_side_aware_entry_exit' if rec is not None else 'unavailable','reconciliation_status':status,'opened_at':opened,'closed_at':closed,'opened_dt':od,'closed_dt':cd,'exit_reason':_get(row,'exit_reason') or 'UNKNOWN','regime':_get(row,'regime'),'score':_num(_get(row,'confidence')),'exclusion_reasons':reasons,'valid':temporal_valid,'core_economic_valid':core_valid,'temporal_valid':temporal_valid,'quality_classification':classification}
 
 def _stats(trades):
@@ -164,6 +165,9 @@ def _blocked_capital(cfg, reason):
         'minimum_equity': None,
         'accepted_trades': 0,
         'capacity_rejected_trades': 0,
+        'rejected_trades': 0,
+        'accepted_trade_ids': [],
+        'capacity_rejected_trade_ids': [],
         'total_realized_pnl': 0.0,
         'total_fees': 0.0,
         'total_slippage_impact': 0.0,
@@ -197,7 +201,7 @@ def _capital(valid,cfg, source_blocked=False):
         return _blocked_capital(cfg, 'timestamp or return quality insufficient')
     realized_capital=cfg.initial_capital
     peak=realized_capital; min_eq=realized_capital; max_dd=0.0
-    allocs={}; curve=[]; close_curve=[]; fees=slip=realized_pnl=0.0; rej=0; max_exp=0.0
+    allocs={}; curve=[]; close_curve=[]; fees=slip=realized_pnl=0.0; rej=0; max_exp=0.0; accepted_ids=[]; capacity_rejected_ids=[]
     events=[]
     for t in sorted(valid,key=lambda x:(x['opened_dt'],x['closed_dt'],str(x['trade_id']))):
         events.append(('open',t['opened_dt'],t)); events.append(('close',t['closed_dt'],t))
@@ -214,9 +218,9 @@ def _capital(valid,cfg, source_blocked=False):
             notional=realized_capital*cfg.allocation_pct_per_trade/100
             exposure=sum(allocs.values()); max_allowed=realized_capital*cfg.max_gross_exposure_pct/100
             if exposure+notional<=max_allowed+1e-9:
-                allocs[t['trade_id']]=notional
+                allocs[t['trade_id']]=notional; accepted_ids.append(t['trade_id'])
             else:
-                rej+=1
+                rej+=1; capacity_rejected_ids.append(t['trade_id'])
         open_exposure=sum(allocs.values()); max_exp=max(max_exp,open_exposure)
         # realized close-to-close equity does not include reserved/open notional.
         realized_equity=realized_capital
@@ -225,7 +229,7 @@ def _capital(valid,cfg, source_blocked=False):
         point={'timestamp':ts.isoformat(),'event':typ,'trade_id':t['trade_id'],'realized_capital':_round(realized_capital),'realized_account_equity':_round(realized_equity),'reserved_notional':_round(open_exposure),'open_gross_exposure':_round(open_exposure),'available_unallocated_capacity':_round(max(0.0, realized_capital*cfg.max_gross_exposure_pct/100-open_exposure)),'realized_pnl':_round(event_pnl),'fees':_round(event_fee),'slippage':_round(event_slip)}
         curve.append(point)
         if typ=='close': close_curve.append(point)
-    return {'scenario_status':'COMPLETED','initial_capital':cfg.initial_capital,'ending_capital':_round(realized_capital),'normalized_gross_return_pct':_round((realized_capital+fees+slip-cfg.initial_capital)/cfg.initial_capital*100),'normalized_net_return_pct':_round((realized_capital-cfg.initial_capital)/cfg.initial_capital*100),'maximum_drawdown_pct':_round(max_dd),'peak_equity':_round(peak),'minimum_equity':_round(min_eq),'accepted_trades':len(valid)-rej,'capacity_rejected_trades':rej,'total_realized_pnl':_round(realized_pnl),'total_fees':_round(fees),'total_slippage_impact':_round(slip),'maximum_gross_exposure':_round(max_exp),'assumptions':_capital_assumptions(cfg),'realized_close_to_close_equity_curve':close_curve,'equity_curve':curve}
+    return {'scenario_status':'COMPLETED','initial_capital':cfg.initial_capital,'ending_capital':_round(realized_capital),'normalized_gross_return_pct':_round((realized_capital+fees+slip-cfg.initial_capital)/cfg.initial_capital*100),'normalized_net_return_pct':_round((realized_capital-cfg.initial_capital)/cfg.initial_capital*100),'maximum_drawdown_pct':_round(max_dd),'peak_equity':_round(peak),'minimum_equity':_round(min_eq),'accepted_trades':len(accepted_ids),'capacity_rejected_trades':rej,'rejected_trades':rej,'accepted_trade_ids':accepted_ids,'capacity_rejected_trade_ids':capacity_rejected_ids,'total_realized_pnl':_round(realized_pnl),'total_fees':_round(fees),'total_slippage_impact':_round(slip),'maximum_gross_exposure':_round(max_exp),'assumptions':_capital_assumptions(cfg),'realized_close_to_close_equity_curve':close_curve,'equity_curve':curve}
 
 
 def _sweep_concurrency(valid):
@@ -249,8 +253,10 @@ def _sweep_concurrency(valid):
 
 def _capital_scenario(name, trades, cfg, source_blocked=False, rejected_count=0, cohort='CORE_AND_TEMPORAL_VALID'):
     cap=_capital(trades,cfg,source_blocked)
-    st=_stats(trades if cap.get('scenario_status')=='COMPLETED' else [])
-    return {'scenario_name':name,'cohort':cohort,'accepted_trades':cap.get('accepted_trades',0),'rejected_trades':rejected_count + cap.get('capacity_rejected_trades',0),'initial_capital':cap.get('initial_capital'),'ending_capital':cap.get('ending_capital'),'gross_return':cap.get('normalized_gross_return_pct'),'cost_adjusted_net_return':cap.get('normalized_net_return_pct'),'maximum_drawdown':cap.get('maximum_drawdown_pct'),'profit_factor':st.get('profit_factor'),'profit_factor_state':st.get('profit_factor_state'),'winrate':st.get('winrate'),'fees':cap.get('total_fees'),'slippage':cap.get('total_slippage_impact'),'maximum_gross_exposure':cap.get('maximum_gross_exposure'),'scenario_status':cap.get('scenario_status'),'assumptions':cap.get('assumptions')}
+    accepted_ids=set(cap.get('accepted_trade_ids') or [])
+    funded=[t for t in trades if t.get('trade_id') in accepted_ids]
+    st=_stats(funded if cap.get('scenario_status')=='COMPLETED' else [])
+    return {'scenario_name':name,'cohort':cohort,'accepted_trades':cap.get('accepted_trades',0),'rejected_trades':rejected_count + cap.get('capacity_rejected_trades',0),'initial_capital':cap.get('initial_capital'),'ending_capital':cap.get('ending_capital'),'gross_return':cap.get('normalized_gross_return_pct'),'cost_adjusted_net_return':cap.get('normalized_net_return_pct'),'maximum_drawdown':cap.get('maximum_drawdown_pct'),'profit_factor':st.get('profit_factor'),'profit_factor_state':st.get('profit_factor_state'),'winrate':st.get('winrate'),'trade_statistics':st,'fees':cap.get('total_fees'),'slippage':cap.get('total_slippage_impact'),'maximum_gross_exposure':cap.get('maximum_gross_exposure'),'scenario_status':cap.get('scenario_status'),'accepted_trade_ids':cap.get('accepted_trade_ids',[]),'capacity_rejected_trade_ids':cap.get('capacity_rejected_trade_ids',[]),'assumptions':cap.get('assumptions')}
 
 def _ratio_pct(numer, denom):
     if denom is None or abs(denom) < 1e-12:
@@ -328,6 +334,56 @@ def _overall_status(valid, stats, cap, concentration, overlap_pct, outlier_pct, 
         return 'REVIEW'
     return 'PASS'
 
+
+def _gate_statuses_overall(gates):
+    vals=list(gates.values())
+    if any(str(v).startswith('BLOCKED') for v in vals):
+        return 'BLOCKED'
+    if any(v=='REVIEW' for v in vals):
+        return 'REVIEW'
+    return 'PASS'
+
+def _pf_gate(stats, cfg):
+    if stats.get('profit_factor_state')=='NO_LOSSES' and stats.get('trades',0)>0:
+        return 'PASS'
+    if stats.get('profit_factor_state')=='FINITE' and stats.get('profit_factor') is not None and stats.get('profit_factor')>=cfg.min_profit_factor:
+        return 'PASS'
+    return 'BLOCKED_NEGATIVE_EXPECTANCY' if stats.get('trades',0)>0 else 'BLOCKED_DATA_QUALITY'
+
+def _core_readiness(core_valid, stats, concentration, outlier_pct, blocking_invalid, cfg):
+    gates={
+        'blocking_invalid_status':'BLOCKED_DATA_QUALITY' if blocking_invalid else 'PASS',
+        'sample_adequacy':'PASS' if len(core_valid)>=cfg.min_valid_closed_trades else ('BLOCKED_DATA_QUALITY' if not core_valid else 'REVIEW'),
+        'expectancy':'PASS' if stats.get('expectancy_per_closed_trade',0)>0 else 'BLOCKED_NEGATIVE_EXPECTANCY',
+        'profit_factor':_pf_gate(stats,cfg),
+        'concentration':'PASS' if concentration.get('top_1_symbol_contribution_pct') is not None and abs(concentration.get('top_1_symbol_contribution_pct'))<=cfg.max_top_symbol_concentration_pct else ('REVIEW' if concentration.get('top_1_symbol_contribution_pct') is None else 'BLOCKED_CONCENTRATION'),
+        'outlier_dependence':'REVIEW' if outlier_pct is None and core_valid else ('BLOCKED_DATA_QUALITY' if outlier_pct is None else ('PASS' if abs(outlier_pct)<=cfg.max_outlier_contribution_pct else 'BLOCKED_OUTLIER_DEPENDENCE')),
+    }
+    return {'status':_gate_statuses_overall(gates),'gates':gates,'rules':'Evaluates sample adequacy, expectancy, profit factor, concentration, outlier dependence, and blocking-invalid status on the core economic cohort.'}
+
+def _temporal_readiness(valid, cap, legacy_incomplete, cfg):
+    gates={
+        'temporal_valid_coverage':'BLOCKED_DATA_QUALITY' if not valid else ('REVIEW' if legacy_incomplete else 'PASS'),
+        'scenario_completion':'PASS' if cap.get('scenario_status')=='COMPLETED' else 'BLOCKED_DATA_QUALITY',
+        'normalized_net_return':'PASS' if cap.get('normalized_net_return_pct') is not None and cap.get('normalized_net_return_pct')>=cfg.min_cost_adjusted_normalized_return_pct else ('BLOCKED_DATA_QUALITY' if cap.get('normalized_net_return_pct') is None else 'BLOCKED_NEGATIVE_EXPECTANCY'),
+        'drawdown':'PASS' if cap.get('maximum_drawdown_pct') is not None and cap.get('maximum_drawdown_pct')<=cfg.max_realized_drawdown_pct else ('BLOCKED_DATA_QUALITY' if cap.get('maximum_drawdown_pct') is None else 'BLOCKED_DRAWDOWN'),
+        'sample_adequacy':'PASS' if len(valid)>=cfg.min_valid_closed_trades else ('BLOCKED_DATA_QUALITY' if not valid else 'REVIEW'),
+        'legacy_temporal_incompleteness':'REVIEW' if legacy_incomplete else 'PASS',
+    }
+    return {'status':_gate_statuses_overall(gates),'gates':gates,'rules':'Evaluates temporal-valid coverage, scenario completion, normalized net return, drawdown, sample adequacy, and legacy temporal incompleteness as REVIEW.'}
+
+def _robustness_readiness(scenarios, cfg):
+    per={}
+    for name, sc in scenarios.items():
+        st={'scenario_status':'PASS' if sc.get('scenario_status')=='COMPLETED' else 'BLOCKED_DATA_QUALITY',
+            'accepted_sample':'PASS' if sc.get('accepted_trades',0)>0 else 'BLOCKED_DATA_QUALITY',
+            'cost_adjusted_net_return':'PASS' if sc.get('cost_adjusted_net_return') is not None and sc.get('cost_adjusted_net_return')>=cfg.min_cost_adjusted_normalized_return_pct else ('BLOCKED_DATA_QUALITY' if sc.get('cost_adjusted_net_return') is None else 'BLOCKED_NEGATIVE_EXPECTANCY'),
+            'profit_factor':_pf_gate(sc.get('trade_statistics') or {}, cfg),
+            'maximum_drawdown':'PASS' if sc.get('maximum_drawdown') is not None and sc.get('maximum_drawdown')<=cfg.max_realized_drawdown_pct else ('BLOCKED_DATA_QUALITY' if sc.get('maximum_drawdown') is None else 'BLOCKED_DRAWDOWN')}
+        per[name]={'status':_gate_statuses_overall(st),'gates':st}
+    gates={name:v['status'] for name,v in per.items()}
+    return {'status':_gate_statuses_overall(gates),'scenarios':per,'rules':'Each robustness scenario evaluates scenario status, accepted sample, cost-adjusted net return, profit factor, and maximum drawdown; completed negative or excessive-drawdown scenarios cannot PASS.'}
+
 def generate_paper_economic_reconciliation(db_path='mamuyy_hunter.db', output_path=REPORT_PATH, equity_curve_path=EQUITY_PATH, overlap_path=OVERLAP_PATH, write_reports=True, config=None):
     cfg=config or EconomicAuditConfig(); conn=_connect_ro(db_path); rows=[]; cols=[]; warning=''; source_blocked=False
     if conn:
@@ -346,7 +402,7 @@ def generate_paper_economic_reconciliation(db_path='mamuyy_hunter.db', output_pa
     for t in trades:
         status_counts[t.get('reconciliation_status','INVALID_CONTRACT')]=status_counts.get(t.get('reconciliation_status','INVALID_CONTRACT'),0)+1
     legacy=[_legacy_return(r) for r in rows]; wins=sum(1 for v in legacy if v>0)
-    core_valid=[t for t in trades if t['core_economic_valid']]
+    core_valid=[t for t in trades if t['quality_classification'] in ('CORE_AND_TEMPORAL_VALID','LEGACY_TEMPORAL_INCOMPLETE')]
     valid=[t for t in trades if t['temporal_valid']]
     legacy_incomplete=[t for t in trades if t['quality_classification']=='LEGACY_TEMPORAL_INCOMPLETE']
     blocking_invalid=[t for t in trades if t['quality_classification']=='BLOCKING_INVALID']
@@ -360,8 +416,10 @@ def generate_paper_economic_reconciliation(db_path='mamuyy_hunter.db', output_pa
     stats=_stats(core_valid); temporal_stats=_stats(valid); no_out_stats=_stats(no_out)
     concentration=_concentration(core_valid)
     overlap_return=sum(t['return_pct'] for t in valid if any(r['trade_id']==t['trade_id'] and r['same_symbol_overlap_count']>0 for r in overlap_rows))
+    temporal_event_return_sum=sum(t['return_pct'] for t in valid)
+    overlap_return_pct=_ratio_pct(overlap_return, temporal_event_return_sum)
     legacy_sum=sum(legacy)
-    overlap_return_pct=_ratio_pct(overlap_return, legacy_sum)
+    legacy_overlap_return_pct=_ratio_pct(overlap_return, legacy_sum)
     overlap_trade_pct=_round(sum(1 for r in overlap_rows if r['same_symbol_overlap_count']>0)/len(valid)*100) if valid else None
     total_abs_valid_return=sum(abs(t['return_pct']) for t in core_valid)
     outlier_contribution_pct=_round(sum(abs(t['return_pct']) for t in out)/total_abs_valid_return*100) if core_valid and total_abs_valid_return>0 else None
@@ -370,19 +428,21 @@ def generate_paper_economic_reconciliation(db_path='mamuyy_hunter.db', output_pa
     data_quality_block_reasons=[]
     if source_blocked: data_quality_block_reasons.append('source_database_or_table_unavailable')
     if len(rows)==0: data_quality_block_reasons.append('zero_closed_rows')
-    if len(core_valid)==0: data_quality_block_reasons.append('zero_core_economic_valid_rows')
-    if len(valid)==0: data_quality_block_reasons.append('zero_temporal_valid_rows')
+    if len(rows)==0: data_quality_block_reasons.append('zero_core_economic_valid_rows')
     if excluded_row_count: data_quality_block_reasons.append('excluded_required_closed_rows'); data_quality_block_reasons.append('blocking_invalid_closed_rows')
     for status_name in ('MATERIAL_DIFFERENCE','CANNOT_RECOMPUTE','INVALID_CONTRACT'):
         if status_counts.get(status_name,0): data_quality_block_reasons.append(status_name.lower())
     reason_map={'missing_symbol':'missing_symbol','missing_side':'missing_side','missing_entry_price':'missing_entry_or_exit','missing_exit_price':'missing_entry_or_exit','missing_opened_at':'missing_timestamps','missing_closed_at':'missing_timestamps','invalid_timestamp_ordering':'invalid_timestamp_ordering','return_unavailable':'non_finite_or_unavailable_return','zero_or_negative_entry_price':'missing_entry_or_exit'}
-    for t in trades:
+    for t in blocking_invalid:
         for reason in t['exclusion_reasons']:
             mapped=reason_map.get(reason)
             if mapped and mapped not in data_quality_block_reasons: data_quality_block_reasons.append(mapped)
     data_quality_blocked=bool(data_quality_block_reasons)
     sweep=_sweep_concurrency(valid)
     scenarios={'original_temporal_valid_scenario':_capital_scenario('original_temporal_valid_scenario',valid,cfg,source_blocked or len(rows)==0,0),'one_active_trade_per_symbol_scenario':_capital_scenario('one_active_trade_per_symbol_scenario',accepted,cfg,source_blocked or len(rows)==0,len(rejected)),'no_outlier_scenario':_capital_scenario('no_outlier_scenario',temporal_no_out,cfg,source_blocked or len(rows)==0,len(temporal_out)),'one_symbol_no_outlier_scenario':_capital_scenario('one_symbol_no_outlier_scenario',one_no_out,cfg,source_blocked or len(rows)==0,len(temporal_out)+len(one_no_out_rej))}
+    core_readiness=_core_readiness(core_valid, stats, concentration, outlier_contribution_pct, blocking_invalid, cfg)
+    temporal_readiness=_temporal_readiness(valid, cap, legacy_incomplete, cfg)
+    robustness_readiness=_robustness_readiness(scenarios, cfg)
     overall=_overall_status(valid, temporal_stats, cap, concentration, overlap_trade_pct, outlier_contribution_pct, status_counts, cfg, data_quality_blocked)
     fields=['trade_id','symbol','opened_at','closed_at','return_pct','same_symbol_overlap_count','total_concurrent_count','overlap_cluster_id','duplicate_event_flag','included_in_one_symbol_policy']
     eqfields=['timestamp','event','trade_id','realized_capital','realized_account_equity','reserved_notional','open_gross_exposure','available_unallocated_capacity','realized_pnl','fees','slippage']
@@ -392,7 +452,7 @@ def generate_paper_economic_reconciliation(db_path='mamuyy_hunter.db', output_pa
         for gate in ('sample_adequacy','data_quality_adequacy','positive_expectancy','profit_factor','normalized_scenario_return','normalized_maximum_drawdown','concentration','overlap_dependence','outlier_dependence','cost_adjusted_result'):
             economic_readiness[gate]='BLOCKED_DATA_QUALITY'
 
-    report={'phase':PHASE,'generated_at':_now(),'source_database':db_path,'source_table':'internal_paper_trades','governance':{'paper_only':True,'read_only_database_access':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False,'readiness_advisory_only':True},'schema_audit':{'total_closed_rows':len(rows),'exact_columns_available':cols,'warning':warning},'legacy_metrics':{'closed_trade_count':len(rows),'legacy_closed_winrate_pct':_round(wins/len(legacy)*100 if legacy else 0),'legacy_event_return_sum_pct':_round(sum(legacy)),'legacy_average_trade_return_pct':_round(statistics.mean(legacy) if legacy else 0),'legacy_best_trade_return_pct':_round(max(legacy) if legacy else 0),'legacy_worst_trade_return_pct':_round(min(legacy) if legacy else 0),'legacy_metric_interpretation':LEGACY_INTERPRETATION},'reconciliation_summary':{'reconciliation_status_counts':status_counts,'data_quality_blocked':data_quality_blocked,'data_quality_block_reasons':data_quality_block_reasons,'material_mismatch_policy':'MATERIAL_DIFFERENCE rows are excluded from authoritative closed-trade statistics because stored pnl unit is not assumed proven; side-aware recomputed return is required to match within tolerance.','trades':[{k:v for k,v in t.items() if k not in ('opened_dt','closed_dt')} for t in trades],'valid_closed_trades':len(valid),'core_economic_valid_count':len(core_valid),'temporal_valid_count':len(valid),'legacy_temporal_incomplete_count':len(legacy_incomplete),'blocking_invalid_count':len(blocking_invalid),'core_economic_coverage_pct':_round(len(core_valid)/len(rows)*100) if rows else 0,'temporal_coverage_pct':_round(len(valid)/len(rows)*100) if rows else 0,'excluded_rows':excluded_row_count},'closed_trade_statistics':stats,'temporal_closed_trade_statistics':temporal_stats,'data_quality':{'missing_symbol':sum('missing_symbol'in t['exclusion_reasons'] for t in trades),'missing_side':sum('missing_side'in t['exclusion_reasons'] for t in trades),'missing_entry_price':sum('missing_entry_price'in t['exclusion_reasons'] for t in trades),'missing_exit_current_price':sum('missing_exit_price'in t['exclusion_reasons'] for t in trades),'missing_stored_pnl':sum(t['stored_return_pct'] is None for t in trades),'missing_opened_at':sum('missing_opened_at'in t['exclusion_reasons'] for t in trades),'missing_closed_at':sum('missing_closed_at'in t['exclusion_reasons'] for t in trades),'invalid_timestamp_ordering':sum('invalid_timestamp_ordering'in t['exclusion_reasons'] for t in trades),'zero_or_negative_entry_prices':sum('zero_or_negative_entry_price'in t['exclusion_reasons'] for t in trades),'non_finite_returns':sum(t['return_pct'] is None for t in trades),'extreme_return_count':len(out),'duplicate_primary_ids':len(rows)-len({t['trade_id'] for t in trades}),'duplicate_economic_events':sum(1 for r in overlap_rows if r['duplicate_event_flag']),'excluded_rows':[{'trade_id':t['trade_id'],'reasons':t['exclusion_reasons'] + (['material_return_mismatch'] if t['reconciliation_status']=='MATERIAL_DIFFERENCE' else [])} for t in trades if t['quality_classification']=='BLOCKING_INVALID']},'overlap_audit':{'maximum_simultaneous_active_trades':sweep['maximum_total_concurrency'],'sweep_line_concurrency':sweep,'pairwise_maximum_simultaneous_active_trades':max([r['total_concurrent_count'] for r in overlap_rows], default=0),'same_symbol_overlapping_trades':sum(1 for r in overlap_rows if r['same_symbol_overlap_count']>0),'same_symbol_overlap_trade_pct':overlap_trade_pct,'overlap_event_return_sum_pct':_round(overlap_return),'overlap_event_return_contribution_pct':overlap_return_pct,'denominator_method':'Overlap contribution divides overlapping signed event-return by absolute legacy event-return sum; null when denominator is zero.','overlap_csv':overlap_path},'one_symbol_policy_scenario':{'original_valid_trade_count':len(valid),'accepted_trade_count':len(accepted),'overlap_rejected_trade_count':len(rejected),'original_event_return_sum':_round(sum(t['return_pct'] for t in valid)),'filtered_event_return_sum':_round(sum(t['return_pct'] for t in accepted)),'original_winrate':temporal_stats['winrate'],'filtered_winrate':_stats(accepted)['winrate'],'original_profit_factor':temporal_stats['profit_factor'],'filtered_profit_factor':_stats(accepted)['profit_factor'],'overlap_inflation_delta':_round(sum(t['return_pct'] for t in valid)-sum(t['return_pct'] for t in accepted))},'equal_allocation_capital_scenario':cap,'robustness_capital_scenarios':scenarios,'outlier_analysis':{'outlier_count':len(out),'outlier_trade_ids':[t['trade_id'] for t in out],'outlier_symbols':sorted({t['symbol'] for t in out}),'outlier_contribution_pct':outlier_contribution_pct,'signed_outlier_return_contribution_pct':signed_outlier_contribution_pct,'return_contribution_with_outliers':_round(sum(t['return_pct'] for t in core_valid)),'return_contribution_without_outliers':_round(sum(t['return_pct'] for t in no_out)),'winrate_with_outliers':stats['winrate'],'winrate_without_outliers':no_out_stats['winrate'],'profit_factor_with_outliers':stats['profit_factor'],'profit_factor_without_outliers':no_out_stats['profit_factor']},'concentration':concentration,'breakdowns':_breakdowns(valid),'metric_cohorts':{'core_non_temporal_statistics':'CORE_AND_TEMPORAL_VALID + LEGACY_TEMPORAL_INCOMPLETE','time_dependent_statistics':'CORE_AND_TEMPORAL_VALID only'},'readiness':{'engineering_readiness':{'data_pipeline':'PASS','database_readability':'PASS' if not source_blocked else 'BLOCKED_DATA_QUALITY','audit_execution':'PASS','PAPER_ONLY_governance':'PASS','report_generation':'PASS'},'economic_readiness':economic_readiness,'core_economic_readiness': 'BLOCKED_DATA_QUALITY' if any(t['quality_classification']=='BLOCKING_INVALID' for t in trades) or not core_valid else 'PASS','temporal_simulation_readiness': 'BLOCKED_DATA_QUALITY' if not valid else ('REVIEW' if legacy_incomplete else 'PASS'),'robustness_readiness': 'PASS' if all(v.get('scenario_status')=='COMPLETED' for v in scenarios.values()) else 'BLOCKED_DATA_QUALITY','overall_economic_readiness_status':overall,'execution_allowed':False,'automatic_promotion_allowed':False,'paper_only':True,'readiness_advisory_only':True},'terminology_recommendations':{'Net PnL':'Event Return Sum','Cumulative Shadow PnL':'Cumulative Event Return','add':['Capital-Normalized Scenario Return','Economic Readiness'],'retain':['Engineering Readiness']},'artifact_paths':{'json':output_path,'equity_curve_csv':equity_curve_path,'overlap_audit_csv':overlap_path}}
+    report={'phase':PHASE,'generated_at':_now(),'source_database':db_path,'source_table':'internal_paper_trades','governance':{'paper_only':True,'read_only_database_access':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False,'readiness_advisory_only':True},'schema_audit':{'total_closed_rows':len(rows),'exact_columns_available':cols,'warning':warning},'legacy_metrics':{'closed_trade_count':len(rows),'legacy_closed_winrate_pct':_round(wins/len(legacy)*100 if legacy else 0),'legacy_event_return_sum_pct':_round(sum(legacy)),'legacy_average_trade_return_pct':_round(statistics.mean(legacy) if legacy else 0),'legacy_best_trade_return_pct':_round(max(legacy) if legacy else 0),'legacy_worst_trade_return_pct':_round(min(legacy) if legacy else 0),'legacy_metric_interpretation':LEGACY_INTERPRETATION},'reconciliation_summary':{'reconciliation_status_counts':status_counts,'data_quality_blocked':data_quality_blocked,'data_quality_block_reasons':data_quality_block_reasons,'material_mismatch_policy':'MATERIAL_DIFFERENCE rows are excluded from authoritative closed-trade statistics because stored pnl unit is not assumed proven; side-aware recomputed return is required to match within tolerance.','trades':[{k:v for k,v in t.items() if k not in ('opened_dt','closed_dt')} for t in trades],'valid_closed_trades':len(valid),'core_economic_valid_count':len(core_valid),'temporal_valid_count':len(valid),'legacy_temporal_incomplete_count':len(legacy_incomplete),'blocking_invalid_count':len(blocking_invalid),'core_economic_coverage_pct':_round(len(core_valid)/len(rows)*100) if rows else 0,'temporal_coverage_pct':_round(len(valid)/len(rows)*100) if rows else 0,'excluded_rows':excluded_row_count},'closed_trade_statistics':stats,'temporal_closed_trade_statistics':temporal_stats,'data_quality':{'missing_symbol':sum('missing_symbol'in t['exclusion_reasons'] for t in trades),'missing_side':sum('missing_side'in t['exclusion_reasons'] for t in trades),'missing_entry_price':sum('missing_entry_price'in t['exclusion_reasons'] for t in trades),'missing_exit_current_price':sum('missing_exit_price'in t['exclusion_reasons'] for t in trades),'missing_stored_pnl':sum(t['stored_return_pct'] is None for t in trades),'missing_opened_at':sum('missing_opened_at'in t['exclusion_reasons'] for t in trades),'missing_closed_at':sum('missing_closed_at'in t['exclusion_reasons'] for t in trades),'invalid_timestamp_ordering':sum('invalid_timestamp_ordering'in t['exclusion_reasons'] for t in trades),'zero_or_negative_entry_prices':sum('zero_or_negative_entry_price'in t['exclusion_reasons'] for t in trades),'non_finite_returns':sum(t['return_pct'] is None for t in trades),'extreme_return_count':len(out),'duplicate_primary_ids':len(rows)-len({t['trade_id'] for t in trades}),'duplicate_economic_events':sum(1 for r in overlap_rows if r['duplicate_event_flag']),'excluded_rows':[{'trade_id':t['trade_id'],'reasons':t['exclusion_reasons'] + (['material_return_mismatch'] if t['reconciliation_status']=='MATERIAL_DIFFERENCE' else [])} for t in trades if t['quality_classification']=='BLOCKING_INVALID']},'overlap_audit':{'maximum_simultaneous_active_trades':sweep['maximum_total_concurrency'],'sweep_line_concurrency':sweep,'pairwise_maximum_simultaneous_active_trades':max([r['total_concurrent_count'] for r in overlap_rows], default=0),'same_symbol_overlapping_trades':sum(1 for r in overlap_rows if r['same_symbol_overlap_count']>0),'same_symbol_overlap_trade_pct':overlap_trade_pct,'overlap_event_return_sum_pct':_round(overlap_return),'overlap_event_return_contribution_pct':overlap_return_pct,'temporal_event_return_sum_pct':_round(temporal_event_return_sum),'legacy_overlap_event_return_contribution_pct':legacy_overlap_return_pct,'denominator_method':'Temporal overlap contribution divides temporal-valid overlapping signed event-return by absolute temporal-valid event-return sum; legacy-wide attribution is exposed separately.','overlap_csv':overlap_path},'one_symbol_policy_scenario':{'original_valid_trade_count':len(valid),'accepted_trade_count':len(accepted),'overlap_rejected_trade_count':len(rejected),'original_event_return_sum':_round(sum(t['return_pct'] for t in valid)),'filtered_event_return_sum':_round(sum(t['return_pct'] for t in accepted)),'original_winrate':temporal_stats['winrate'],'filtered_winrate':_stats(accepted)['winrate'],'original_profit_factor':temporal_stats['profit_factor'],'filtered_profit_factor':_stats(accepted)['profit_factor'],'overlap_inflation_delta':_round(sum(t['return_pct'] for t in valid)-sum(t['return_pct'] for t in accepted))},'equal_allocation_capital_scenario':cap,'robustness_capital_scenarios':scenarios,'outlier_analysis':{'outlier_count':len(out),'outlier_trade_ids':[t['trade_id'] for t in out],'outlier_symbols':sorted({t['symbol'] for t in out}),'outlier_contribution_pct':outlier_contribution_pct,'signed_outlier_return_contribution_pct':signed_outlier_contribution_pct,'return_contribution_with_outliers':_round(sum(t['return_pct'] for t in core_valid)),'return_contribution_without_outliers':_round(sum(t['return_pct'] for t in no_out)),'winrate_with_outliers':stats['winrate'],'winrate_without_outliers':no_out_stats['winrate'],'profit_factor_with_outliers':stats['profit_factor'],'profit_factor_without_outliers':no_out_stats['profit_factor']},'concentration':concentration,'breakdowns':_breakdowns(valid),'metric_cohorts':{'core_non_temporal_statistics':'CORE_AND_TEMPORAL_VALID + LEGACY_TEMPORAL_INCOMPLETE','time_dependent_statistics':'CORE_AND_TEMPORAL_VALID only'},'readiness':{'engineering_readiness':{'data_pipeline':'PASS','database_readability':'PASS' if not source_blocked else 'BLOCKED_DATA_QUALITY','audit_execution':'PASS','PAPER_ONLY_governance':'PASS','report_generation':'PASS'},'economic_readiness':economic_readiness,'core_economic_readiness': core_readiness,'temporal_simulation_readiness': temporal_readiness,'robustness_readiness': robustness_readiness,'overall_economic_readiness_status':overall,'execution_allowed':False,'automatic_promotion_allowed':False,'paper_only':True,'readiness_advisory_only':True},'terminology_recommendations':{'Net PnL':'Event Return Sum','Cumulative Shadow PnL':'Cumulative Event Return','add':['Capital-Normalized Scenario Return','Economic Readiness'],'retain':['Engineering Readiness']},'artifact_paths':{'json':output_path,'equity_curve_csv':equity_curve_path,'overlap_audit_csv':overlap_path}}
     if write_reports:
         _atomic_json(output_path, report); _write_csv(overlap_path, overlap_rows, fields); _write_csv(equity_curve_path, cap.get('equity_curve',[]), eqfields)
     return report
