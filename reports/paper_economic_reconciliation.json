@@ -47,6 +47,15 @@
     "wins": 0,
     "worst_trade": null
   },
+  "concentration": {
+    "herfindahl_concentration": null,
+    "method": "Contribution percentages use signed symbol event-return divided by absolute total event-return; null when total is zero. HHI uses absolute symbol contribution shares.",
+    "symbol_event_return_sums": {},
+    "top_10_symbol_contribution_pct": null,
+    "top_1_symbol_contribution_pct": null,
+    "top_3_symbol_contribution_pct": null,
+    "top_5_symbol_contribution_pct": null
+  },
   "data_quality": {
     "duplicate_economic_events": 0,
     "duplicate_primary_ids": 0,
@@ -67,28 +76,35 @@
     "accepted_trades": 0,
     "assumptions": {
       "allocation_pct_per_trade": 1.0,
+      "curve_type": "realized_close_to_close_equity_curve",
+      "gross_exposure_reported_separately": true,
       "initial_capital": 10000.0,
       "max_gross_exposure_pct": 100.0,
       "no_leverage": true,
+      "no_unrealized_mark_to_market_fabricated": true,
       "not_actual_account_roi": true,
+      "opening_trade_does_not_increase_equity": true,
       "round_trip_fee_bps": 8.0,
       "slippage_bps": 15.0
     },
+    "block_reason": "source database or table unavailable",
     "capacity_rejected_trades": 0,
-    "ending_capital": 10000.0,
+    "ending_capital": null,
     "equity_curve": [],
     "initial_capital": 10000.0,
-    "maximum_drawdown_pct": 0.0,
+    "maximum_drawdown_pct": null,
     "maximum_gross_exposure": 0.0,
-    "minimum_equity": 10000.0,
-    "normalized_gross_return_pct": 0.0,
-    "normalized_net_return_pct": 0.0,
-    "peak_equity": 10000.0,
-    "scenario_status": "COMPLETED",
+    "minimum_equity": null,
+    "normalized_gross_return_pct": null,
+    "normalized_net_return_pct": null,
+    "peak_equity": null,
+    "realized_close_to_close_equity_curve": [],
+    "scenario_status": "BLOCKED_DATA_QUALITY",
     "total_fees": 0.0,
+    "total_realized_pnl": 0.0,
     "total_slippage_impact": 0.0
   },
-  "generated_at": "2026-06-20T13:51:55.110406+00:00",
+  "generated_at": "2026-06-20T14:02:10.749614+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -120,6 +136,7 @@
     "overlap_rejected_trade_count": 0
   },
   "outlier_analysis": {
+    "outlier_contribution_pct": null,
     "outlier_count": 0,
     "outlier_symbols": [],
     "outlier_trade_ids": [],
@@ -131,9 +148,12 @@
     "winrate_without_outliers": 0.0
   },
   "overlap_audit": {
+    "denominator_method": "Overlap contribution divides overlapping signed event-return by absolute legacy event-return sum; null when denominator is zero.",
     "maximum_simultaneous_active_trades": 0,
     "overlap_csv": "reports/paper_overlap_audit.csv",
+    "overlap_event_return_contribution_pct": null,
     "overlap_event_return_sum_pct": 0.0,
+    "same_symbol_overlap_trade_pct": null,
     "same_symbol_overlapping_trades": 0
   },
   "phase": "Phase 9D.1B-A Paper Economic Metric Reconciliation",
@@ -141,27 +161,48 @@
     "automatic_promotion_allowed": false,
     "economic_readiness": {
       "concentration": "REVIEW",
-      "cost_adjusted_result": "REVIEW",
-      "data_quality_adequacy": "PASS",
-      "normalized_scenario_return": "PASS",
+      "cost_adjusted_result": "BLOCKED_DATA_QUALITY",
+      "data_quality_adequacy": "BLOCKED_DATA_QUALITY",
+      "normalized_maximum_drawdown": "BLOCKED_DATA_QUALITY",
+      "normalized_scenario_return": "BLOCKED_DATA_QUALITY",
       "outlier_dependence": "PASS",
-      "overlap_dependence": "PASS",
+      "overall_economic_readiness_status": "BLOCKED_DATA_QUALITY",
+      "overlap_dependence": "BLOCKED_DATA_QUALITY",
       "positive_expectancy": "BLOCKED_NEGATIVE_EXPECTANCY",
-      "sample_adequacy": "REVIEW"
+      "profit_factor": "BLOCKED_NEGATIVE_EXPECTANCY",
+      "sample_adequacy": "BLOCKED_DATA_QUALITY",
+      "thresholds": {
+        "maximum_outlier_contribution_pct": 25.0,
+        "maximum_overlap_dependence_pct": 25.0,
+        "maximum_realized_drawdown_pct": 20.0,
+        "maximum_top_symbol_concentration_pct": 50.0,
+        "minimum_cost_adjusted_normalized_return_pct": 0.0,
+        "minimum_profit_factor": 1.0,
+        "minimum_valid_closed_trades": 100
+      }
     },
     "engineering_readiness": {
       "PAPER_ONLY_governance": "PASS",
       "audit_execution": "PASS",
       "data_pipeline": "PASS",
-      "database_readability": "REVIEW",
+      "database_readability": "BLOCKED_DATA_QUALITY",
       "report_generation": "PASS"
     },
     "execution_allowed": false,
+    "overall_economic_readiness_status": "BLOCKED_DATA_QUALITY",
     "paper_only": true,
     "readiness_advisory_only": true
   },
   "reconciliation_summary": {
     "excluded_rows": 0,
+    "material_mismatch_policy": "MATERIAL_DIFFERENCE rows are excluded from authoritative closed-trade statistics because stored pnl unit is not assumed proven; side-aware recomputed return is required to match within tolerance.",
+    "reconciliation_status_counts": {
+      "CANNOT_RECOMPUTE": 0,
+      "INVALID_CONTRACT": 0,
+      "MATCH": 0,
+      "MATERIAL_DIFFERENCE": 0,
+      "SMALL_DIFFERENCE": 0
+    },
     "trades": [],
     "valid_closed_trades": 0
   },

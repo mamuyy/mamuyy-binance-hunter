@@ -79,3 +79,92 @@ def test_empty_database_behavior_and_deterministic_csv(tmp_path):
     assert (p/'ov.csv').read_text().startswith('trade_id,symbol,opened_at')
     first=(p/'ov.csv').read_text(); generate_paper_economic_reconciliation(str(p/'t.db'), str(p/'r2.json'), str(p/'eq2.csv'), str(p/'ov.csv'), True)
     assert (p/'ov.csv').read_text()==first
+
+def test_open_event_does_not_increase_equity_and_exposure_separate(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T02:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1))
+    curve=rep['equal_allocation_capital_scenario']['equity_curve']
+    assert curve[0]['event']=='open'
+    assert curve[0]['cash_equity']==10000
+    assert curve[0]['realized_capital']==10000
+    assert curve[0]['open_gross_exposure']==100
+    assert curve[0]['reserved_notional']==100
+    assert curve[1]['cash_equity']>10000
+
+
+def test_realized_close_to_close_drawdown_is_from_closed_equity(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,50,50,-50,80,'R','CLOSED','SL','2026-01-01T01:00:00'),(2,'2026-01-01T02:00:00','ETH','LONG',100,200,200,100,80,'R','CLOSED','TP','2026-01-01T03:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_realized_drawdown_pct=0.1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    cap=rep['equal_allocation_capital_scenario']
+    assert cap['realized_close_to_close_equity_curve']
+    assert cap['maximum_drawdown_pct'] > 0
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DRAWDOWN'
+
+
+def test_empty_and_unavailable_database_are_blocked(tmp_path):
+    rep,_=run(tmp_path,[])
+    assert rep['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['equal_allocation_capital_scenario']['normalized_net_return_pct'] is None
+    assert rep['equal_allocation_capital_scenario']['maximum_drawdown_pct'] is None
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    missing=generate_paper_economic_reconciliation(str(tmp_path/'missing.db'), str(tmp_path/'m.json'), str(tmp_path/'meq.csv'), str(tmp_path/'mov.csv'), True)
+    assert missing['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
+    assert missing['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+
+
+def test_zero_valid_rows_does_not_complete_and_material_mismatch_counts(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,-25,80,'R','CLOSED','TP','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1))
+    assert rep['reconciliation_summary']['reconciliation_status_counts']['MATERIAL_DIFFERENCE']==1
+    assert rep['reconciliation_summary']['valid_closed_trades']==0
+    assert rep['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+
+
+def test_negative_normalized_return_does_not_pass(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, min_cost_adjusted_normalized_return_pct=0))
+    assert rep['equal_allocation_capital_scenario']['normalized_net_return_pct'] < 0
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_NEGATIVE_EXPECTANCY'
+
+
+def test_excessive_concentration_blocks_and_top_contributions(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,120,120,20,80,'R','CLOSED','TP','2026-01-01T01:00:00'),(2,'2026-01-02T00:00:00','ETH','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-02T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=50))
+    c=rep['concentration']
+    assert c['top_1_symbol_contribution_pct'] is not None
+    assert c['top_3_symbol_contribution_pct'] is not None
+    assert c['top_5_symbol_contribution_pct'] is not None
+    assert c['top_10_symbol_contribution_pct'] is not None
+    assert c['herfindahl_concentration'] is not None
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_CONCENTRATION'
+
+
+def test_overlap_dependence_percentage_and_review(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T03:00:00'),(2,'2026-01-01T01:00:00','BTC','LONG',100,111,111,11,80,'R','CLOSED','TP','2026-01-01T04:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_overlap_dependence_pct=10, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['overlap_audit']['same_symbol_overlap_trade_pct']==100
+    assert rep['overlap_audit']['overlap_event_return_contribution_pct'] is not None
+    assert rep['readiness']['overall_economic_readiness_status']=='REVIEW'
+
+
+def test_holding_period_and_calendar_breakdowns(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T00:30:00'),(2,'2026-01-08T00:00:00','ETH','LONG',100,102,102,2,80,'R','CLOSED','TP','2026-01-08T02:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1))
+    for section in ('holding_period_bucket','calendar_day','calendar_week'):
+        assert rep['breakdowns'][section]
+        bucket=next(iter(rep['breakdowns'][section].values()))
+        for key in ('trades','wins','losses','breakeven','winrate','mean_return','median_return','event_return_sum','profit_factor','expectancy'):
+            assert key in bucket
+
+
+def test_overall_readiness_is_deterministic_and_safety_locked(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00')]
+    cfg=EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999)
+    rep1,_=run(tmp_path,rows,cfg)
+    rep2=generate_paper_economic_reconciliation(str(tmp_path/'t.db'), str(tmp_path/'r2.json'), str(tmp_path/'eq2.csv'), str(tmp_path/'ov2.csv'), True, cfg)
+    assert rep1['readiness']['overall_economic_readiness_status']==rep2['readiness']['overall_economic_readiness_status']
+    assert rep1['governance']['paper_only'] is True
+    assert rep1['governance']['writes_to_broker'] is False
+    assert rep1['governance']['execution_allowed'] is False
+    assert rep1['governance']['automatic_promotion_allowed'] is False

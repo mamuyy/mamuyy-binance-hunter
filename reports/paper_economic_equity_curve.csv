@@ -1,1 +1,1 @@
-timestamp,event,trade_id,capital,equity,gross_exposure
+timestamp,event,trade_id,realized_capital,cash_equity,reserved_notional,open_gross_exposure,realized_pnl,fees,slippage

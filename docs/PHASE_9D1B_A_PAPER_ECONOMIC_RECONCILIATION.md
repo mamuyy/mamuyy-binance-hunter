@@ -10,19 +10,31 @@ A sample of 372+ CLOSED paper trades is sufficient for a targeted economic audit
 
 `legacy_event_return_sum_pct` is the arithmetic sum of individual closed-trade percentage returns. It is not capital-normalized account ROI, portfolio return, capital growth, or an equity return. A winrate can be valid for CLOSED rows while cumulative PnL labeling is misleading when the cumulative number is built from summed trade percentages rather than capital-weighted cash flows.
 
-## Capital-normalized scenario assumptions
+## Capital-normalized scenario assumptions and accounting
 
-The deterministic `equal_allocation_capital_scenario` starts from `ECON_AUDIT_INITIAL_CAPITAL` (default 10000), allocates `ECON_AUDIT_ALLOCATION_PCT_PER_TRADE` (default 1%) of current capital per accepted trade, respects `ECON_AUDIT_MAX_GROSS_EXPOSURE_PCT` (default 100%), applies `ECON_AUDIT_ROUND_TRIP_FEE_BPS` (default 8) and `ECON_AUDIT_SLIPPAGE_BPS` (default 15), uses no leverage, and never fabricates fill prices. If timestamps or return quality are insufficient, normalized return fields are blocked rather than fabricated.
+The deterministic `equal_allocation_capital_scenario` starts from `ECON_AUDIT_INITIAL_CAPITAL` (default 10000), allocates `ECON_AUDIT_ALLOCATION_PCT_PER_TRADE` (default 1%) of current realized capital per accepted trade, respects `ECON_AUDIT_MAX_GROSS_EXPOSURE_PCT` (default 100%), applies `ECON_AUDIT_ROUND_TRIP_FEE_BPS` (default 8) and `ECON_AUDIT_SLIPPAGE_BPS` (default 15), uses no leverage, and never fabricates fill prices.
+
+The curve is explicitly a `realized_close_to_close_equity_curve`: opening a trade does not increase equity, open gross exposure and reserved notional are reported separately, and realized capital/cash equity changes only on close when realized PnL, fee, and slippage are applied. Because historical rows do not provide reliable intratrade marks, maximum drawdown is calculated from realized close-to-close equity only. If the database, table, CLOSED rows, valid reconciled rows, timestamps, or return quality are insufficient, the scenario is `BLOCKED_DATA_QUALITY` and normalized ROI fields are `null`.
+
+## Readiness thresholds
+
+Economic readiness is advisory only and is controlled by configurable thresholds: `ECON_AUDIT_MIN_VALID_CLOSED_TRADES` (default 100), `ECON_AUDIT_MIN_COST_ADJUSTED_NORMALIZED_RETURN_PCT` (default 0), `ECON_AUDIT_MIN_PROFIT_FACTOR` (default 1.0), `ECON_AUDIT_MAX_REALIZED_DRAWDOWN_PCT` (default 20), `ECON_AUDIT_MAX_TOP_SYMBOL_CONCENTRATION_PCT` (default 50), `ECON_AUDIT_MAX_OUTLIER_CONTRIBUTION_PCT` (default 25), and `ECON_AUDIT_MAX_OVERLAP_DEPENDENCE_PCT` (default 25). A completed scenario with negative net return cannot pass, and unacceptable drawdown, concentration, material data mismatch, outlier dependence, or overlap dependence blocks or reviews economic readiness. Readiness never unlocks execution.
 
 ## Methodology
 
 Overlap is detected from `opened_at`/`closed_at` equivalents (`timestamp`/`updated_at`) by interval intersection, with both same-symbol and all-symbol concurrency measured. The one-symbol counterfactual keeps the earliest valid trade per symbol and rejects later overlapping entries until the earlier trade closes.
 
+Concentration reports top 1/3/5/10 symbol contribution percentages and a Herfindahl-style measure. Contribution percentages use signed symbol event-return divided by the absolute total event-return denominator; they are `null` when the denominator is zero. HHI uses absolute symbol contribution shares so negative and positive contributors both count toward concentration.
+
 Outliers are flagged using configurable absolute return thresholds and reconciliation mismatches. Outliers remain in the raw authoritative report; with/without-outlier metrics are reported separately.
 
-## Limitations
+Material stored-versus-recomputed return mismatches are conservatively excluded from authoritative statistics because the stored `pnl` unit is not assumed proven. Status counts are reported for MATCH, SMALL_DIFFERENCE, MATERIAL_DIFFERENCE, CANNOT_RECOMPUTE, and INVALID_CONTRACT.
 
-Historical paper rows may not include authoritative quantity or notional. Therefore the report provides a scenario, not actual account ROI. Score and regime enrichment are only used when directly available or safely joinable; otherwise enrichment status is `UNAVAILABLE`.
+## Breakdowns and limitations
+
+When timestamps are valid, the report populates symbol, side, exit reason, holding-period, calendar-day, and calendar-week breakdowns. Score and regime remain `UNAVAILABLE` unless they can be reliably joined or are directly present with a proven contract.
+
+Historical paper rows may not include authoritative quantity or notional. Therefore the report provides a deterministic scenario, not actual account ROI.
 
 ## Readiness separation
 
@@ -30,4 +42,4 @@ Engineering readiness verifies data readability, audit execution, PAPER_ONLY gov
 
 ## Safety and rollback
 
-The audit opens SQLite in read-only mode, writes only JSON/CSV/doc artifacts, and never mutates trade rows. It makes no broker API calls, places no orders, promotes no strategy, changes no thresholds, changes no lifecycle behavior, changes no scheduler, and changes no Telegram output. Rollback is removal of the new script, docs, generated artifacts, tests, and CLI command.
+The audit opens SQLite in read-only mode, writes only JSON/CSV/doc artifacts, and never mutates trade rows. It makes no broker API calls, places no orders, promotes no strategy, changes no thresholds, changes no scoring, changes no lifecycle behavior, changes no scheduler, and changes no Telegram output. Rollback is removal of the new script, docs, generated artifacts, tests, and CLI command.
