@@ -1,0 +1,518 @@
+{
+  "artifact_paths": {
+    "confusion_matrix_csv": "reports/ml_confusion_matrix.csv",
+    "json": "reports/ml_metric_reconciliation.json",
+    "metric_identity_csv": "reports/ml_metric_identity.csv",
+    "segment_performance_csv": "reports/ml_segment_performance.csv",
+    "walkforward_folds_csv": "reports/ml_walkforward_folds.csv"
+  },
+  "baseline_comparison": {
+    "absolute_accuracy_improvement": null,
+    "practically_meaningful": false,
+    "sample_size": 0,
+    "status": "BLOCKED_INSUFFICIENT_SAMPLE"
+  },
+  "candidate_evidence_bridge": {
+    "candidate_evidence_sample": null,
+    "model_evaluation_sample": 0,
+    "note": "Populations are reported separately and never averaged.",
+    "paper_trade_outcome_sample": null,
+    "status": "REVIEW"
+  },
+  "current_accuracy_reconciliation": {
+    "contract_match_walkforward": false,
+    "display_value": "32.81%",
+    "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research if model_output accuracy rounds to 32.81%; otherwise referenced stale/operator value",
+    "metric_name": "Current Model Accuracy",
+    "producer": "ml_engine.py:run_ml_research",
+    "reproducibility_status": "SOURCE_STALE"
+  },
+  "dataset_lineage": {
+    "class_distribution": {},
+    "dataset_source": "paper_trades if present else historical_outcomes",
+    "date_range": [
+      null,
+      null
+    ],
+    "duplicate_rows": 0,
+    "excluded_rows_and_reasons": [],
+    "feature_count": 13,
+    "future_timestamps": 0,
+    "lineage": "LEGACY_UNKNOWN where built from historical outcomes/signals joins",
+    "row_count": 0,
+    "symbol_coverage": null
+  },
+  "generated_at": "2026-06-20T15:21:22.769685+00:00",
+  "governance": {
+    "automatic_promotion_allowed": false,
+    "execution_allowed": false,
+    "model_promotion_allowed": false,
+    "paper_only": true,
+    "read_only_audit": true,
+    "readiness_advisory_only": true
+  },
+  "historical_snapshot_reconciliation": [
+    {
+      "contract_match_walkforward": false,
+      "display_value": "66.40%",
+      "identity": "historical audit snapshot; not current readiness evidence unless source contract matches",
+      "metric_name": "Historical ML accuracy snapshot",
+      "producer": "ml_quality_audit.py:run_audit",
+      "reproducibility_status": "SOURCE_STALE"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "~70%",
+      "identity": "earlier historical/operator snapshot; authoritative artifact not guaranteed",
+      "metric_name": "Earlier historical snapshot",
+      "producer": "LEGACY_UNKNOWN",
+      "reproducibility_status": "UNREPRODUCIBLE"
+    }
+  ],
+  "label_contracts": [
+    {
+      "contract": "ml_engine TARGET_LABELS",
+      "notes": "Horizon, price reference, fees/slippage, maturity requirements not fully encoded in artifacts.",
+      "status": "BLOCKED_LABEL_CONTRACT"
+    }
+  ],
+  "limitations": [
+    "No retraining, tuning, promotion, or execution changes performed.",
+    "Missing or stale artifacts are not invented; they are marked SOURCE_STALE/UNREPRODUCIBLE."
+  ],
+  "metric_identity": [
+    {
+      "contract_match_walkforward": false,
+      "display_value": "32.81%",
+      "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research if model_output accuracy rounds to 32.81%; otherwise referenced stale/operator value",
+      "metric_name": "Current Model Accuracy",
+      "producer": "ml_engine.py:run_ml_research",
+      "reproducibility_status": "SOURCE_STALE"
+    },
+    {
+      "contract_match_walkforward": true,
+      "display_value": "64.38%",
+      "identity": "unweighted mean of walkforward_results.csv test_accuracy folds",
+      "metric_name": "Walk-Forward Rolling Accuracy",
+      "producer": "walkforward.py:run_walkforward_validation",
+      "reproducibility_status": "SOURCE_MISSING"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "66.40%",
+      "identity": "historical audit snapshot; not current readiness evidence unless source contract matches",
+      "metric_name": "Historical ML accuracy snapshot",
+      "producer": "ml_quality_audit.py:run_audit",
+      "reproducibility_status": "SOURCE_STALE"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "~70%",
+      "identity": "earlier historical/operator snapshot; authoritative artifact not guaranteed",
+      "metric_name": "Earlier historical snapshot",
+      "producer": "LEGACY_UNKNOWN",
+      "reproducibility_status": "UNREPRODUCIBLE"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "45.68%",
+      "identity": "unweighted mean of test fold target profitable rate/trade winrate, not classifier accuracy",
+      "metric_name": "Walk-Forward Rolling Winrate",
+      "producer": "walkforward.py:_winrate",
+      "reproducibility_status": "SOURCE_MISSING"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "65/100",
+      "identity": "heuristic latest-row profitable class probability converted to 0-100",
+      "metric_name": "AI Confidence",
+      "producer": "ml_engine.py:run_ml_research",
+      "reproducibility_status": "SOURCE_STALE"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "ROBUST",
+      "identity": "rule-derived health from walk-forward stability and overfit risk",
+      "metric_name": "Model Health",
+      "producer": "walkforward.py:_health",
+      "reproducibility_status": "REPRODUCED_EXACT"
+    },
+    {
+      "contract_match_walkforward": false,
+      "display_value": "35.55/100",
+      "identity": "100 * max(0, mean train_accuracy - mean test_accuracy)",
+      "metric_name": "Overfit Risk",
+      "producer": "walkforward.py:run_walkforward_validation",
+      "reproducibility_status": "REPRODUCED_WITH_ROUNDING"
+    }
+  ],
+  "model_readiness": {
+    "automatic_promotion_allowed": false,
+    "components": {
+      "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
+      "Calibration Quality": "REVIEW",
+      "Candidate-Evidence Support": "REVIEW",
+      "Data Lineage": "REVIEW",
+      "Label Integrity": "BLOCKED_LABEL_CONTRACT",
+      "Leakage Safety": "REVIEW",
+      "Metric Integrity": "REVIEW",
+      "Out-of-Sample Adequacy": "REVIEW",
+      "Regime Stability": "REVIEW",
+      "Walk-Forward Stability": "REVIEW"
+    },
+    "execution_allowed": false,
+    "model_promotion_allowed": false,
+    "overall_status": "BLOCKED_LABEL_CONTRACT",
+    "paper_only": true,
+    "readiness_advisory_only": true
+  },
+  "phase": "9D.1B-B ML Metric Reconciliation",
+  "reproduced_metrics": {
+    "classification_contract_if_available": {
+      "accuracy": null,
+      "balanced_accuracy": 0.0,
+      "by_class": {
+        "LOSS": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "TP1 HIT": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "TP2 HIT": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "WIN": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        }
+      },
+      "class_support": {},
+      "confusion_matrix": [
+        {
+          "LOSS": 0,
+          "TP1 HIT": 0,
+          "TP2 HIT": 0,
+          "WIN": 0,
+          "actual_class": "WIN"
+        },
+        {
+          "LOSS": 0,
+          "TP1 HIT": 0,
+          "TP2 HIT": 0,
+          "WIN": 0,
+          "actual_class": "LOSS"
+        },
+        {
+          "LOSS": 0,
+          "TP1 HIT": 0,
+          "TP2 HIT": 0,
+          "WIN": 0,
+          "actual_class": "TP1 HIT"
+        },
+        {
+          "LOSS": 0,
+          "TP1 HIT": 0,
+          "TP2 HIT": 0,
+          "WIN": 0,
+          "actual_class": "TP2 HIT"
+        }
+      ],
+      "macro_f1": 0.0,
+      "majority_class_baseline": null,
+      "mcc": null,
+      "random_prior_baseline": null,
+      "samples": 0,
+      "weighted_f1": null
+    },
+    "unsupported_metrics": {
+      "pr_auc": "null: probability contract unavailable",
+      "roc_auc": "null: probability contract unavailable"
+    }
+  },
+  "segment_performance": [],
+  "source_inventory": [
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Current Model Accuracy",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_ml_research",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "accuracy",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram/dashboard ml_results",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "AI Confidence",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_ml_research",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "ai_confidence_score",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram ML analysis",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Setup Ranking",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "_quality/run_ml_research",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "setup_ranking",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram ML analysis",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Top Features",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_ml_research",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "feature_importance",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram/dashboard",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Most Profitable Regime",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "_regime_profitability",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "most_profitable_regime",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram ML analysis",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Worst Regime",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "_regime_profitability/run_walkforward_validation",
+      "producer_module": "ml_engine.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "model_output.json",
+      "source_columns": "worst_regime",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram ML/walk-forward",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Walk-Forward Rolling Accuracy",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_walkforward_validation",
+      "producer_module": "walkforward.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "walkforward_results.csv",
+      "source_columns": "test_accuracy",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram walk-forward",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Walk-Forward Rolling Winrate",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_walkforward_validation",
+      "producer_module": "walkforward.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "walkforward_results.csv",
+      "source_columns": "winrate",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram walk-forward",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Model Health",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "_health/run_walkforward_validation",
+      "producer_module": "walkforward.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "walkforward_results.csv",
+      "source_columns": "model_health",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram walk-forward",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Overfit Risk",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_walkforward_validation",
+      "producer_module": "walkforward.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "walkforward_results.csv",
+      "source_columns": "train_accuracy,test_accuracy",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "Telegram walk-forward",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Historical ML accuracy snapshot",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "run_audit",
+      "producer_module": "ml_quality_audit.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "ml_quality_audit.json",
+      "source_columns": "global_accuracy",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "operator docs",
+      "weighted": "unweighted unless stated"
+    },
+    {
+      "aggregation_method": "single holdout or mean folds",
+      "class_set": "WIN;LOSS;TP1 HIT;TP2 HIT",
+      "evaluation_end": null,
+      "evaluation_start": null,
+      "generated_timestamp": "UNKNOWN",
+      "metric_name": "Candidate Directional Accuracy",
+      "model_artifact_version": "LEGACY_UNKNOWN",
+      "prediction_horizon": "LEGACY_UNKNOWN",
+      "producer_function": "validate_candidate",
+      "producer_module": "candidate_validator.py",
+      "reproducibility_status": "SOURCE_MISSING",
+      "sample_count": 0,
+      "source": "candidate evidence ledger",
+      "source_columns": "direction_accuracy",
+      "split_method": "random holdout or rolling chronological per producer",
+      "symbol_count": null,
+      "target_label_definition": "ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT",
+      "user_facing_consumers": "candidate reports",
+      "weighted": "unweighted unless stated"
+    }
+  ],
+  "split_and_leakage_audit": {
+    "findings": [],
+    "methodology": "chronological fold ordering, future timestamp checks, duplicate symbol/timestamp checks, target-column feature checks",
+    "status": "REVIEW"
+  },
+  "terminology_recommendations": [
+    "Current Holdout Accuracy",
+    "Walk-Forward OOS Accuracy",
+    "Latest-Fold Accuracy",
+    "Balanced Accuracy",
+    "Candidate Evidence Accuracy",
+    "Paper Trade Winrate",
+    "AI Confidence Heuristic",
+    "Model Readiness"
+  ],
+  "walkforward_reconciliation": {
+    "fold_count": 0,
+    "folds": [],
+    "status": "SOURCE_MISSING"
+  }
+}

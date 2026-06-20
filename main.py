@@ -27,10 +27,27 @@ CLI_SUBCOMMAND_FLAGS = {
     "paper-portfolio": "--paper-portfolio",
     "paper-outcome-audit": "--paper-outcome-audit",
     "paper-economic-audit": "--paper-economic-audit",
+    "ml-metric-audit": "--ml-metric-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
     sys.argv[1] = CLI_SUBCOMMAND_FLAGS[sys.argv[1]]
+
+
+if "--ml-metric-audit" in sys.argv:
+    from config import config as _ml_metric_config
+    from ml_metric_reconciliation import run_ml_metric_reconciliation as _run_ml_metric_reconciliation
+
+    _report = _run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path=_ml_metric_config.database_path,
+        model_output_path=_ml_metric_config.model_output_path,
+        walkforward_path=_ml_metric_config.walkforward_results_path,
+    )
+    print("ML METRIC RECONCILIATION")
+    print(f"Overall Model Readiness: {_report.get('model_readiness', {}).get('overall_status')}")
+    print(f"Report: {_report.get('artifact_paths', {}).get('json')}")
+    sys.exit(0)
 
 if "--health" in sys.argv:
     from config import config as _health_config
