@@ -85,11 +85,13 @@ def test_open_event_does_not_increase_equity_and_exposure_separate(tmp_path):
     rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1))
     curve=rep['equal_allocation_capital_scenario']['equity_curve']
     assert curve[0]['event']=='open'
-    assert curve[0]['cash_equity']==10000
+    assert curve[0]['realized_account_equity']==10000
     assert curve[0]['realized_capital']==10000
     assert curve[0]['open_gross_exposure']==100
     assert curve[0]['reserved_notional']==100
-    assert curve[1]['cash_equity']>10000
+    assert 'cash_equity' not in curve[0]
+    assert curve[0]['available_unallocated_capacity']==9900
+    assert curve[1]['realized_account_equity']>10000
 
 
 def test_realized_close_to_close_drawdown_is_from_closed_equity(tmp_path):
@@ -168,3 +170,37 @@ def test_overall_readiness_is_deterministic_and_safety_locked(tmp_path):
     assert rep1['governance']['writes_to_broker'] is False
     assert rep1['governance']['execution_allowed'] is False
     assert rep1['governance']['automatic_promotion_allowed'] is False
+
+
+def test_blocked_data_has_no_passing_data_dependent_subgates(tmp_path):
+    rep,_=run(tmp_path,[])
+    econ=rep['readiness']['economic_readiness']
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    for gate in ('sample_adequacy','data_quality_adequacy','positive_expectancy','profit_factor','normalized_scenario_return','normalized_maximum_drawdown','concentration','overlap_dependence','outlier_dependence','cost_adjusted_result'):
+        assert econ[gate]=='BLOCKED_DATA_QUALITY'
+
+
+def test_all_winning_sample_uses_no_losses_profit_factor_state(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00'),(2,'2026-01-02T00:00:00','ETH','LONG',100,102,102,2,80,'R','CLOSED','TP','2026-01-02T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999))
+    assert rep['closed_trade_statistics']['profit_factor_state']=='NO_LOSSES'
+    assert rep['readiness']['economic_readiness']['profit_factor']=='PASS'
+    empty_dir=tmp_path/'empty'; empty_dir.mkdir(); empty,_=run(empty_dir,[])
+    assert empty['closed_trade_statistics']['profit_factor_state']=='NO_TRADES'
+
+
+def test_gross_absolute_concentration_and_signed_attribution_are_separate(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,130,130,30,80,'R','CLOSED','TP','2026-01-01T01:00:00'),(2,'2026-01-02T00:00:00','ETH','LONG',100,80,80,-20,80,'R','CLOSED','SL','2026-01-02T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=50, max_outlier_contribution_pct=999))
+    c=rep['concentration']
+    assert c['top_1_symbol_contribution_pct']==60
+    assert c['top_1_signed_return_contribution_pct']==300
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_CONCENTRATION'
+
+
+def test_outlier_gate_uses_absolute_contribution_not_signed(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,200,200,100,80,'R','CLOSED','TP','2026-01-01T01:00:00'),(2,'2026-01-02T00:00:00','ETH','LONG',100,50,50,-50,80,'R','CLOSED','SL','2026-01-02T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=60))
+    assert rep['outlier_analysis']['outlier_contribution_pct']==66.6667
+    assert rep['outlier_analysis']['signed_outlier_return_contribution_pct']==200
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_OUTLIER_DEPENDENCE'

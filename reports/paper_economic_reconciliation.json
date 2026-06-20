@@ -34,6 +34,7 @@
     "median_return": 0.0,
     "payoff_ratio": null,
     "profit_factor": null,
+    "profit_factor_state": "NO_TRADES",
     "return_percentiles": {
       "25": null,
       "5": null,
@@ -49,11 +50,15 @@
   },
   "concentration": {
     "herfindahl_concentration": null,
-    "method": "Contribution percentages use signed symbol event-return divided by absolute total event-return; null when total is zero. HHI uses absolute symbol contribution shares.",
+    "method": "Concentration gates use gross absolute symbol contribution shares: sum(abs(symbol return contribution)) / total absolute valid return contribution. Signed contribution percentages are informational and null when signed total is zero.",
     "symbol_event_return_sums": {},
+    "top_10_signed_return_contribution_pct": null,
     "top_10_symbol_contribution_pct": null,
+    "top_1_signed_return_contribution_pct": null,
     "top_1_symbol_contribution_pct": null,
+    "top_3_signed_return_contribution_pct": null,
     "top_3_symbol_contribution_pct": null,
+    "top_5_signed_return_contribution_pct": null,
     "top_5_symbol_contribution_pct": null
   },
   "data_quality": {
@@ -104,7 +109,7 @@
     "total_realized_pnl": 0.0,
     "total_slippage_impact": 0.0
   },
-  "generated_at": "2026-06-20T14:02:10.749614+00:00",
+  "generated_at": "2026-06-20T14:11:11.879108+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -144,6 +149,7 @@
     "profit_factor_without_outliers": null,
     "return_contribution_with_outliers": 0.0,
     "return_contribution_without_outliers": 0.0,
+    "signed_outlier_return_contribution_pct": null,
     "winrate_with_outliers": 0.0,
     "winrate_without_outliers": 0.0
   },
@@ -160,16 +166,16 @@
   "readiness": {
     "automatic_promotion_allowed": false,
     "economic_readiness": {
-      "concentration": "REVIEW",
+      "concentration": "BLOCKED_DATA_QUALITY",
       "cost_adjusted_result": "BLOCKED_DATA_QUALITY",
       "data_quality_adequacy": "BLOCKED_DATA_QUALITY",
       "normalized_maximum_drawdown": "BLOCKED_DATA_QUALITY",
       "normalized_scenario_return": "BLOCKED_DATA_QUALITY",
-      "outlier_dependence": "PASS",
+      "outlier_dependence": "BLOCKED_DATA_QUALITY",
       "overall_economic_readiness_status": "BLOCKED_DATA_QUALITY",
       "overlap_dependence": "BLOCKED_DATA_QUALITY",
-      "positive_expectancy": "BLOCKED_NEGATIVE_EXPECTANCY",
-      "profit_factor": "BLOCKED_NEGATIVE_EXPECTANCY",
+      "positive_expectancy": "BLOCKED_DATA_QUALITY",
+      "profit_factor": "BLOCKED_DATA_QUALITY",
       "sample_adequacy": "BLOCKED_DATA_QUALITY",
       "thresholds": {
         "maximum_outlier_contribution_pct": 25.0,

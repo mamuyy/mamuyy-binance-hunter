@@ -14,7 +14,7 @@ A sample of 372+ CLOSED paper trades is sufficient for a targeted economic audit
 
 The deterministic `equal_allocation_capital_scenario` starts from `ECON_AUDIT_INITIAL_CAPITAL` (default 10000), allocates `ECON_AUDIT_ALLOCATION_PCT_PER_TRADE` (default 1%) of current realized capital per accepted trade, respects `ECON_AUDIT_MAX_GROSS_EXPOSURE_PCT` (default 100%), applies `ECON_AUDIT_ROUND_TRIP_FEE_BPS` (default 8) and `ECON_AUDIT_SLIPPAGE_BPS` (default 15), uses no leverage, and never fabricates fill prices.
 
-The curve is explicitly a `realized_close_to_close_equity_curve`: opening a trade does not increase equity, open gross exposure and reserved notional are reported separately, and realized capital/cash equity changes only on close when realized PnL, fee, and slippage are applied. Because historical rows do not provide reliable intratrade marks, maximum drawdown is calculated from realized close-to-close equity only. If the database, table, CLOSED rows, valid reconciled rows, timestamps, or return quality are insufficient, the scenario is `BLOCKED_DATA_QUALITY` and normalized ROI fields are `null`.
+The curve is explicitly a `realized_close_to_close_equity_curve`: opening a trade does not increase equity, open gross exposure, reserved notional, and available unallocated capacity are reported separately, and realized capital/realized account equity changes only on close when realized PnL, fee, and slippage are applied. Because historical rows do not provide reliable intratrade marks, maximum drawdown is calculated from realized close-to-close equity only. If the database, table, CLOSED rows, valid reconciled rows, timestamps, or return quality are insufficient, the scenario is `BLOCKED_DATA_QUALITY` and normalized ROI fields are `null`.
 
 ## Readiness thresholds
 
@@ -24,9 +24,9 @@ Economic readiness is advisory only and is controlled by configurable thresholds
 
 Overlap is detected from `opened_at`/`closed_at` equivalents (`timestamp`/`updated_at`) by interval intersection, with both same-symbol and all-symbol concurrency measured. The one-symbol counterfactual keeps the earliest valid trade per symbol and rejects later overlapping entries until the earlier trade closes.
 
-Concentration reports top 1/3/5/10 symbol contribution percentages and a Herfindahl-style measure. Contribution percentages use signed symbol event-return divided by the absolute total event-return denominator; they are `null` when the denominator is zero. HHI uses absolute symbol contribution shares so negative and positive contributors both count toward concentration.
+Concentration gates use top 1/3/5/10 gross absolute symbol contribution shares and a Herfindahl-style measure. Signed return contribution percentages are retained separately as informational attribution metrics; they are `null` when the signed denominator is zero. HHI and concentration gates use absolute symbol contribution shares so negative and positive contributors both count toward concentration.
 
-Outliers are flagged using configurable absolute return thresholds and reconciliation mismatches. Outliers remain in the raw authoritative report; with/without-outlier metrics are reported separately.
+Outliers are flagged using configurable absolute return thresholds and reconciliation mismatches. Outlier dependence gates use absolute outlier contribution divided by total absolute valid return contribution, while signed outlier contribution is retained separately as informational attribution. Outliers remain in the raw authoritative report; with/without-outlier metrics are reported separately.
 
 Material stored-versus-recomputed return mismatches are conservatively excluded from authoritative statistics because the stored `pnl` unit is not assumed proven. Status counts are reported for MATCH, SMALL_DIFFERENCE, MATERIAL_DIFFERENCE, CANNOT_RECOMPUTE, and INVALID_CONTRACT.
 
