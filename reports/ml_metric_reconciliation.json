@@ -13,7 +13,8 @@
       "producer": "ml_engine.run_ml_research",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -27,7 +28,8 @@
       "producer": "walkforward.run_walkforward_validation",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -41,7 +43,8 @@
       "producer": "ml_quality_audit.run_audit",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -55,7 +58,8 @@
       "producer": "candidate_evidence_ledger.run",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -69,7 +73,8 @@
       "producer": "database.py insert_* or historical label/outcome producers",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -83,7 +88,8 @@
       "producer": "database.py insert_* or historical label/outcome producers",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -97,7 +103,8 @@
       "producer": "database.py insert_* or historical label/outcome producers",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     },
     {
       "age_source": "missing",
@@ -111,7 +118,8 @@
       "producer": "database.py insert_* or historical label/outcome producers",
       "schema": [],
       "stale_source": false,
-      "stale_ttl_days": 7.0
+      "stale_ttl_days": 7.0,
+      "timestamp_field_used": null
     }
   ],
   "artifact_paths": {
@@ -176,7 +184,7 @@
     "status": "SOURCE_MISSING",
     "symbol_coverage": null
   },
-  "generated_at": "2026-06-20T16:06:31.096932+00:00",
+  "generated_at": "2026-06-20T16:27:22.286998+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -364,10 +372,52 @@
       "sample_count": 0
     }
   ],
+  "metric_integrity_summary": {
+    "all_mandatory_identity_blockers": [
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "Current Model Accuracy",
+        "reason": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+        "status": "SOURCE_MISSING"
+      },
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "Walk-Forward Rolling Accuracy",
+        "reason": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
+        "status": "SOURCE_MISSING"
+      },
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "Walk-Forward Rolling Winrate",
+        "reason": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
+        "status": "SOURCE_MISSING"
+      },
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "AI Confidence",
+        "reason": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
+        "status": "SOURCE_MISSING"
+      },
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "Model Health",
+        "reason": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
+        "status": "SOURCE_MISSING"
+      },
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "metric_name": "Overfit Risk",
+        "reason": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+        "status": "SOURCE_MISSING"
+      }
+    ],
+    "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
+    "status": "BLOCKED_UNREPRODUCIBLE"
+  },
   "model_readiness": {
     "all_blockers": {
       "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
-      "Data Lineage": "BLOCKED_STALE_SOURCE",
+      "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
       "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
@@ -379,7 +429,7 @@
       "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
       "Calibration Quality": "UNAVAILABLE",
       "Candidate-Evidence Support": "UNAVAILABLE",
-      "Data Lineage": "BLOCKED_STALE_SOURCE",
+      "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
       "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
@@ -390,7 +440,7 @@
     "execution_allowed": false,
     "mandatory_component_statuses": {
       "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
-      "Data Lineage": "BLOCKED_STALE_SOURCE",
+      "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
       "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",

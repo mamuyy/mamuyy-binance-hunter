@@ -148,7 +148,7 @@ def test_segments_use_valid_cohort_only_and_model_version_separation():
     cohort = pd.DataFrame({"__y_true": ["WIN", "LOSS"], "__y_pred": ["WIN", "WIN"], "regime_name": ["A", "A"], "model_version": ["m1", "m2"]})
     seg = segment_performance(cohort, min_samples=3)
     assert seg
-    assert all(row["readiness_status"] == "REVIEW" for row in seg)
+    assert all(row["readiness_status"] == "BLOCKED_INSUFFICIENT_SAMPLE" for row in seg)
     assert segment_performance(pd.DataFrame()) == []
 
 
@@ -259,3 +259,53 @@ def test_model_health_contract_different_when_computed_not_robust(tmp_path):
     ids = {row["metric_name"]: row for row in metric_identity([], reconstruct_walkforward(str(wf)), {}, summary, {"status": "SOURCE_MISSING"})}
     assert summary["model_health"] == "OVERFIT RISK"
     assert ids["Model Health"]["display_reproduction_status"] == "CONTRACT_DIFFERENT"
+
+
+def test_segment_readiness_baseline_gates():
+    from ml_metric_reconciliation import segment_readiness_status
+    below = {"samples": 50, "accuracy": 0.50, "majority_class_baseline": 0.60, "balanced_accuracy": 0.5, "macro_f1": 0.5}
+    marginal = {"samples": 50, "accuracy": 0.621, "majority_class_baseline": 0.60, "balanced_accuracy": 0.62, "macro_f1": 0.62}
+    meaningful = {"samples": 50, "accuracy": 0.70, "majority_class_baseline": 0.60, "balanced_accuracy": 0.70, "macro_f1": 0.70}
+    assert segment_readiness_status(below, 10)[0] == "BLOCKED_BELOW_BASELINE"
+    assert segment_readiness_status(marginal, 10)[0] == "REVIEW_MARGINAL"
+    assert segment_readiness_status(meaningful, 10)[0] == "PASS"
+
+
+def test_metric_integrity_preserves_stale_and_contract_different():
+    from ml_metric_reconciliation import metric_integrity_summary
+    result = metric_integrity_summary([
+        {"metric_name": "A", "mandatory_current_readiness": True, "reproducibility_status": "SOURCE_STALE", "identity": "old"},
+        {"metric_name": "B", "mandatory_current_readiness": True, "reproducibility_status": "CONTRACT_DIFFERENT", "identity": "diff"},
+        {"metric_name": "Historical", "mandatory_current_readiness": False, "reproducibility_status": "SOURCE_MISSING", "identity": "advisory"},
+    ])
+    assert result["primary_metric_integrity_blocker"] == "BLOCKED_STALE_SOURCE"
+    assert {b["blocker"] for b in result["all_mandatory_identity_blockers"]} == {"BLOCKED_STALE_SOURCE", "BLOCKED_CONTRACT_DIFFERENT"}
+
+
+def test_data_lineage_status_not_all_stale_and_future_blocks():
+    from ml_metric_reconciliation import data_lineage_status
+    assert data_lineage_status({"status": "SOURCE_MISSING", "row_count": 0}) == "BLOCKED_UNREPRODUCIBLE"
+    assert data_lineage_status({"status": "AVAILABLE", "row_count": 0}) == "BLOCKED_INSUFFICIENT_OOS"
+    assert data_lineage_status({"status": "AVAILABLE", "row_count": 1, "future_timestamps": 1}) == "BLOCKED_LEAKAGE"
+    assert data_lineage_status({"status": "AVAILABLE", "row_count": 1, "future_timestamps": 0, "duplicate_rows": 0}) == "PASS"
+
+
+def test_internal_generated_timestamp_overrides_mtime_and_is_persisted(tmp_path):
+    from datetime import datetime, timezone
+    from ml_metric_reconciliation import discover_artifacts
+    model = tmp_path / "model.json"
+    model.write_text(json.dumps({"generated_at": "2026-06-20T00:00:00Z"}), encoding="utf-8")
+    os.utime(model, (1_600_000_000, 1_600_000_000))
+    artifact = next(a for a in discover_artifacts(db_path=str(tmp_path / "missing.db"), model_output_path=str(model), walkforward_path=str(tmp_path / "missing.csv")) if a["artifact_name"] == "model_output")
+    assert artifact["age_source"] == "internal_timestamp"
+    assert artifact["timestamp_field_used"] == "generated_at"
+    assert artifact["generated_timestamp"].startswith("2026-06-20")
+
+
+def test_index_gap_not_temporal_embargo(tmp_path):
+    wf = tmp_path / "walk.csv"
+    pd.DataFrame([{"fold": 1, "train_start": 0, "train_end": 10, "test_start": 11, "test_end": 20, "test_accuracy": 0.5, "train_rows": 10, "test_rows": 10}]).to_csv(wf, index=False)
+    fold = reconstruct_walkforward(str(wf))["folds"][0]
+    assert fold["index_gap"] == 1
+    assert fold["temporal_embargo"] is None
+    assert fold["leakage_status"] == "UNVERIFIABLE"

@@ -117,10 +117,10 @@ def file_age_days(path: str | Path, now: Optional[datetime] = None) -> Optional[
     return (now - datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)).total_seconds() / 86400.0
 
 
-def internal_artifact_timestamp(path: str | Path) -> Optional[datetime]:
+def internal_artifact_timestamp(path: str | Path) -> Tuple[Optional[datetime], Optional[str]]:
     p = Path(path)
     if not p.exists():
-        return None
+        return None, None
     if p.suffix.lower() == ".json":
         data = read_json(p) or {}
         for key in ("generated_at", "timestamp", "created_at", "recorded_at"):
@@ -128,7 +128,7 @@ def internal_artifact_timestamp(path: str | Path) -> Optional[datetime]:
             if value:
                 parsed = pd.to_datetime(value, errors="coerce", utc=True)
                 if pd.notna(parsed):
-                    return parsed.to_pydatetime()
+                    return parsed.to_pydatetime(), key
     if p.suffix.lower() == ".csv":
         try:
             frame = pd.read_csv(p, nrows=20)
@@ -136,19 +136,20 @@ def internal_artifact_timestamp(path: str | Path) -> Optional[datetime]:
                 if key in frame.columns and frame[key].notna().any():
                     parsed = pd.to_datetime(frame[key].dropna().iloc[0], errors="coerce", utc=True)
                     if pd.notna(parsed):
-                        return parsed.to_pydatetime()
+                        return parsed.to_pydatetime(), key
         except Exception:
-            return None
-    return None
+            return None, None
+    return None, None
 
 
-def artifact_age_days(path: str | Path, now: Optional[datetime] = None) -> Tuple[Optional[float], str]:
-    ts = internal_artifact_timestamp(path)
+def artifact_age_days(path: str | Path, now: Optional[datetime] = None) -> Tuple[Optional[float], str, Optional[str], Optional[str]]:
+    ts, field = internal_artifact_timestamp(path)
     now = now or datetime.now(timezone.utc)
     if ts is not None:
-        return (now - ts).total_seconds() / 86400.0, "internal_timestamp"
+        return (now - ts).total_seconds() / 86400.0, "internal_timestamp", ts.isoformat(), field
     age = file_age_days(path, now=now)
-    return age, "filesystem_mtime" if age is not None else "missing"
+    timestamp = datetime.fromtimestamp(Path(path).stat().st_mtime, timezone.utc).isoformat() if age is not None else None
+    return age, "filesystem_mtime" if age is not None else "missing", timestamp, None
 
 
 def producer_evidence(module_path: str, function_name: str, field_names: Sequence[str]) -> Dict[str, Any]:
@@ -260,14 +261,15 @@ def discover_artifacts(
             if found is None and fallback_path.exists():
                 found = fallback_path
         path = found or configured
-        age, age_source = artifact_age_days(path) if path.exists() else (None, "missing")
+        age, age_source, generated_ts, timestamp_field = artifact_age_days(path) if path.exists() else (None, "missing", None, None)
         discovered.append(
             {
                 "artifact_name": candidate["artifact_name"],
                 "configured_path": str(configured),
                 "discovered_path": str(found) if found else None,
                 "exists": bool(found and found.exists()),
-                "generated_timestamp": None,
+                "generated_timestamp": generated_ts,
+                "timestamp_field_used": timestamp_field,
                 "file_age_days": round_or_none(age, 4),
                 "age_source": age_source,
                 "stale_ttl_days": stale_ttl_days,
@@ -283,14 +285,15 @@ def discover_artifacts(
         if exists:
             with connect_readonly(db_path) as connection:
                 schema = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
-        db_age, db_age_source = artifact_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else (None, "missing")
+        db_age, db_age_source, db_generated_ts, db_timestamp_field = artifact_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else (None, "missing", None, None)
         discovered.append(
             {
                 "artifact_name": f"database_table:{table}",
                 "configured_path": db_path,
                 "discovered_path": normalize_sqlite_readonly_uri(db_path) if Path(sqlite_path(db_path)).exists() else None,
                 "exists": exists,
-                "generated_timestamp": None,
+                "generated_timestamp": db_generated_ts,
+                "timestamp_field_used": db_timestamp_field,
                 "file_age_days": round_or_none(db_age, 4),
                 "age_source": db_age_source,
                 "stale_ttl_days": stale_ttl_days,
@@ -559,6 +562,9 @@ def reconstruct_walkforward(path: Optional[str]) -> Dict[str, Any]:
         elif train_rows is None or test_rows is None:
             leakage = "UNVERIFIABLE"
             reasons.append("fold row counts unavailable")
+        elif not bool(row.get("row_level_evidence", False)):
+            leakage = "UNVERIFIABLE"
+            reasons.append("row-level train/test keys, labels, predictions, and fold membership unavailable")
         else:
             leakage = "PASS"
         folds.append(
@@ -568,7 +574,8 @@ def reconstruct_walkforward(path: Optional[str]) -> Dict[str, Any]:
                 "training_end": train_end,
                 "test_start": test_start,
                 "test_end": test_end,
-                "embargo_gap": embargo_gap,
+                "index_gap": embargo_gap if index_only else None,
+                "temporal_embargo": None if index_only else embargo_gap,
                 "train_rows": None if train_rows is None else int(train_rows),
                 "test_rows": None if test_rows is None else int(test_rows),
                 "class_distribution": row.get("class_distribution") if "class_distribution" in df.columns else None,
@@ -649,16 +656,19 @@ def summarize_walkforward_display(path: Optional[str]) -> Dict[str, Any]:
     return out
 
 
-def parse_historical_ml_artifact(path: Optional[str]) -> Dict[str, Any]:
+def parse_historical_ml_artifact(path: Optional[str], stale_ttl_days: float = DEFAULT_STALE_TTL_DAYS) -> Dict[str, Any]:
     if not path or not Path(path).exists():
         return {"status": "SOURCE_MISSING", "global_accuracy": None, "rows": None, "reason": "historical ML artifact missing"}
     data = read_json(path)
+    age, age_source, generated_ts, timestamp_field = artifact_age_days(path)
+    stale = bool(age is not None and age > stale_ttl_days)
     if data is None:
-        return {"status": "UNREPRODUCIBLE", "global_accuracy": None, "rows": None, "reason": "invalid JSON"}
+        return {"status": "UNREPRODUCIBLE", "global_accuracy": None, "rows": None, "reason": "invalid JSON", "generated_timestamp": generated_ts, "timestamp_field_used": timestamp_field, "file_age_days": round_or_none(age, 4), "age_source": age_source, "stale_source": stale}
     accuracy = safe_float(data.get("global_accuracy") if "global_accuracy" in data else data.get("accuracy"))
+    base = {"generated_timestamp": generated_ts, "timestamp_field_used": timestamp_field, "file_age_days": round_or_none(age, 4), "age_source": age_source, "stale_source": stale, "model_version": data.get("model_version"), "evaluation_contract": data.get("evaluation_contract"), "rows": data.get("rows")}
     if accuracy is None:
-        return {"status": "UNREPRODUCIBLE", "global_accuracy": None, "rows": data.get("rows"), "reason": "global_accuracy/accuracy missing"}
-    return {"status": "REPRODUCED_WITH_ROUNDING", "global_accuracy": accuracy, "rows": data.get("rows"), "reason": None}
+        return {**base, "status": "UNREPRODUCIBLE", "global_accuracy": None, "reason": "global_accuracy/accuracy missing"}
+    return {**base, "status": "SOURCE_STALE" if stale else "REPRODUCED_WITH_ROUNDING", "global_accuracy": accuracy, "reason": None}
 
 
 def dataset_lineage_readonly(db_path: str) -> Dict[str, Any]:
@@ -865,6 +875,26 @@ def label_contract_audit() -> Dict[str, Any]:
     }
 
 
+def segment_readiness_status(metrics: Dict[str, Any], min_samples: int) -> Tuple[str, Optional[float], Optional[str]]:
+    samples = metrics.get("samples") or 0
+    acc = metrics.get("accuracy")
+    baseline = metrics.get("majority_class_baseline")
+    balanced = metrics.get("balanced_accuracy")
+    macro_f1 = metrics.get("macro_f1")
+    if samples < min_samples:
+        return "BLOCKED_INSUFFICIENT_SAMPLE", None if acc is None or baseline is None else acc - baseline, "sample count below minimum"
+    if acc is None or baseline is None:
+        return "UNAVAILABLE", None, "accuracy or baseline unavailable"
+    improvement = acc - baseline
+    if improvement <= 0:
+        return "BLOCKED_BELOW_BASELINE", improvement, "accuracy at or below majority baseline"
+    if improvement < 0.03:
+        return "REVIEW_MARGINAL", improvement, "improvement below 3 percentage points"
+    if balanced is None or macro_f1 is None:
+        return "REVIEW", improvement, "balanced accuracy or macro-F1 unavailable"
+    return "PASS", improvement, None
+
+
 def segment_performance(cohort: pd.DataFrame, min_samples: int = 10) -> List[Dict[str, Any]]:
     if cohort.empty or "__y_true" not in cohort.columns or "__y_pred" not in cohort.columns:
         return []
@@ -874,6 +904,7 @@ def segment_performance(cohort: pd.DataFrame, min_samples: int = 10) -> List[Dic
             continue
         for value, group in cohort.groupby(column):
             metrics = classification_metrics(group["__y_true"].astype(str).tolist(), group["__y_pred"].astype(str).tolist(), TARGET_LABELS)
+            status, improvement, ci_reason = segment_readiness_status(metrics, min_samples)
             rows.append(
                 {
                     "segment_type": column,
@@ -884,9 +915,10 @@ def segment_performance(cohort: pd.DataFrame, min_samples: int = 10) -> List[Dic
                     "balanced_accuracy": metrics["balanced_accuracy"],
                     "macro_f1": metrics["macro_f1"],
                     "baseline": metrics["majority_class_baseline"],
-                    "improvement_over_baseline": None if metrics["accuracy"] is None or metrics["majority_class_baseline"] is None else metrics["accuracy"] - metrics["majority_class_baseline"],
+                    "improvement_over_baseline": improvement,
                     "confidence_interval": None,
-                    "readiness_status": "REVIEW" if len(group) < min_samples else ("PASS" if metrics["accuracy"] is not None and metrics["majority_class_baseline"] is not None and metrics["accuracy"] > metrics["majority_class_baseline"] else "REVIEW"),
+                    "confidence_interval_reason": ci_reason or "confidence interval unavailable",
+                    "readiness_status": status,
                 }
             )
     return rows
@@ -930,6 +962,38 @@ def candidate_evidence_bridge(ledger_path: str = "reports/candidate_evidence_led
         "by_horizon": by_horizon,
         "merge_policy": "candidate evidence is not merged with classifier accuracy",
     }
+
+
+def metric_integrity_summary(identities: List[Dict[str, Any]]) -> Dict[str, Any]:
+    blockers = []
+    precedence = {"SOURCE_STALE": "BLOCKED_STALE_SOURCE", "CONTRACT_DIFFERENT": "BLOCKED_CONTRACT_DIFFERENT", "SOURCE_MISSING": "BLOCKED_UNREPRODUCIBLE", "UNREPRODUCIBLE": "BLOCKED_UNREPRODUCIBLE"}
+    for item in identities:
+        if not item.get("mandatory_current_readiness"):
+            continue
+        status = item.get("reproducibility_status")
+        if status in precedence:
+            blockers.append({"metric_name": item.get("metric_name"), "status": status, "blocker": precedence[status], "reason": item.get("identity")})
+    order = ["BLOCKED_STALE_SOURCE", "BLOCKED_CONTRACT_DIFFERENT", "BLOCKED_UNREPRODUCIBLE"]
+    primary = None
+    for candidate in order:
+        if any(blocker["blocker"] == candidate for blocker in blockers):
+            primary = candidate
+            break
+    return {"primary_metric_integrity_blocker": primary, "all_mandatory_identity_blockers": blockers, "status": primary or "PASS"}
+
+
+def data_lineage_status(lineage: Dict[str, Any]) -> str:
+    if lineage.get("status") == "SOURCE_MISSING":
+        return "BLOCKED_UNREPRODUCIBLE"
+    if lineage.get("row_count", 0) == 0:
+        return "BLOCKED_INSUFFICIENT_OOS"
+    if (lineage.get("future_timestamps") or 0) > 0:
+        return "BLOCKED_LEAKAGE"
+    if (lineage.get("duplicate_rows") or 0) > 0:
+        return "BLOCKED_SPLIT_CONTAMINATION"
+    if lineage.get("status") != "AVAILABLE":
+        return "BLOCKED_UNREPRODUCIBLE"
+    return "PASS"
 
 
 def readiness(components: Dict[str, str]) -> Dict[str, Any]:
@@ -979,7 +1043,7 @@ def run_ml_metric_reconciliation(
     walkforward = reconstruct_walkforward(walk_path)
     wf_display = summarize_walkforward_display(walk_path)
     hist_artifact = next((item for item in artifacts if item["artifact_name"] == "ml_quality_audit"), {})
-    historical_66 = parse_historical_ml_artifact(hist_artifact.get("discovered_path") or "ml_quality_audit.json")
+    historical_66 = parse_historical_ml_artifact(hist_artifact.get("discovered_path") or "ml_quality_audit.json", stale_ttl_days=stale_ttl_days)
     identities = metric_identity(artifacts, walkforward, model, wf_display, historical_66)
 
     cohort_result = load_prediction_cohort(prediction_artifact_path or model_artifact.get("discovered_path"))
@@ -997,12 +1061,11 @@ def run_ml_metric_reconciliation(
     segments = segment_performance(cohort)
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
 
-    principal_blockers = [item for item in identities if item.get("mandatory_current_readiness") and item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE", "SOURCE_STALE", "CONTRACT_DIFFERENT"}]
-    metric_integrity = "BLOCKED_UNREPRODUCIBLE" if principal_blockers else "PASS"
+    metric_integrity = metric_integrity_summary(identities)
     label_contract = label_contract_audit()
     components = {
-        "Metric Integrity": metric_integrity,
-        "Data Lineage": "PASS" if lineage.get("status") == "AVAILABLE" and not lineage.get("future_timestamps") and not lineage.get("duplicate_rows") else "BLOCKED_STALE_SOURCE",
+        "Metric Integrity": metric_integrity["status"],
+        "Data Lineage": data_lineage_status(lineage),
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
         "Leakage Safety": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"),
         "Baseline Superiority": baseline["status"],
@@ -1042,6 +1105,7 @@ def run_ml_metric_reconciliation(
         "historical_snapshot_reconciliation": identities[2:4],
         "segment_performance": segments,
         "candidate_evidence_bridge": candidate_bridge,
+        "metric_integrity_summary": metric_integrity,
         "model_readiness": ready,
         "terminology_recommendations": ["Current Holdout Accuracy", "Walk-Forward OOS Accuracy", "Latest-Fold Accuracy", "Balanced Accuracy", "Candidate Evidence Accuracy", "Paper Trade Winrate", "AI Confidence Heuristic", "Model Readiness"],
         "artifact_paths": {
@@ -1055,9 +1119,9 @@ def run_ml_metric_reconciliation(
     }
     atomic_write_json(output / "ml_metric_reconciliation.json", report)
     write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "display_reproduction_status", "evaluation_reproduction_status", "reproducibility_status"])
-    write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "embargo_gap", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
+    write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "index_gap", "temporal_embargo", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
     write_csv(output / "ml_confusion_matrix.csv", reproduced_metrics.get("confusion_matrix", []), ["actual_class", *TARGET_LABELS])
-    write_csv(output / "ml_segment_performance.csv", segments, ["segment_type", "segment_value", "samples", "class_support", "accuracy", "balanced_accuracy", "macro_f1", "baseline", "improvement_over_baseline", "confidence_interval", "readiness_status"])
+    write_csv(output / "ml_segment_performance.csv", segments, ["segment_type", "segment_value", "samples", "class_support", "accuracy", "balanced_accuracy", "macro_f1", "baseline", "improvement_over_baseline", "confidence_interval", "confidence_interval_reason", "readiness_status"])
     return report
 
 
