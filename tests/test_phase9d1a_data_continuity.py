@@ -261,7 +261,7 @@ def test_candidate_batch_state_registry_sidecars(tmp_path, monkeypatch):
     assert batch_path.exists() and state_path.exists() and registry_path.exists()
     registry=json.loads(registry_path.read_text())
     assert registry['batches'][0]['batch_id'] == report['batch_id']
-    assert json.loads(state_path.read_text())['status'] == 'OPEN'
+    assert json.loads(state_path.read_text())['status'] == 'COMPLETE'
 
 
 def test_strict_interval_filtering_for_freshness_and_validation(tmp_path, monkeypatch):
@@ -403,3 +403,48 @@ def test_shared_interval_is_reported_across_components(tmp_path, monkeypatch):
     validation_out=tmp_path/'val.json'; q.write_text(json.dumps({'candidates':[]}), encoding='utf-8')
     validator_main(['--input', str(q), '--output', str(validation_out)])
     assert json.loads(validation_out.read_text())['interval'] == '5m'
+
+
+def test_default_latest_pointer_updates_archive_sidecar_not_latest_sidecar(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir()
+    from binance_candidate_queue_v1 import write_reports
+    sig_dt=datetime.now(timezone.utc)-timedelta(hours=25)
+    report=_queue_report_with_one_candidate(sig_dt); report['batch_id']='latest_pointer_batch'
+    archive=write_reports(report)
+    latest=Path('reports/binance_candidate_queue.json')
+    assert latest.exists()
+    validator_main(['--input', str(latest), '--output', str(tmp_path/'latest_validation.json')])
+    state_path=archive.with_name(archive.stem + '.state.json')
+    registry_path=Path('reports/candidate_batches/registry.json')
+    assert state_path.exists()
+    assert registry_path.exists()
+    assert not Path('reports/binance_candidate_queue.state.json').exists()
+    assert not Path('reports/registry.json').exists()
+    validation=json.loads((tmp_path/'latest_validation.json').read_text())
+    assert validation['resolved_archive_path'] == str(archive)
+    assert validation['resolved_state_path'] == str(state_path)
+
+
+def test_sidecar_overrides_stale_active_registry_entry(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); Path('reports/candidate_batches').mkdir(parents=True)
+    archive=Path('reports/candidate_batches/disagree.json')
+    archive.write_text(json.dumps({'candidates':[{'symbol':'BTCUSDT','timestamp':'2026-01-01T00:00:00+00:00'}]}), encoding='utf-8')
+    state=archive.with_name(archive.stem + '.state.json')
+    state.write_text(json.dumps({'batch_id':'disagree','archive_path':str(archive),'lifecycle_status':'COMPLETE'}), encoding='utf-8')
+    Path('reports/candidate_batches/registry.json').write_text(json.dumps({'batches':[{'batch_id':'disagree','archive_path':str(archive),'lifecycle_status':'WAITING_DATA'}]}), encoding='utf-8')
+    from market_data_sync import _open_candidate_symbols
+    assert _open_candidate_symbols() == set()
+
+
+def test_zero_candidate_batch_closes_and_is_not_active(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from binance_candidate_queue_v1 import build_report, write_reports
+    diag={'live_rows_considered':0,'historical_rows_excluded':0,'legacy_rows_excluded':0,'rejected_symbol_count':0,'rejection_reasons':{},'rejected_symbols':[]}
+    archive=write_reports(build_report([], diag))
+    state=json.loads(archive.with_name(archive.stem + '.state.json').read_text())
+    registry=json.loads(Path('reports/candidate_batches/registry.json').read_text())
+    assert state['lifecycle_status'] == 'COMPLETE'
+    assert state['close_reason'] == 'NO_CANDIDATES'
+    assert registry['batches'][0]['lifecycle_status'] == 'COMPLETE'
+    from market_data_sync import _open_candidate_symbols
+    assert _open_candidate_symbols() == set()

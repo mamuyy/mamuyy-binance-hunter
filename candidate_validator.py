@@ -69,6 +69,8 @@ def validate_candidate(conn, item, freshness=None, now=None, exchange_info=None,
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--input', default=str(QUEUE_PATH)); ap.add_argument('--output', default=str(OUTPUT_PATH)); ns=ap.parse_args(argv)
     data=json.loads(Path(ns.input).read_text(encoding='utf-8')); candidates=data.get('candidates', [])
+    resolved_archive_path = data.get('archive_path') or ns.input
+    resolved_state_path = data.get('state_path')
     freshness=check_freshness(str(DB_PATH), Path(ns.input)); results=[]
     needs_exchange = any(not isinstance(c.get('symbol_validation'), dict) for c in candidates)
     exchange_result = get_exchange_info(os.getenv('BINANCE_BASE_URL', 'https://fapi.binance.com')) if needs_exchange else None
@@ -76,8 +78,8 @@ def main(argv=None):
     exchange_reason = exchange_result.reason if exchange_result else None
     with sqlite3.connect(f'file:{sqlite_path(str(DB_PATH))}?mode=ro', uri=True) as conn: results=[validate_candidate(conn,c, freshness, exchange_info=exchange_info, exchange_reason=exchange_reason) for c in candidates]
     ready_h=sum(1 for r in results for h in r['horizons'].values() if h['status']=='READY')
-    report={'phase':'Phase 9D.1A Candidate Validation', 'interval': operational_kline_interval(),'mode':'READ_ONLY_ANALYTICS','source_queue':ns.input,'source_db':str(DB_PATH),'candidate_count':len(results),'ready_count':sum(1 for r in results if r['status'] in {'READY','PARTIALLY_READY'}),'pending_count':sum(1 for r in results if r['status']=='PENDING'),'blocked_count':sum(1 for r in results if r['status']=='BLOCKED'),'ready_horizon_count':ready_h,'freshness_status':freshness.get('status'),'governance':{'paper_only':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False},'results':results}
+    report={'phase':'Phase 9D.1A Candidate Validation', 'interval': operational_kline_interval(),'mode':'READ_ONLY_ANALYTICS','source_queue':ns.input,'resolved_archive_path':str(resolved_archive_path),'resolved_state_path':str(resolved_state_path) if resolved_state_path else None,'source_db':str(DB_PATH),'candidate_count':len(results),'ready_count':sum(1 for r in results if r['status'] in {'READY','PARTIALLY_READY'}),'pending_count':sum(1 for r in results if r['status']=='PENDING'),'blocked_count':sum(1 for r in results if r['status']=='BLOCKED'),'ready_horizon_count':ready_h,'freshness_status':freshness.get('status'),'governance':{'paper_only':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False},'results':results}
     atomic_write_json(ns.output, report)
-    update_state_from_validation(report, ns.output, archive_path=ns.input)
+    update_state_from_validation(report, ns.output, archive_path=resolved_archive_path, state_path=resolved_state_path)
     print(f"Report generated: {ns.output}")
 if __name__=='__main__': main()

@@ -26,20 +26,23 @@ def registry_path_for_state(state_path: str | Path) -> Path:
 
 def initial_state_for_report(report: dict[str, Any], archive_path: str | Path) -> dict[str, Any]:
     now = _now()
+    total_required = int(report.get("candidate_count", 0)) * len(report.get("validation_horizons", [24, 48, 72]))
+    zero_candidate = total_required == 0
+    lifecycle = "COMPLETE" if zero_candidate else "OPEN"
     return {
         "batch_id": report["batch_id"],
         "archive_path": str(archive_path),
-        "lifecycle_status": "OPEN",
-        "status": "OPEN",
+        "lifecycle_status": lifecycle,
+        "status": lifecycle,
         "opened_at": report.get("generated_at") or now,
         "updated_at": now,
-        "closed_at": None,
+        "closed_at": now if zero_candidate else None,
         "ready_horizon_count": 0,
         "pending_horizon_count": 0,
         "retriable_blocked_horizon_count": 0,
         "terminal_invalid_horizon_count": 0,
-        "total_required_horizon_count": int(report.get("candidate_count", 0)) * len(report.get("validation_horizons", [24, 48, 72])),
-        "close_reason": None,
+        "total_required_horizon_count": total_required,
+        "close_reason": "NO_CANDIDATES" if zero_candidate else None,
         "validation_report_path": None,
         "interval": report.get("interval") or report.get("rules", {}).get("interval"),
         "governance": report.get("governance", {}),
@@ -78,7 +81,9 @@ def lifecycle_from_counts(counts: dict[str, int]) -> tuple[str, str | None]:
     pending = counts["pending_horizon_count"]
     retriable = counts["retriable_blocked_horizon_count"]
     terminal = counts["terminal_invalid_horizon_count"]
-    if total > 0 and ready == total:
+    if total == 0:
+        return "COMPLETE", "NO_CANDIDATES"
+    if ready == total:
         return "COMPLETE", "ALL_HORIZONS_READY"
     if total > 0 and terminal > 0 and pending == 0 and retriable == 0 and ready + terminal == total:
         return "TERMINAL_INVALID", "ALL_UNRESOLVED_HORIZONS_TERMINAL_INVALID"
@@ -172,7 +177,12 @@ def load_active_batch_archives(reports_dir: str | Path = "reports") -> list[Path
                 state = json.loads(state_file.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            archive_path = state.get("archive_path")
             status = state.get("lifecycle_status") or state.get("status")
-            if status in ACTIVE_STATUSES and state.get("archive_path"):
-                archives[str(state["archive_path"])] = Path(state["archive_path"])
+            if not archive_path:
+                continue
+            if status in ACTIVE_STATUSES:
+                archives[str(archive_path)] = Path(archive_path)
+            else:
+                archives.pop(str(archive_path), None)
     return sorted(archives.values(), key=lambda p: str(p))

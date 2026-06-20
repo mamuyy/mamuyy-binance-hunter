@@ -79,3 +79,11 @@ Immutable batch JSON files remain append-only artifacts. Operational lifecycle n
 Lifecycle status is `OPEN` before evaluation, `WAITING_DATA` for immature or retriable blocked horizons, `COMPLETE` only when every required horizon is READY, and `TERMINAL_INVALID` only when all unresolved horizons are permanently invalid. Market data sync loads active batches from sidecars/registry only and ignores closed batches, state files, registry files, and the latest-pointer queue.
 
 All data-continuity components now resolve the operational kline interval through one shared helper and include the resolved interval in sync, freshness, validation, and batch state/report metadata.
+
+## Final audit round 5 lifecycle routing
+
+Validation resolves `archive_path` and `state_path` from the latest-pointer payload before updating lifecycle state, so the default validator command updates the archived batch sidecar and batch registry rather than creating sidecars beside `reports/binance_candidate_queue.json`.
+
+When registry and sidecar lifecycle statuses disagree, the sidecar is authoritative. Market data sync uses registry for discovery only and removes batches from active sync if their sidecar is `COMPLETE` or `TERMINAL_INVALID`.
+
+Zero-candidate batches close deterministically as `COMPLETE` with `close_reason=NO_CANDIDATES`, preventing empty queues from remaining active forever.
