@@ -89,6 +89,8 @@ def validate_candidate(conn: sqlite3.Connection, item: dict[str, Any]) -> dict[s
         "base_price": base_price,
         "score": score,
         "predicted_direction": "UP" if score >= 85 else "DOWN",
+        "regime_name": item.get("regime_name"),
+        "whale_activity": item.get("whale_activity"),
         "horizons": horizons,
         "direction_accuracy": direction_accuracy,
         "status": "READY" if ready_hits else "PENDING",

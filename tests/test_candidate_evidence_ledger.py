@@ -1,10 +1,12 @@
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from candidate_evidence_ledger import evidence_id_for, run
+from candidate_validator import validate_candidate
 
 
 def write_validation(path: Path, results: list[dict]) -> None:
@@ -176,7 +178,56 @@ def test_governance_locks_remain_false(tmp_path):
     governance = summary["governance"]
 
     assert governance["paper_only"] is True
+    assert governance["append_only"] is True
     assert governance["writes_to_database"] is False
     assert governance["writes_to_broker"] is False
     assert governance["execution_allowed"] is False
     assert governance["automatic_promotion_allowed"] is False
+
+
+def make_phase9b_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE historical_klines (
+            symbol TEXT,
+            timestamp TEXT,
+            close REAL
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO historical_klines (symbol, timestamp, close) VALUES (?, ?, ?)",
+        [
+            ("BTCUSDT", "2026-01-02T00:00:00+00:00", 101.0),
+            ("BTCUSDT", "2026-01-03T00:00:00+00:00", 102.0),
+            ("BTCUSDT", "2026-01-04T00:00:00+00:00", 103.0),
+        ],
+    )
+    return conn
+
+
+def test_ledger_records_phase9b_regime_name_and_whale_activity_contract(tmp_path):
+    validation, ledger, summary_path = paths(tmp_path)
+    conn = make_phase9b_conn()
+    phase9b_result = validate_candidate(
+        conn,
+        {
+            "rank": 1,
+            "symbol": "BTCUSDT",
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "price": 100.0,
+            "score": 96.5,
+            "regime_name": "BULL_EXPANSION",
+            "whale_activity": "HIGH",
+        },
+    )
+    conn.close()
+    write_validation(validation, [phase9b_result])
+
+    run(validation, ledger, summary_path)
+    records = read_jsonl(ledger)
+
+    assert len(records) == 3
+    assert {record["regime_name"] for record in records} == {"BULL_EXPANSION"}
+    assert {record["whale_activity"] for record in records} == {"HIGH"}
