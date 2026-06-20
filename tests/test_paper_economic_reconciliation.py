@@ -204,3 +204,33 @@ def test_outlier_gate_uses_absolute_contribution_not_signed(tmp_path):
     assert rep['outlier_analysis']['outlier_contribution_pct']==66.6667
     assert rep['outlier_analysis']['signed_outlier_return_contribution_pct']==200
     assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_OUTLIER_DEPENDENCE'
+
+
+def test_excluded_closed_row_blocks_readiness_even_when_valid_trades_are_profitable(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,112,112,12,80,'R','CLOSED','TP','2026-01-02T01:00:00'),
+        (3,'2026-01-03T00:00:00',None,'LONG',100,105,105,5,80,'R','CLOSED','TP','2026-01-03T01:00:00'),
+    ]
+    cfg=EconomicAuditConfig(min_valid_closed_trades=2, max_top_symbol_concentration_pct=100, max_outlier_contribution_pct=100, max_overlap_dependence_pct=100)
+    rep,_=run(tmp_path,rows,cfg)
+    assert rep['reconciliation_summary']['excluded_rows']==1
+    assert rep['reconciliation_summary']['data_quality_blocked'] is True
+    assert 'excluded_required_closed_rows' in rep['reconciliation_summary']['data_quality_block_reasons']
+    econ=rep['readiness']['economic_readiness']
+    assert econ['data_quality_adequacy']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    for gate in ('sample_adequacy','data_quality_adequacy','positive_expectancy','profit_factor','normalized_scenario_return','normalized_maximum_drawdown','concentration','overlap_dependence','outlier_dependence','cost_adjusted_result'):
+        assert econ[gate] != 'PASS'
+
+
+def test_zero_total_absolute_return_does_not_pass_outlier_dependence(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,100,100,0,80,'R','CLOSED','FLAT','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,100,100,0,80,'R','CLOSED','FLAT','2026-01-02T01:00:00'),
+    ]
+    cfg=EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=100)
+    rep,_=run(tmp_path,rows,cfg)
+    assert rep['outlier_analysis']['outlier_contribution_pct'] is None
+    assert rep['readiness']['economic_readiness']['outlier_dependence']=='REVIEW'
+    assert rep['readiness']['economic_readiness']['outlier_dependence'] != 'PASS'

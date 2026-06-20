@@ -18,7 +18,7 @@ The curve is explicitly a `realized_close_to_close_equity_curve`: opening a trad
 
 ## Readiness thresholds
 
-Economic readiness is advisory only and is controlled by configurable thresholds: `ECON_AUDIT_MIN_VALID_CLOSED_TRADES` (default 100), `ECON_AUDIT_MIN_COST_ADJUSTED_NORMALIZED_RETURN_PCT` (default 0), `ECON_AUDIT_MIN_PROFIT_FACTOR` (default 1.0), `ECON_AUDIT_MAX_REALIZED_DRAWDOWN_PCT` (default 20), `ECON_AUDIT_MAX_TOP_SYMBOL_CONCENTRATION_PCT` (default 50), `ECON_AUDIT_MAX_OUTLIER_CONTRIBUTION_PCT` (default 25), and `ECON_AUDIT_MAX_OVERLAP_DEPENDENCE_PCT` (default 25). A completed scenario with negative net return cannot pass, and unacceptable drawdown, concentration, material data mismatch, outlier dependence, or overlap dependence blocks or reviews economic readiness. Readiness never unlocks execution.
+Economic readiness is advisory only and is controlled by configurable thresholds: `ECON_AUDIT_MIN_VALID_CLOSED_TRADES` (default 100), `ECON_AUDIT_MIN_COST_ADJUSTED_NORMALIZED_RETURN_PCT` (default 0), `ECON_AUDIT_MIN_PROFIT_FACTOR` (default 1.0), `ECON_AUDIT_MAX_REALIZED_DRAWDOWN_PCT` (default 20), `ECON_AUDIT_MAX_TOP_SYMBOL_CONCENTRATION_PCT` (default 50), `ECON_AUDIT_MAX_OUTLIER_CONTRIBUTION_PCT` (default 25), and `ECON_AUDIT_MAX_OVERLAP_DEPENDENCE_PCT` (default 25). A single source-of-truth data-quality predicate blocks readiness for unavailable sources, zero CLOSED rows, zero valid reconciled rows, any excluded required CLOSED row, material mismatches, recomputation failures, missing required fields, invalid timestamps, or unavailable returns. A completed scenario with negative net return cannot pass, and unacceptable drawdown, concentration, material data mismatch, outlier dependence, or overlap dependence blocks or reviews economic readiness. Readiness never unlocks execution.
 
 ## Methodology
 
@@ -26,7 +26,7 @@ Overlap is detected from `opened_at`/`closed_at` equivalents (`timestamp`/`updat
 
 Concentration gates use top 1/3/5/10 gross absolute symbol contribution shares and a Herfindahl-style measure. Signed return contribution percentages are retained separately as informational attribution metrics; they are `null` when the signed denominator is zero. HHI and concentration gates use absolute symbol contribution shares so negative and positive contributors both count toward concentration.
 
-Outliers are flagged using configurable absolute return thresholds and reconciliation mismatches. Outlier dependence gates use absolute outlier contribution divided by total absolute valid return contribution, while signed outlier contribution is retained separately as informational attribution. Outliers remain in the raw authoritative report; with/without-outlier metrics are reported separately.
+Outliers are flagged using configurable absolute return thresholds and reconciliation mismatches. Outlier dependence gates use absolute outlier contribution divided by total absolute valid return contribution; when valid trades exist but total absolute return is zero, the gate is REVIEW rather than PASS. Signed outlier contribution is retained separately as informational attribution. Outliers remain in the raw authoritative report; with/without-outlier metrics are reported separately.
 
 Material stored-versus-recomputed return mismatches are conservatively excluded from authoritative statistics because the stored `pnl` unit is not assumed proven. Status counts are reported for MATCH, SMALL_DIFFERENCE, MATERIAL_DIFFERENCE, CANNOT_RECOMPUTE, and INVALID_CONTRACT.
 

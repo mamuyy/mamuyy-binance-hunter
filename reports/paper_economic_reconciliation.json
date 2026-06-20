@@ -109,7 +109,7 @@
     "total_realized_pnl": 0.0,
     "total_slippage_impact": 0.0
   },
-  "generated_at": "2026-06-20T14:11:11.879108+00:00",
+  "generated_at": "2026-06-20T14:16:58.127333+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -200,6 +200,12 @@
     "readiness_advisory_only": true
   },
   "reconciliation_summary": {
+    "data_quality_block_reasons": [
+      "source_database_or_table_unavailable",
+      "zero_closed_rows",
+      "zero_valid_reconciled_rows"
+    ],
+    "data_quality_blocked": true,
     "excluded_rows": 0,
     "material_mismatch_policy": "MATERIAL_DIFFERENCE rows are excluded from authoritative closed-trade statistics because stored pnl unit is not assumed proven; side-aware recomputed return is required to match within tolerance.",
     "reconciliation_status_counts": {
