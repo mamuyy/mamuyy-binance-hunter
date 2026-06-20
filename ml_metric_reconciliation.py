@@ -52,6 +52,8 @@ BLOCKER_PRECEDENCE = [
 TARGET_LIKE_COLUMNS = {"target", "status", "win_loss", "pnl_percent", "pnl_pct", "future_return", "direction_hit"}
 PREDICTION_COLUMNS = ("y_pred", "prediction", "predicted_label", "predicted_class", "pred_profit", "predicted_direction")
 TRUE_COLUMNS = ("y_true", "actual", "actual_label", "actual_class", "target", "actual_profit", "direction_hit")
+DEFAULT_STALE_TTL_DAYS = 7.0
+
 
 
 def utc_now() -> str:
@@ -171,6 +173,7 @@ def discover_artifacts(
     db_path: str = "mamuyy_hunter.db",
     model_output_path: str = "model_output.json",
     walkforward_path: str = "walkforward_results.csv",
+    stale_ttl_days: float = DEFAULT_STALE_TTL_DAYS,
 ) -> List[Dict[str, Any]]:
     candidates = [
         {
@@ -211,6 +214,7 @@ def discover_artifacts(
             if found is None and fallback_path.exists():
                 found = fallback_path
         path = found or configured
+        age = file_age_days(path) if path.exists() else None
         discovered.append(
             {
                 "artifact_name": candidate["artifact_name"],
@@ -218,7 +222,9 @@ def discover_artifacts(
                 "discovered_path": str(found) if found else None,
                 "exists": bool(found and found.exists()),
                 "generated_timestamp": None,
-                "file_age_days": round_or_none(file_age_days(path), 4) if path.exists() else None,
+                "file_age_days": round_or_none(age, 4),
+                "stale_ttl_days": stale_ttl_days,
+                "stale_source": bool(age is not None and age > stale_ttl_days),
                 "schema": _schema_for_path(path),
                 "producer": candidate["producer"],
                 "consumer": candidate["consumer"],
@@ -230,6 +236,7 @@ def discover_artifacts(
         if exists:
             with connect_readonly(db_path) as connection:
                 schema = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+        db_age = file_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else None
         discovered.append(
             {
                 "artifact_name": f"database_table:{table}",
@@ -237,7 +244,9 @@ def discover_artifacts(
                 "discovered_path": normalize_sqlite_readonly_uri(db_path) if Path(sqlite_path(db_path)).exists() else None,
                 "exists": exists,
                 "generated_timestamp": None,
-                "file_age_days": round_or_none(file_age_days(sqlite_path(db_path)), 4) if Path(sqlite_path(db_path)).exists() else None,
+                "file_age_days": round_or_none(db_age, 4),
+                "stale_ttl_days": stale_ttl_days,
+                "stale_source": bool(db_age is not None and db_age > stale_ttl_days),
                 "schema": schema,
                 "producer": "database.py insert_* or historical label/outcome producers",
                 "consumer": "dashboard/risk/audit modules",
@@ -268,7 +277,8 @@ def producer_inventory(artifacts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         schema = artifact.get("schema") or []
         required_columns = [col.strip() for col in columns.split(",")]
         source_verified = bool(artifact.get("exists"))
-        contract_verified = source_verified and all(col in schema for col in required_columns if artifact_name != "walkforward_results" or col != "model_health")
+        source_stale = bool(artifact.get("stale_source"))
+        contract_verified = source_verified and not source_stale and all(col in schema for col in required_columns if artifact_name != "walkforward_results" or col != "model_health")
         rows.append(
             {
                 "metric_name": metric_name,
@@ -279,9 +289,10 @@ def producer_inventory(artifacts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "configured_path": artifact.get("configured_path"),
                 "source_columns": columns,
                 "source_verified": source_verified,
+                "source_stale": source_stale,
                 "contract_verified": contract_verified,
                 "user_facing_consumers": artifact.get("consumer"),
-                "reproducibility_status": "SOURCE_MISSING" if not source_verified else ("UNREPRODUCIBLE" if not contract_verified else "REPRODUCED_WITH_ROUNDING"),
+                "reproducibility_status": "SOURCE_MISSING" if not source_verified else ("SOURCE_STALE" if source_stale else ("UNREPRODUCIBLE" if not contract_verified else "REPRODUCED_WITH_ROUNDING")),
             }
         )
     return rows
@@ -543,6 +554,110 @@ def reconstruct_walkforward(path: Optional[str]) -> Dict[str, Any]:
     }
 
 
+def summarize_walkforward_display(path: Optional[str]) -> Dict[str, Any]:
+    """Reproduce display-only walk-forward values from fold CSV when possible."""
+    if not path or not Path(path).exists():
+        return {
+            "status": "SOURCE_MISSING",
+            "average_accuracy": None,
+            "average_winrate": None,
+            "overfit_risk_score": None,
+            "model_health": None,
+            "reason": "walk-forward artifact missing",
+        }
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        return {"status": "UNREPRODUCIBLE", "average_accuracy": None, "average_winrate": None, "overfit_risk_score": None, "model_health": None, "reason": str(exc)}
+    out: Dict[str, Any] = {"status": "UNREPRODUCIBLE", "average_accuracy": None, "average_winrate": None, "overfit_risk_score": None, "model_health": None, "reason": None}
+    if "test_accuracy" in df.columns and not df.empty:
+        out["average_accuracy"] = round_or_none(pd.to_numeric(df["test_accuracy"], errors="coerce").mean())
+        out["status"] = "REPRODUCED_WITH_ROUNDING"
+    if "winrate" in df.columns and not df.empty:
+        out["average_winrate"] = round_or_none(pd.to_numeric(df["winrate"], errors="coerce").mean())
+    if {"train_accuracy", "test_accuracy"}.issubset(df.columns) and not df.empty:
+        train_mean = pd.to_numeric(df["train_accuracy"], errors="coerce").mean()
+        test_mean = pd.to_numeric(df["test_accuracy"], errors="coerce").mean()
+        if pd.notna(train_mean) and pd.notna(test_mean):
+            out["overfit_risk_score"] = round_or_none(max(0.0, float(train_mean - test_mean)) * 100.0)
+            accuracies = pd.to_numeric(df["test_accuracy"], errors="coerce").dropna()
+            stability_score = max(0.0, 100.0 - float(accuracies.std(ddof=0) * 100.0)) if len(accuracies) else 0.0
+            if out["overfit_risk_score"] >= 65:
+                out["model_health"] = "OVERFIT RISK"
+            elif stability_score < 45:
+                out["model_health"] = "UNSTABLE"
+            else:
+                out["model_health"] = "ROBUST"
+    if out["average_winrate"] is None and out["overfit_risk_score"] is None:
+        out["reason"] = "fold display columns unavailable"
+    return out
+
+
+def parse_historical_ml_artifact(path: Optional[str]) -> Dict[str, Any]:
+    if not path or not Path(path).exists():
+        return {"status": "SOURCE_MISSING", "global_accuracy": None, "rows": None, "reason": "historical ML artifact missing"}
+    data = read_json(path)
+    if data is None:
+        return {"status": "UNREPRODUCIBLE", "global_accuracy": None, "rows": None, "reason": "invalid JSON"}
+    accuracy = safe_float(data.get("global_accuracy") if "global_accuracy" in data else data.get("accuracy"))
+    if accuracy is None:
+        return {"status": "UNREPRODUCIBLE", "global_accuracy": None, "rows": data.get("rows"), "reason": "global_accuracy/accuracy missing"}
+    return {"status": "REPRODUCED_WITH_ROUNDING", "global_accuracy": accuracy, "rows": data.get("rows"), "reason": None}
+
+
+def dataset_lineage_readonly(db_path: str) -> Dict[str, Any]:
+    """Summarize dataset lineage using read-only DB access only."""
+    base = {
+        "dataset_source": "read-only historical_outcomes/signals inspection",
+        "row_count": 0,
+        "feature_count": len(NUMERIC_FEATURES) + len(CATEGORICAL_FEATURES),
+        "date_range": [None, None],
+        "symbol_coverage": None,
+        "class_distribution": {},
+        "duplicate_rows": None,
+        "future_timestamps": None,
+        "lineage": "LEGACY_UNKNOWN when DB/table is absent",
+        "excluded_rows_and_reasons": [],
+        "read_only": True,
+    }
+    if not table_exists_readonly(db_path, "historical_outcomes"):
+        base["status"] = "SOURCE_MISSING"
+        return base
+    try:
+        with connect_readonly(db_path) as connection:
+            row = connection.execute("SELECT COUNT(*), MIN(signal_timestamp), MAX(signal_timestamp), COUNT(DISTINCT symbol) FROM historical_outcomes").fetchone()
+            base["row_count"] = int(row[0] or 0)
+            base["date_range"] = [row[1], row[2]]
+            base["symbol_coverage"] = int(row[3] or 0)
+            counts = connection.execute("SELECT status, COUNT(*) FROM historical_outcomes GROUP BY status").fetchall()
+            base["class_distribution"] = {str(r[0]): int(r[1]) for r in counts}
+            dup = connection.execute("SELECT COUNT(*) FROM (SELECT symbol, signal_timestamp, COUNT(*) c FROM historical_outcomes GROUP BY symbol, signal_timestamp HAVING c > 1)").fetchone()[0]
+            base["duplicate_rows"] = int(dup or 0)
+            future = connection.execute("SELECT COUNT(*) FROM historical_outcomes WHERE signal_timestamp > datetime('now')").fetchone()[0]
+            base["future_timestamps"] = int(future or 0)
+            base["status"] = "AVAILABLE"
+            return base
+    except sqlite3.Error as exc:
+        base["status"] = "UNREPRODUCIBLE"
+        base["excluded_rows_and_reasons"].append(str(exc))
+        return base
+
+
+def code_leakage_findings() -> List[Dict[str, Any]]:
+    return [
+        {
+            "finding": "latest_by_symbol_feature_join",
+            "status": "REVIEW",
+            "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
+        },
+        {
+            "finding": "preprocessor_fit_scope",
+            "status": "REVIEW",
+            "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
+        },
+    ]
+
+
 def compare_displayed(displayed: Any, reproduced: Optional[float], scale: float = 1.0, tolerance: float = 0.005) -> str:
     expected = safe_float(str(displayed).replace("%", "").replace("/100", "").replace("~", ""))
     if expected is None or reproduced is None:
@@ -555,7 +670,7 @@ def compare_displayed(displayed: Any, reproduced: Optional[float], scale: float 
     return "CONTRACT_DIFFERENT"
 
 
-def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any], model: Dict[str, Any]) -> List[Dict[str, Any]]:
+def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any], model: Dict[str, Any], wf_display: Dict[str, Any], hist66: Dict[str, Any]) -> List[Dict[str, Any]]:
     walk_status = walkforward.get("status")
     current = safe_float(model.get("accuracy"))
     rows = [
@@ -566,6 +681,8 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "ml_engine.py:run_ml_research",
             "contract_match_walkforward": False,
             "sample_count": model.get("rows"),
+            "display_reproduction_status": compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING",
+            "evaluation_reproduction_status": "UNREPRODUCIBLE",
             "reproducibility_status": compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING",
         },
         {
@@ -575,7 +692,9 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:run_walkforward_validation",
             "contract_match_walkforward": True,
             "sample_count": walkforward.get("fold_count"),
-            "reproducibility_status": compare_displayed("64.38", walkforward.get("unweighted_aggregate"), scale=100) if walk_status != "SOURCE_MISSING" else "SOURCE_MISSING",
+            "display_reproduction_status": compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "evaluation_reproduction_status": "UNVERIFIABLE" if walkforward.get("weighted_aggregate") is None else walkforward.get("status"),
+            "reproducibility_status": compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING"),
         },
         {
             "display_value": "66.40%",
@@ -583,8 +702,10 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
             "producer": "ml_quality_audit.py:run_audit",
             "contract_match_walkforward": False,
-            "sample_count": None,
-            "reproducibility_status": "SOURCE_MISSING" if not any(a["artifact_name"] == "ml_quality_audit" and a["exists"] for a in artifacts) else "UNREPRODUCIBLE",
+            "sample_count": hist66.get("rows"),
+            "display_reproduction_status": compare_displayed("66.40", hist66.get("global_accuracy"), scale=100) if hist66.get("global_accuracy") is not None else hist66.get("status", "SOURCE_MISSING"),
+            "evaluation_reproduction_status": "UNREPRODUCIBLE",
+            "reproducibility_status": compare_displayed("66.40", hist66.get("global_accuracy"), scale=100) if hist66.get("global_accuracy") is not None else hist66.get("status", "SOURCE_MISSING"),
         },
         {
             "display_value": "~70%",
@@ -593,6 +714,8 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "LEGACY_UNKNOWN",
             "contract_match_walkforward": False,
             "sample_count": None,
+            "display_reproduction_status": "SOURCE_MISSING",
+            "evaluation_reproduction_status": "UNREPRODUCIBLE",
             "reproducibility_status": "SOURCE_MISSING",
         },
         {
@@ -602,7 +725,9 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:_winrate/run_walkforward_validation",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+            "display_reproduction_status": compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "evaluation_reproduction_status": "UNVERIFIABLE",
+            "reproducibility_status": compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING"),
         },
         {
             "display_value": "65/100",
@@ -611,6 +736,8 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "ml_engine.py:run_ml_research",
             "contract_match_walkforward": False,
             "sample_count": model.get("rows"),
+            "display_reproduction_status": compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING",
+            "evaluation_reproduction_status": "UNREPRODUCIBLE",
             "reproducibility_status": compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING",
         },
         {
@@ -620,7 +747,9 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:_health",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+            "display_reproduction_status": "REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else wf_display.get("status", "SOURCE_MISSING"),
+            "evaluation_reproduction_status": "UNVERIFIABLE",
+            "reproducibility_status": "REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else wf_display.get("status", "SOURCE_MISSING"),
         },
         {
             "display_value": "35.55/100",
@@ -629,7 +758,9 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:run_walkforward_validation",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+            "display_reproduction_status": compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "evaluation_reproduction_status": "UNVERIFIABLE",
+            "reproducibility_status": compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING"),
         },
     ]
     return rows
@@ -651,7 +782,8 @@ def label_contract_audit() -> Dict[str, Any]:
         "missing_future_data": "NO_FUTURE_CANDLES open/flat outcome",
         "regime_assignment_timing": "regime is joined from signal timestamp in ml_engine historical dataset",
         "status": "REVIEW",
-        "blocked_reason": "Fees/slippage and neutral treatment are explicit, but historical artifact lineage and all displayed metric horizons are not fully proven from prediction artifacts.",
+        "tp2_hit_vs_win_mismatch": "outcome_labeler returns status WIN for TP2 hits while ml_engine TARGET_LABELS includes TP2 HIT; legacy artifacts may mix TP2 HIT and WIN semantics.",
+        "blocked_reason": "Fees/slippage and neutral treatment are explicit, but TP2 HIT versus WIN semantics, historical artifact lineage, and all displayed metric horizons are not fully proven from prediction artifacts.",
     }
 
 
@@ -676,7 +808,7 @@ def segment_performance(cohort: pd.DataFrame, min_samples: int = 10) -> List[Dic
                     "baseline": metrics["majority_class_baseline"],
                     "improvement_over_baseline": None if metrics["accuracy"] is None or metrics["majority_class_baseline"] is None else metrics["accuracy"] - metrics["majority_class_baseline"],
                     "confidence_interval": None,
-                    "readiness_status": "REVIEW" if len(group) < min_samples else "PASS",
+                    "readiness_status": "REVIEW" if len(group) < min_samples else ("PASS" if metrics["accuracy"] is not None and metrics["majority_class_baseline"] is not None and metrics["accuracy"] > metrics["majority_class_baseline"] else "REVIEW"),
                 }
             )
     return rows
@@ -756,16 +888,21 @@ def run_ml_metric_reconciliation(
     walkforward_path: str = "walkforward_results.csv",
     prediction_artifact_path: Optional[str] = None,
     artifact_context: Optional[str] = None,
+    stale_ttl_days: float = DEFAULT_STALE_TTL_DAYS,
 ) -> Dict[str, Any]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    artifacts = discover_artifacts(db_path=db_path, model_output_path=model_output_path, walkforward_path=walkforward_path)
+    artifacts = discover_artifacts(db_path=db_path, model_output_path=model_output_path, walkforward_path=walkforward_path, stale_ttl_days=stale_ttl_days)
     inventory = producer_inventory(artifacts)
     model_artifact = next((item for item in artifacts if item["artifact_name"] == "model_output"), {})
     model = read_json(model_artifact.get("discovered_path") or model_output_path) or {}
     walk_artifact = next((item for item in artifacts if item["artifact_name"] == "walkforward_results"), {})
-    walkforward = reconstruct_walkforward(walk_artifact.get("discovered_path") or walkforward_path)
-    identities = metric_identity(artifacts, walkforward, model)
+    walk_path = walk_artifact.get("discovered_path") or walkforward_path
+    walkforward = reconstruct_walkforward(walk_path)
+    wf_display = summarize_walkforward_display(walk_path)
+    hist_artifact = next((item for item in artifacts if item["artifact_name"] == "ml_quality_audit"), {})
+    historical_66 = parse_historical_ml_artifact(hist_artifact.get("discovered_path") or "ml_quality_audit.json")
+    identities = metric_identity(artifacts, walkforward, model, wf_display, historical_66)
 
     cohort_result = load_prediction_cohort(prediction_artifact_path or model_artifact.get("discovered_path"))
     if cohort_result["status"] == "AVAILABLE":
@@ -777,31 +914,17 @@ def run_ml_metric_reconciliation(
         reproduced_metrics = no_evaluation_metrics(cohort_result["status"], cohort_result["reason"])
         metrics = None
 
-    try:
-        dataset = build_ml_dataset("paper_trades.csv", "signals_log.csv", "flow_log.csv", database_path=db_path)
-    except Exception:
-        dataset = pd.DataFrame()
-    lineage = {
-        "dataset_source": "paper_trades if present else historical_outcomes",
-        "row_count": int(len(dataset)),
-        "feature_count": len(NUMERIC_FEATURES) + len(CATEGORICAL_FEATURES),
-        "date_range": [str(dataset["timestamp"].min()) if "timestamp" in dataset and len(dataset) else None, str(dataset["timestamp"].max()) if "timestamp" in dataset and len(dataset) else None],
-        "symbol_coverage": int(dataset["symbol"].nunique()) if "symbol" in dataset else None,
-        "class_distribution": dataset["target"].value_counts().to_dict() if "target" in dataset else {},
-        "duplicate_rows": int(dataset.duplicated().sum()) if len(dataset) else 0,
-        "future_timestamps": int((pd.to_datetime(dataset.get("timestamp"), errors="coerce", utc=True) > pd.Timestamp.now(tz="UTC")).sum()) if "timestamp" in dataset else 0,
-        "lineage": "LEGACY_UNKNOWN where built from historical outcomes/signals joins",
-        "excluded_rows_and_reasons": [],
-    }
+    lineage = dataset_lineage_readonly(db_path)
     baseline = baseline_status(metrics)
     segments = segment_performance(cohort)
-    candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage["row_count"])
+    candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
 
-    metric_integrity = "BLOCKED_UNREPRODUCIBLE" if any(item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE"} for item in identities[:2]) else "PASS"
+    principal_blockers = [item for item in identities if item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE", "SOURCE_STALE", "CONTRACT_DIFFERENT"}]
+    metric_integrity = "BLOCKED_UNREPRODUCIBLE" if principal_blockers else "PASS"
     label_contract = label_contract_audit()
     components = {
         "Metric Integrity": metric_integrity,
-        "Data Lineage": "REVIEW" if lineage["row_count"] else "BLOCKED_STALE_SOURCE",
+        "Data Lineage": "REVIEW" if lineage.get("row_count") else "BLOCKED_STALE_SOURCE",
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
         "Leakage Safety": "UNVERIFIABLE" if cohort.empty else "REVIEW",
         "Baseline Superiority": baseline["status"],
@@ -830,9 +953,11 @@ def run_ml_metric_reconciliation(
         "metric_identity": identities,
         "dataset_lineage": lineage,
         "label_contracts": [label_contract],
-        "split_and_leakage_audit": {"status": "UNVERIFIABLE" if cohort.empty else "REVIEW", "findings": ["No valid prediction/label cohort available"] if cohort.empty else []},
+        "split_and_leakage_audit": {"status": "UNVERIFIABLE" if cohort.empty else "REVIEW", "findings": (["No valid prediction/label cohort available"] if cohort.empty else []) + code_leakage_findings()},
         "reproduced_metrics": reproduced_metrics,
         "baseline_comparison": baseline,
+        "walkforward_display_reproduction": wf_display,
+        "historical_ml_artifact_reproduction": historical_66,
         "walkforward_reconciliation": walkforward,
         "current_accuracy_reconciliation": identities[0],
         "historical_snapshot_reconciliation": identities[2:4],
@@ -847,10 +972,10 @@ def run_ml_metric_reconciliation(
             "confusion_matrix_csv": str(output / "ml_confusion_matrix.csv"),
             "segment_performance_csv": str(output / "ml_segment_performance.csv"),
         },
-        "limitations": ["No predictions are fabricated from labels.", "Missing or stale artifacts are not invented.", "Report is advisory and PAPER_ONLY."],
+        "limitations": ["No predictions are fabricated from labels.", "Display-value reproduction is separated from full evaluation reproduction.", "Missing or stale artifacts are not invented.", "Report is advisory and PAPER_ONLY."],
     }
     atomic_write_json(output / "ml_metric_reconciliation.json", report)
-    write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "reproducibility_status"])
+    write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "display_reproduction_status", "evaluation_reproduction_status", "reproducibility_status"])
     write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "embargo_gap", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
     write_csv(output / "ml_confusion_matrix.csv", reproduced_metrics.get("confusion_matrix", []), ["actual_class", *TARGET_LABELS])
     write_csv(output / "ml_segment_performance.csv", segments, ["segment_type", "segment_value", "samples", "class_support", "accuracy", "balanced_accuracy", "macro_f1", "baseline", "improvement_over_baseline", "confidence_interval", "readiness_status"])

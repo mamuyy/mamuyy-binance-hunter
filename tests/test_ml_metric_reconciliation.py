@@ -198,3 +198,52 @@ def test_full_audit_empty_data_governance_no_mutation_and_context(tmp_path, monk
     assert report["segment_performance"] == []
     assert not Path("missing.db").exists()
     assert model.stat().st_mtime_ns == mt
+
+
+def test_walkforward_display_reproduces_winrate_overfit_and_robust(tmp_path):
+    from ml_metric_reconciliation import summarize_walkforward_display, metric_identity
+    wf = tmp_path / "walk.csv"
+    pd.DataFrame([
+        {"fold": 1, "train_start": 0, "train_end": 10, "test_start": 11, "test_end": 20, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68, "train_rows": 10, "test_rows": 10},
+        {"fold": 2, "train_start": 20, "train_end": 30, "test_start": 31, "test_end": 40, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68, "train_rows": 10, "test_rows": 10},
+    ]).to_csv(wf, index=False)
+    summary = summarize_walkforward_display(str(wf))
+    assert summary["average_winrate"] == 45.68
+    assert summary["overfit_risk_score"] == 35.55
+    assert summary["model_health"] == "ROBUST"
+    ids = {row["metric_name"]: row for row in metric_identity([], reconstruct_walkforward(str(wf)), {}, summary, {"status": "SOURCE_MISSING"})}
+    assert ids["Walk-Forward Rolling Winrate"]["display_reproduction_status"] == "REPRODUCED_EXACT"
+    assert ids["Overfit Risk"]["display_reproduction_status"] == "REPRODUCED_EXACT"
+    assert ids["Model Health"]["display_reproduction_status"] == "REPRODUCED_EXACT"
+
+
+def test_historical_6640_artifact_parsed_and_display_separated(tmp_path):
+    from ml_metric_reconciliation import parse_historical_ml_artifact, metric_identity
+    hist = tmp_path / "ml_quality_audit.json"
+    hist.write_text(json.dumps({"global_accuracy": 0.6640, "rows": 50}), encoding="utf-8")
+    parsed = parse_historical_ml_artifact(str(hist))
+    ids = {row["metric_name"]: row for row in metric_identity([{"artifact_name": "ml_quality_audit", "exists": True}], {"status": "SOURCE_MISSING", "fold_count": 0}, {}, {"status": "SOURCE_MISSING"}, parsed)}
+    assert parsed["global_accuracy"] == 0.664
+    assert ids["Historical ML accuracy snapshot"]["display_reproduction_status"] == "REPRODUCED_EXACT"
+    assert ids["Historical ML accuracy snapshot"]["evaluation_reproduction_status"] == "UNREPRODUCIBLE"
+
+
+def test_stale_ttl_enforced_in_artifact_discovery(tmp_path):
+    model = tmp_path / "model.json"
+    model.write_text("{}", encoding="utf-8")
+    old = 1_600_000_000
+    os.utime(model, (old, old))
+    artifacts = discover_artifacts(db_path=str(tmp_path / "missing.db"), model_output_path=str(model), walkforward_path=str(tmp_path / "missing.csv"), stale_ttl_days=0.0001)
+    model_artifact = next(item for item in artifacts if item["artifact_name"] == "model_output")
+    assert model_artifact["stale_source"] is True
+    inv = producer_inventory(artifacts)
+    assert next(row for row in inv if row["metric_name"] == "Current Model Accuracy")["reproducibility_status"] == "SOURCE_STALE"
+
+
+def test_dataset_lineage_readonly_does_not_create_db(tmp_path):
+    from ml_metric_reconciliation import dataset_lineage_readonly
+    missing = tmp_path / "missing.db"
+    lineage = dataset_lineage_readonly(str(missing))
+    assert lineage["status"] == "SOURCE_MISSING"
+    assert lineage["read_only"] is True
+    assert not missing.exists()

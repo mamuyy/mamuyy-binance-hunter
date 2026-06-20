@@ -10,7 +10,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "ml_engine.run_ml_research",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "walkforward_results",
@@ -21,7 +23,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "walkforward.run_walkforward_validation",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "ml_quality_audit",
@@ -32,7 +36,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "ml_quality_audit.run_audit",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "candidate_evidence_ledger",
@@ -43,7 +49,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "candidate_evidence_ledger.run",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "database_table:ml_results",
@@ -54,7 +62,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "database_table:walkforward_results",
@@ -65,7 +75,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "database_table:historical_outcomes",
@@ -76,7 +88,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     },
     {
       "artifact_name": "database_table:internal_paper_trades",
@@ -87,7 +101,9 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
-      "schema": []
+      "schema": [],
+      "stale_source": false,
+      "stale_ttl_days": 7.0
     }
   ],
   "artifact_paths": {
@@ -123,7 +139,9 @@
   },
   "current_accuracy_reconciliation": {
     "contract_match_walkforward": false,
+    "display_reproduction_status": "SOURCE_MISSING",
     "display_value": "32.81%",
+    "evaluation_reproduction_status": "UNREPRODUCIBLE",
     "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
     "metric_name": "Current Model Accuracy",
     "producer": "ml_engine.py:run_ml_research",
@@ -132,20 +150,22 @@
   },
   "dataset_lineage": {
     "class_distribution": {},
-    "dataset_source": "paper_trades if present else historical_outcomes",
+    "dataset_source": "read-only historical_outcomes/signals inspection",
     "date_range": [
       null,
       null
     ],
-    "duplicate_rows": 0,
+    "duplicate_rows": null,
     "excluded_rows_and_reasons": [],
     "feature_count": 13,
-    "future_timestamps": 0,
-    "lineage": "LEGACY_UNKNOWN where built from historical outcomes/signals joins",
+    "future_timestamps": null,
+    "lineage": "LEGACY_UNKNOWN when DB/table is absent",
+    "read_only": true,
     "row_count": 0,
+    "status": "SOURCE_MISSING",
     "symbol_coverage": null
   },
-  "generated_at": "2026-06-20T15:40:17.010664+00:00",
+  "generated_at": "2026-06-20T15:55:51.931274+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -154,10 +174,18 @@
     "read_only_audit": true,
     "readiness_advisory_only": true
   },
+  "historical_ml_artifact_reproduction": {
+    "global_accuracy": null,
+    "reason": "historical ML artifact missing",
+    "rows": null,
+    "status": "SOURCE_MISSING"
+  },
   "historical_snapshot_reconciliation": [
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "66.40%",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
       "metric_name": "Historical ML accuracy snapshot",
       "producer": "ml_quality_audit.py:run_audit",
@@ -166,7 +194,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "~70%",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "legacy/operator snapshot with no authoritative source discovered in repository fixtures",
       "metric_name": "Earlier historical snapshot",
       "producer": "LEGACY_UNKNOWN",
@@ -176,7 +206,7 @@
   ],
   "label_contracts": [
     {
-      "blocked_reason": "Fees/slippage and neutral treatment are explicit, but historical artifact lineage and all displayed metric horizons are not fully proven from prediction artifacts.",
+      "blocked_reason": "Fees/slippage and neutral treatment are explicit, but TP2 HIT versus WIN semantics, historical artifact lineage, and all displayed metric horizons are not fully proven from prediction artifacts.",
       "class_names_and_encoding": {
         "LOSS": "stop-loss or negative outcome",
         "OPEN/FLAT": "not kept by ML TARGET_LABELS",
@@ -195,18 +225,22 @@
       "source_module": "outcome_labeler.py",
       "status": "REVIEW",
       "target_price": "future candle low/high/close depending on SL/TP/horizon path",
-      "target_timestamp": "future candle timestamp or blank when no future candles"
+      "target_timestamp": "future candle timestamp or blank when no future candles",
+      "tp2_hit_vs_win_mismatch": "outcome_labeler returns status WIN for TP2 hits while ml_engine TARGET_LABELS includes TP2 HIT; legacy artifacts may mix TP2 HIT and WIN semantics."
     }
   ],
   "limitations": [
     "No predictions are fabricated from labels.",
+    "Display-value reproduction is separated from full evaluation reproduction.",
     "Missing or stale artifacts are not invented.",
     "Report is advisory and PAPER_ONLY."
   ],
   "metric_identity": [
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "32.81%",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
       "metric_name": "Current Model Accuracy",
       "producer": "ml_engine.py:run_ml_research",
@@ -215,7 +249,9 @@
     },
     {
       "contract_match_walkforward": true,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "64.38%",
+      "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
       "metric_name": "Walk-Forward Rolling Accuracy",
       "producer": "walkforward.py:run_walkforward_validation",
@@ -224,7 +260,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "66.40%",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
       "metric_name": "Historical ML accuracy snapshot",
       "producer": "ml_quality_audit.py:run_audit",
@@ -233,7 +271,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "~70%",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "legacy/operator snapshot with no authoritative source discovered in repository fixtures",
       "metric_name": "Earlier historical snapshot",
       "producer": "LEGACY_UNKNOWN",
@@ -242,7 +282,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "45.68%",
+      "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
       "metric_name": "Walk-Forward Rolling Winrate",
       "producer": "walkforward.py:_winrate/run_walkforward_validation",
@@ -251,7 +293,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "65/100",
+      "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
       "metric_name": "AI Confidence",
       "producer": "ml_engine.py:run_ml_research",
@@ -260,7 +304,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "ROBUST",
+      "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
       "metric_name": "Model Health",
       "producer": "walkforward.py:_health",
@@ -269,7 +315,9 @@
     },
     {
       "contract_match_walkforward": false,
+      "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "35.55/100",
+      "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
       "metric_name": "Overfit Risk",
       "producer": "walkforward.py:run_walkforward_validation",
@@ -348,6 +396,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "accuracy",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -361,6 +410,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "ai_confidence_score",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -374,6 +424,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "setup_ranking",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -387,6 +438,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "feature_importance",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -400,6 +452,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "most_profitable_regime",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -413,6 +466,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
       "source_columns": "worst_regime",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_ml_analysis_message/dashboard/ml_results"
     },
@@ -426,6 +480,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
       "source_columns": "test_accuracy",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_walkforward_report_message/dashboard/walkforward_results"
     },
@@ -439,6 +494,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
       "source_columns": "winrate",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_walkforward_report_message/dashboard/walkforward_results"
     },
@@ -452,6 +508,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
       "source_columns": "model_health",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_walkforward_report_message/dashboard/walkforward_results"
     },
@@ -465,6 +522,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
       "source_columns": "train_accuracy,test_accuracy",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "telegram.format_walkforward_report_message/dashboard/walkforward_results"
     },
@@ -478,6 +536,7 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "ml_quality_audit.json",
       "source_columns": "global_accuracy",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "operator reports"
     },
@@ -491,13 +550,24 @@
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "reports/candidate_evidence_ledger.jsonl",
       "source_columns": "direction_hit",
+      "source_stale": false,
       "source_verified": false,
       "user_facing_consumers": "Phase 9D candidate evidence reports"
     }
   ],
   "split_and_leakage_audit": {
     "findings": [
-      "No valid prediction/label cohort available"
+      "No valid prediction/label cohort available",
+      {
+        "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
+        "finding": "latest_by_symbol_feature_join",
+        "status": "REVIEW"
+      },
+      {
+        "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
+        "finding": "preprocessor_fit_scope",
+        "status": "REVIEW"
+      }
     ],
     "status": "UNVERIFIABLE"
   },
@@ -511,6 +581,14 @@
     "AI Confidence Heuristic",
     "Model Readiness"
   ],
+  "walkforward_display_reproduction": {
+    "average_accuracy": null,
+    "average_winrate": null,
+    "model_health": null,
+    "overfit_risk_score": null,
+    "reason": "walk-forward artifact missing",
+    "status": "SOURCE_MISSING"
+  },
   "walkforward_reconciliation": {
     "fold_count": 0,
     "folds": [],
