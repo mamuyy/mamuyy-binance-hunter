@@ -220,6 +220,7 @@ def test_ledger_records_phase9b_regime_name_and_whale_activity_contract(tmp_path
             "score": 96.5,
             "regime_name": "BULL_EXPANSION",
             "whale_activity": "HIGH",
+            "symbol_validation": {"symbol": "BTCUSDT", "valid": True, "reason": None},
         },
     )
     conn.close()

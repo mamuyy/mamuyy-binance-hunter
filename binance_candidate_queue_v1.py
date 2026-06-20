@@ -1,9 +1,12 @@
 import json
 import sqlite3
+import os
+import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from uuid import uuid4
 from json_utils import atomic_write_json
+from database import sqlite_path
 from symbol_validation import validate_symbol, DEFAULT_POLICY_DENYLIST
 
 DB_PATH = Path("mamuyy_hunter.db")
@@ -15,18 +18,39 @@ MIN_SCORE = 85
 MAX_CANDIDATES = 20
 MAX_SIGNAL_AGE_HOURS = 72
 CANDIDATE_SOURCE = "LIVE_SCANNER"
+EXCHANGE_INFO_CACHE_PATH = Path("reports/binance_futures_exchange_info_cache.json")
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{sqlite_path(str(db_path))}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
-def fetch_candidates(db_path: Path = DB_PATH):
+def fetch_exchange_info(base_url: str | None = None, cache_path: Path = EXCHANGE_INFO_CACHE_PATH) -> dict | None:
+    base = base_url or os.getenv("BINANCE_BASE_URL", "https://fapi.binance.com")
+    try:
+        response = requests.get(base + "/fapi/v1/exchangeInfo", timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict) or not isinstance(data.get("symbols"), list):
+            return None
+        atomic_write_json(cache_path, data)
+        return data
+    except Exception:
+        try:
+            data = json.loads(cache_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) and isinstance(data.get("symbols"), list) else None
+        except Exception:
+            return None
+
+
+def fetch_candidates(db_path: Path = DB_PATH, exchange_info: dict | None = None):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=MAX_SIGNAL_AGE_HOURS)).isoformat()
     diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "rejected_symbol_count": 0, "rejection_reasons": {}}
+    if exchange_info is None:
+        exchange_info = fetch_exchange_info()
     with _connect_readonly(db_path) as conn:
         counts = conn.execute("SELECT data_source, COUNT(*) c FROM signals WHERE timestamp >= ? GROUP BY data_source", (cutoff,)).fetchall()
         for row in counts:
@@ -47,12 +71,12 @@ def fetch_candidates(db_path: Path = DB_PATH):
     candidates=[]
     for row in rows:
         symbol = str(row["symbol"] or "").upper()
-        validation = validate_symbol(symbol)
+        validation = validate_symbol(symbol, exchange_info)
         if not validation.valid:
             diagnostics["rejected_symbol_count"] += 1
             diagnostics["rejection_reasons"][validation.reason] = diagnostics["rejection_reasons"].get(validation.reason, 0) + 1
             continue
-        candidates.append({"rank": len(candidates)+1, "symbol": symbol, "timestamp": row["timestamp"], "score": row["score"], "price": row["price"], "regime_name": row["regime_name"], "pressure_score": row["pressure_score"], "oi_expansion_rate": row["oi_expansion_rate"], "taker_delta": row["taker_delta"], "squeeze_probability": row["squeeze_probability"], "whale_activity": row["whale_activity"], "squeeze_risk": row["squeeze_risk"], "funding_warning": row["funding_warning"], "data_source": CANDIDATE_SOURCE, "status": "PROPOSAL_ONLY", "execution_allowed": False})
+        candidates.append({"rank": len(candidates)+1, "symbol": symbol, "timestamp": row["timestamp"], "score": row["score"], "price": row["price"], "regime_name": row["regime_name"], "pressure_score": row["pressure_score"], "oi_expansion_rate": row["oi_expansion_rate"], "taker_delta": row["taker_delta"], "squeeze_probability": row["squeeze_probability"], "whale_activity": row["whale_activity"], "squeeze_risk": row["squeeze_risk"], "funding_warning": row["funding_warning"], "data_source": CANDIDATE_SOURCE, "symbol_validation": validation.as_dict(), "status": "PROPOSAL_ONLY", "execution_allowed": False})
         if len(candidates) >= MAX_CANDIDATES: break
     return candidates, diagnostics
 

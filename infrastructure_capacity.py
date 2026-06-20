@@ -35,6 +35,17 @@ def assert_heavy_job_allowed(project_dir: str|Path='.', db_path: str|Path='mamuy
     if report["status"] == "BLOCK_HEAVY_JOBS":
         raise RuntimeError("Heavy backfill blocked: disk usage >= 90%")
 
+def lightweight_sync_allowed(project_dir: str|Path='.', db_path: str|Path='mamuyy_hunter.db', min_free_bytes: int = 50_000_000, projected_write_bytes: int = 10_000_000) -> tuple[bool, dict[str, Any]]:
+    report = build_capacity_report(project_dir, db_path)
+    required = max(min_free_bytes, projected_write_bytes * 2)
+    allowed = int(report["filesystem_available_bytes"]) >= required
+    report["lightweight_sync_allowed"] = allowed
+    report["lightweight_min_free_bytes"] = min_free_bytes
+    report["lightweight_projected_write_bytes"] = projected_write_bytes
+    if not allowed:
+        report.setdefault("recommendations", []).append("Lightweight sync blocked: insufficient free space for bounded write margin")
+    return allowed, report
+
 def main(output='reports/infrastructure_capacity.json') -> int:
     report=build_capacity_report()
     atomic_write_json(output, report)

@@ -373,13 +373,23 @@ def _to_number(value: Any) -> Any:
         return value
 
 
-def get_connection(database_url: str = "") -> sqlite3.Connection:
+def sqlite_path(database_url: str = "") -> str:
     if database_url and _is_postgres(database_url):
         raise NotImplementedError(
             "PostgreSQL is optional but no PostgreSQL driver is bundled. "
             "Use SQLite DATABASE_PATH by default."
         )
-    path = database_url.replace("sqlite:///", "") if database_url else DEFAULT_DB_PATH
+    if not database_url:
+        return DEFAULT_DB_PATH
+    if database_url.startswith("sqlite:///"):
+        return database_url.replace("sqlite:///", "", 1)
+    if database_url.startswith("sqlite://"):
+        return database_url.replace("sqlite://", "", 1)
+    return database_url
+
+
+def get_connection(database_url: str = "") -> sqlite3.Connection:
+    path = sqlite_path(database_url)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     return connection
@@ -595,7 +605,7 @@ def db_health_check(database_url: str = "", migrate_csv: bool = True, backup: bo
                 count = connection.execute(f"SELECT COUNT(*) AS total FROM {table}").fetchone()["total"]
                 health["tables"][table] = int(count)
         if backup and not _is_postgres(database_url):
-            db_path = database_url.replace("sqlite:///", "") if database_url else DEFAULT_DB_PATH
+            db_path = sqlite_path(database_url)
             health["backup_path"] = backup_database(db_path)
         health["ok"] = True
     except Exception as exc:

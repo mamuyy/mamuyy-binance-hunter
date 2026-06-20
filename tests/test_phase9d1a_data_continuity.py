@@ -28,7 +28,7 @@ def test_queue_live_only_and_no_snapshot(tmp_path, monkeypatch):
     with sqlite3.connect(db) as c:
         for sym,src in [('BTCUSDT','LIVE_SCANNER'),('ETHUSDT','HISTORICAL_BACKFILL'),('BNBUSDT','LEGACY_UNKNOWN')]:
             c.execute("INSERT INTO signals(timestamp,symbol,price,score,pressure_score,squeeze_risk,funding_warning,data_source) VALUES(?,?,?,?,?,?,?,?)", (now,sym,100,90,80,'LOW','',src))
-    candidates, diag=fetch_candidates(db)
+    candidates, diag=fetch_candidates(db, exchange_info={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]})
     assert [c['symbol'] for c in candidates] == ['BTCUSDT']
     assert diag['historical_rows_excluded'] == 1 and diag['legacy_rows_excluded'] == 1
     assert not (tmp_path/'tmp/mamuyy_hunter_candidate_queue_snapshot.db').exists()
@@ -44,11 +44,12 @@ def test_batch_archive_not_overwritten(tmp_path, monkeypatch):
 
 def test_validator_custom_paths_and_statuses(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db))
-    sig_ts=(datetime.now(timezone.utc)-timedelta(hours=25)).isoformat()
+    sig_dt=datetime.now(timezone.utc)-timedelta(hours=25); sig_ts=sig_dt.isoformat()
     with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((sig_dt+timedelta(hours=24, minutes=5)).isoformat(),'BTCUSDT','15m',100))
         c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (datetime.now(timezone.utc).isoformat(),'BTCUSDT','15m',100))
         c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat(),'ETHUSDT','15m',100))
-    queue={'status':'OPEN','candidates':[{'rank':1,'symbol':'BTCUSDT','timestamp':sig_ts,'price':100,'score':90},{'rank':2,'symbol':'ETHUSDT','timestamp':datetime.now(timezone.utc).isoformat(),'price':100,'score':90}]}
+    queue={'status':'OPEN','candidates':[{'rank':1,'symbol':'BTCUSDT','timestamp':sig_ts,'price':100,'score':90,'symbol_validation':{'symbol':'BTCUSDT','valid':True,'reason':None}},{'rank':2,'symbol':'ETHUSDT','timestamp':datetime.now(timezone.utc).isoformat(),'price':100,'score':90,'symbol_validation':{'symbol':'ETHUSDT','valid':True,'reason':None}}]}
     inp=tmp_path/'in.json'; out=tmp_path/'out.json'; inp.write_text(json.dumps(queue), encoding='utf-8')
     validator_main(['--input', str(inp), '--output', str(out)])
     data=json.loads(out.read_text())
@@ -61,7 +62,7 @@ def test_market_sync_klines_only_idempotent(tmp_path, monkeypatch):
     ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
     k=[[ms-900000,'1','2','1','1.5','10',ms,'15','1','5','7','0']]
     def fake_get(url, **kwargs):
-        m=Mock(); m.json.return_value = ex if 'exchangeInfo' in url else k; return m
+        m=Mock(); m.status_code=200; m.text=''; m.json.return_value = ex if 'exchangeInfo' in url else k; return m
     monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
     with patch('requests.get', fake_get):
         r1=sync_market_data(str(db), 'https://x', tmp_path/'r.json'); r2=sync_market_data(str(db), 'https://x', tmp_path/'r.json')
@@ -80,3 +81,113 @@ def test_capacity_thresholds_and_block(monkeypatch):
             assert False
         except RuntimeError:
             pass
+
+from data_freshness_guard import check_freshness
+from candidate_validator import validate_candidate, nearest_price_after
+from symbol_validation import validate_symbol
+from market_data_sync import main as sync_main
+
+
+def _exchange_info():
+    return {'symbols':[
+        {'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'},
+        {'symbol':'HALTUSDT','status':'BREAK','quoteAsset':'USDT','contractType':'PERPETUAL'},
+        {'symbol':'BTCBUSD','status':'TRADING','quoteAsset':'BUSD','contractType':'PERPETUAL'},
+        {'symbol':'BTCUSD_240628','status':'TRADING','quoteAsset':'USDT','contractType':'CURRENT_QUARTER'},
+    ]}
+
+
+def test_symbol_validation_fail_closed_and_reasons():
+    ex=_exchange_info()
+    assert validate_symbol('BTCUSDT', ex).valid
+    assert validate_symbol('NOPEUSDT', ex).reason == 'SYMBOL_NOT_FOUND'
+    assert validate_symbol('HALTUSDT', ex).reason == 'SYMBOL_NOT_TRADING'
+    assert validate_symbol('BTCBUSD', ex).reason == 'UNSUPPORTED_QUOTE_ASSET'
+    assert validate_symbol('BTCUSD_240628', ex).reason == 'UNSUPPORTED_CONTRACT'
+    assert validate_symbol('SKHYNIXUSDT', ex).reason == 'POLICY_DENYLIST'
+    assert validate_symbol('BTCUSDT', None).reason == 'EXCHANGE_INFO_UNAVAILABLE'
+
+
+def test_queue_exchange_info_fail_closed(tmp_path):
+    db=tmp_path/'q2.db'; init_db(str(db)); now=datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO signals(timestamp,symbol,price,score,pressure_score,squeeze_risk,funding_warning,data_source) VALUES(?,?,?,?,?,?,?,?)", (now,'BTCUSDT',100,90,80,'LOW','','LIVE_SCANNER'))
+    candidates, diag=fetch_candidates(db, exchange_info=None)
+    assert candidates == []
+    assert diag['rejection_reasons'].get('EXCHANGE_INFO_UNAVAILABLE') == 1
+
+
+def test_freshness_stale_missing_and_future_block(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'f.db'; init_db(str(db))
+    stale=(datetime.now(timezone.utc)-timedelta(hours=2)).isoformat(); future=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (stale,'BTCUSDT','15m',100))
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (future,'BTCUSDT','15m',100))
+    q=tmp_path/'q.json'; q.write_text(json.dumps({'candidates':[{'symbol':'BTCUSDT'},{'symbol':'ETHUSDT'}]}), encoding='utf-8')
+    report=check_freshness(str(db), q, max_age_minutes=30)
+    assert report['status'] == 'BLOCKED_MISSING_SYMBOL'
+    assert not report['validation_allowed']
+    assert 'ETHUSDT' in report['missing_symbols']
+    assert report['future_timestamp_count'] == 1
+    q.write_text(json.dumps({'candidates':[{'symbol':'BTCUSDT'}]}), encoding='utf-8')
+    report=check_freshness(str(db), q, max_age_minutes=30)
+    assert report['status'] == 'BLOCKED_STALE_DATA'
+    assert not report['validation_allowed']
+
+
+def test_validator_honors_all_freshness_blocks_and_tolerance(tmp_path, monkeypatch):
+    db=tmp_path/'v.db'; init_db(str(db)); signal_ts=datetime.now(timezone.utc)-timedelta(hours=25); target=signal_ts+timedelta(hours=24)
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((target+timedelta(minutes=16)).isoformat(),'BTCUSDT','15m',101))
+        item={'symbol':'BTCUSDT','timestamp':signal_ts.isoformat(),'price':100,'score':90,'symbol_validation':{'symbol':'BTCUSDT','valid':True,'reason':None}}
+        monkeypatch.setenv('CANDIDATE_VALIDATION_MAX_OBSERVATION_LAG_MINUTES','20')
+        ready=validate_candidate(c, item, {'validation_allowed':True,'status':'GREEN','reasons':[]})
+        assert ready['horizons']['24h']['status'] == 'READY'
+        assert ready['horizons']['24h']['observed_lag_minutes'] == 16
+        monkeypatch.setenv('CANDIDATE_VALIDATION_MAX_OBSERVATION_LAG_MINUTES','10')
+        blocked=validate_candidate(c, item, {'validation_allowed':True,'status':'GREEN','reasons':[]})
+        assert blocked['horizons']['24h']['status'] == 'BLOCKED_MISSING_DATA'
+        stale=validate_candidate(c, item, {'validation_allowed':False,'status':'BLOCKED_STALE_DATA','reasons':['GLOBAL_STALE_DATA']})
+        assert stale['horizons']['24h']['status'] == 'BLOCKED_STALE_DATA'
+        missing=validate_candidate(c, item, {'validation_allowed':False,'status':'BLOCKED_MISSING_SYMBOL','missing_symbols':['BTCUSDT'],'reasons':['MISSING_CANDIDATE_SYMBOLS']})
+        assert missing['horizons']['24h']['blocked_reason'] == 'BLOCKED_MISSING_SYMBOL'
+        cap=validate_candidate(c, item, {'validation_allowed':False,'status':'BLOCKED_CAPACITY','reasons':['CAPACITY_BLOCK']})
+        assert cap['horizons']['24h']['blocked_reason'] == 'BLOCKED_CAPACITY'
+
+
+def test_sync_pagination_retry_incomplete_candidate_earliest_and_capacity(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'sync.db'; init_db(str(db))
+    old=(datetime.now(timezone.utc)-timedelta(days=2)).isoformat()
+    Path('reports').mkdir(); Path('reports/binance_candidate_queue.json').write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'BTCUSDT','timestamp':old}]}), encoding='utf-8')
+    monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT'); monkeypatch.setenv('DATA_SYNC_MAX_PAGES_PER_SYMBOL','2')
+    import market_data_sync as mds
+    mds.MAX_PAGES=2; mds.LIMIT=2
+    ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
+    base_ms=int((datetime.now(timezone.utc)-timedelta(days=2)).timestamp()*1000)
+    calls={'n':0}
+    def fake_get(url, **kwargs):
+        calls['n']+=1; resp=Mock(); resp.status_code=200; resp.text=''; resp.raise_for_status=lambda: None
+        if 'exchangeInfo' in url: resp.json.return_value=ex; return resp
+        if calls['n']==2: raise RuntimeError('temporary')
+        start=kwargs['params']['startTime']; resp.json.return_value=[[start,'1','2','1','1','1',start+900000,'1','1','1','1','0'],[start+900001,'1','2','1','1','1',start+1800000,'1','1','1','1','0']]; return resp
+    with patch('requests.get', fake_get):
+        r=sync_market_data(str(db), 'https://x', tmp_path/'r.json')
+    assert r['status'] == 'INCOMPLETE_SYNC'
+    assert r['per_symbol']['BTCUSDT']['requested_start'][:10] == old[:10]
+    assert calls['n'] >= 3
+    with sqlite3.connect(db) as c:
+        assert c.execute('SELECT COUNT(*) FROM signals').fetchone()[0] == 0
+        assert c.execute('SELECT COUNT(*) FROM flow_logs').fetchone()[0] == 0
+    with patch('shutil.disk_usage', return_value=(100, 99, 1)):
+        r=sync_market_data(str(db), 'https://x', tmp_path/'r2.json')
+    assert r['status'] == 'BLOCKED_CAPACITY'
+
+
+def test_backfill_lineage_helpers(tmp_path):
+    from backfill import _insert_signal_if_missing, _insert_flow_if_missing
+    db=tmp_path/'b.db'; init_db(str(db))
+    with sqlite3.connect(db) as c:
+        assert _insert_signal_if_missing(c, {'timestamp':'2026-01-01T00:00:00+00:00','symbol':'BTCUSDT','price':1,'score':1})
+        assert _insert_flow_if_missing(c, {'timestamp':'2026-01-01T00:00:00+00:00','symbol':'BTCUSDT'})
+        assert c.execute("SELECT data_source FROM signals").fetchone()[0] == 'HISTORICAL_BACKFILL'
+        assert c.execute("SELECT data_source FROM flow_logs").fetchone()[0] == 'HISTORICAL_BACKFILL'

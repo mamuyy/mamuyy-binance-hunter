@@ -53,3 +53,13 @@ No broker routing, API keys, testnet orders, real orders, withdrawals, position 
 ## Phase 9D.1B remainder
 
 Operational scheduling, Telegram delivery, dashboard presentation, and deployment automation remain out of scope.
+
+## Audit hardening updates
+
+Freshness now fails closed: stale candidate-symbol data is `BLOCKED_STALE_DATA`, missing candidate symbols remain `BLOCKED_MISSING_SYMBOL`, capacity remains `BLOCKED_CAPACITY`, and validation honors `validation_allowed=false` for all blocking freshness outcomes.
+
+Validation observations are bounded by `CANDIDATE_VALIDATION_MAX_OBSERVATION_LAG_MINUTES` or the configured candle interval plus a small tolerance. A candle outside that target window is treated as missing data, and READY horizons include `observed_lag_minutes`.
+
+Symbol validation is fail-closed. Queue generation uses Binance Futures exchange metadata or a validated atomic cache; unavailable metadata yields `EXCHANGE_INFO_UNAVAILABLE`, and accepted candidates persist symbol-validation evidence in the immutable batch.
+
+Lightweight sync now paginates bounded kline requests, validates HTTP and Binance API errors with retry/backoff, computes candidate-aware earliest timestamps, reports `INCOMPLETE_SYNC` when request caps are reached before coverage is current, and checks lightweight free-space safety before writes.

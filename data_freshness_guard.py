@@ -5,6 +5,7 @@ from typing import Any
 from config import config
 from json_utils import atomic_write_json
 from infrastructure_capacity import build_capacity_report
+from database import sqlite_path
 
 def _parse(v): return datetime.fromisoformat(str(v).replace('Z','+00:00')) if v else None
 def _age(ts, now): return round((now-ts).total_seconds()/60,2) if ts else None
@@ -18,7 +19,7 @@ def check_freshness(db_path='mamuyy_hunter.db', candidate_path=Path('reports/bin
     reasons=[]; missing=[]; stale=[]; future=0; latest=None; per={}
     candidates=load_candidates(candidate_path); symbols=sorted({str(c.get('symbol','')).upper() for c in candidates if c.get('symbol')})
     try:
-        with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as conn:
+        with sqlite3.connect(f'file:{sqlite_path(str(db_path))}?mode=ro', uri=True) as conn:
             conn.row_factory=sqlite3.Row
             latest=_parse(conn.execute('SELECT MAX(timestamp) FROM historical_klines').fetchone()[0])
             future=conn.execute('SELECT COUNT(*) FROM historical_klines WHERE timestamp > ?', (now.isoformat(),)).fetchone()[0]
@@ -42,9 +43,8 @@ def check_freshness(db_path='mamuyy_hunter.db', candidate_path=Path('reports/bin
     status='GREEN'
     if 'CAPACITY_BLOCK' in reasons: status='BLOCKED_CAPACITY'
     elif missing: status='BLOCKED_MISSING_SYMBOL'
-    elif any(r in reasons for r in ['GLOBAL_STALE_DATA','NO_GLOBAL_KLINES','FUTURE_TIMESTAMPS']): status='BLOCKED_STALE_DATA'
-    elif stale: status='WARNING'
-    allowed=status in {'GREEN','WARNING'} and not stale
+    elif any(r in reasons for r in ['GLOBAL_STALE_DATA','NO_GLOBAL_KLINES','FUTURE_TIMESTAMPS','STALE_CANDIDATE_SYMBOLS']): status='BLOCKED_STALE_DATA'
+    allowed=status == 'GREEN'
     report={'checked_at': now.isoformat(), 'database_path': str(db_path), 'global_latest_kline': latest.isoformat() if latest else None, 'global_age_minutes': global_age, 'candidate_count': len(symbols), 'covered_candidate_count': covered, 'coverage_percent': coverage, 'missing_symbols': missing, 'stale_symbols': stale, 'future_timestamp_count': future, 'capacity_status': cap['status'], 'status': status, 'validation_allowed': allowed, 'analytics_allowed': allowed, 'promotion_allowed': False, 'execution_allowed': False, 'reasons': reasons, 'per_symbol': per, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
     return report
 
