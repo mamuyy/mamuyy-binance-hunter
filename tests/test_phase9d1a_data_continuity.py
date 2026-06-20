@@ -448,3 +448,131 @@ def test_zero_candidate_batch_closes_and_is_not_active(tmp_path, monkeypatch):
     assert registry['batches'][0]['lifecycle_status'] == 'COMPLETE'
     from market_data_sync import _open_candidate_symbols
     assert _open_candidate_symbols() == set()
+
+
+def test_market_sync_skips_unfinished_current_candle(tmp_path, monkeypatch):
+    db=tmp_path/'open.db'; init_db(str(db))
+    now=datetime.now(timezone.utc)
+    closed_ms=int((now-timedelta(minutes=15)).timestamp()*1000)
+    open_ms=int((now+timedelta(minutes=10)).timestamp()*1000)
+    ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
+    klines=[
+        [closed_ms-900000,'1','2','1','1.5','10',closed_ms,'15','1','5','7','0'],
+        [open_ms-900000,'1','2','1','1.6','10',open_ms,'15','1','5','7','0'],
+    ]
+    def fake_get(url, **kwargs):
+        m=Mock(); m.status_code=200; m.text=''; m.json.return_value = ex if 'exchangeInfo' in url else klines; return m
+    monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
+    with patch('requests.get', fake_get):
+        report=sync_market_data(str(db), 'https://x', tmp_path/'open.json')
+    with sqlite3.connect(db) as c:
+        rows=c.execute('SELECT timestamp FROM historical_klines ORDER BY timestamp').fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == datetime.fromtimestamp(closed_ms/1000, tz=timezone.utc).isoformat()
+    assert report['open_candles_skipped'] == 1
+    assert report['per_symbol']['BTCUSDT']['open_candles_skipped'] == 1
+
+
+def test_backfill_skips_unfinished_current_candle_before_insert(tmp_path):
+    from backfill import _is_closed_candle, BackfillResult
+    now=datetime.now(timezone.utc)
+    assert _is_closed_candle(now-timedelta(milliseconds=1), now)
+    assert not _is_closed_candle(now+timedelta(milliseconds=1), now)
+    result=BackfillResult(open_candles_skipped=2)
+    assert result.as_dict()['open_candles_skipped'] == 2
+
+
+def test_binance_close_time_boundary_completion_and_open_skip(tmp_path, monkeypatch):
+    import market_data_sync as mds
+    after_boundary=datetime(2026, 6, 20, 8, 30, 1, tzinfo=timezone.utc)
+    expected=datetime(2026, 6, 20, 8, 29, 59, 999000, tzinfo=timezone.utc)
+    assert mds._latest_expected_closed_close_time(after_boundary, '15m') == expected
+
+    db=tmp_path/'boundary.db'; init_db(str(db))
+    ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
+    def fake_get(url, **kwargs):
+        m=Mock(); m.status_code=200; m.text=''
+        if 'exchangeInfo' in url:
+            m.json.return_value=ex
+        else:
+            end_dt=datetime.fromtimestamp(kwargs['params']['endTime']/1000, tz=timezone.utc)
+            completed=mds._latest_expected_closed_close_time(end_dt, '15m')
+            completed_ms=int(completed.timestamp()*1000)
+            open_ms=int((end_dt+timedelta(minutes=10)).timestamp()*1000)
+            m.json.return_value=[
+                [completed_ms-900000,'1','2','1','1.5','10',completed_ms,'15','1','5','7','0'],
+                [open_ms-900000,'1','2','1','1.6','10',open_ms,'15','1','5','7','0'],
+            ]
+        return m
+    monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
+    with patch('requests.get', fake_get):
+        report=sync_market_data(str(db), 'https://x', tmp_path/'boundary.json')
+    assert report['status'] == 'OK'
+    assert report['incomplete_symbols'] == []
+    assert report['open_candles_skipped'] == 1
+    assert report['per_symbol']['BTCUSDT']['open_candles_skipped'] == 1
+    with sqlite3.connect(db) as c:
+        rows=c.execute('SELECT timestamp FROM historical_klines').fetchall()
+    assert len(rows) == 1
+    assert datetime.fromisoformat(rows[0][0]) <= datetime.now(timezone.utc)
+
+
+def test_sync_skips_open_candle_then_freshness_is_green(tmp_path, monkeypatch):
+    import market_data_sync as mds
+    from data_freshness_guard import check_freshness
+    monkeypatch.chdir(tmp_path)
+    Path('reports').mkdir()
+    db=tmp_path/'fresh.db'; init_db(str(db))
+    queue=Path('reports/binance_candidate_queue.json')
+    queue.write_text(json.dumps({'candidates':[{'symbol':'BTCUSDT'}]}), encoding='utf-8')
+    ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
+    def fake_get(url, **kwargs):
+        m=Mock(); m.status_code=200; m.text=''
+        if 'exchangeInfo' in url:
+            m.json.return_value=ex
+        else:
+            end_dt=datetime.fromtimestamp(kwargs['params']['endTime']/1000, tz=timezone.utc)
+            completed=mds._latest_expected_closed_close_time(end_dt, '15m')
+            completed_ms=int(completed.timestamp()*1000)
+            open_ms=int((end_dt+timedelta(minutes=10)).timestamp()*1000)
+            m.json.return_value=[
+                [completed_ms-900000,'1','2','1','1.5','10',completed_ms,'15','1','5','7','0'],
+                [open_ms-900000,'1','2','1','1.6','10',open_ms,'15','1','5','7','0'],
+            ]
+        return m
+    monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
+    with patch('requests.get', fake_get):
+        sync_report=sync_market_data(str(db), 'https://x', tmp_path/'sync.json')
+    freshness=check_freshness(str(db), queue, max_age_minutes=30)
+    assert sync_report['open_candles_skipped'] == 1
+    assert freshness['future_timestamp_count'] == 0
+    assert freshness['status'] == 'GREEN'
+
+
+def test_backfill_inserts_completed_and_skips_unfinished_without_signal_or_flow(tmp_path, monkeypatch):
+    import backfill
+    db=tmp_path/'backfill.db'; init_db(str(db))
+    class FakeScanner:
+        def __init__(self, *args, **kwargs):
+            pass
+        def get_top_usdt_symbols(self, limit, min_quote_volume):
+            return ['BTCUSDT']
+        def _get(self, path, params=None):
+            if path == '/fapi/v1/klines':
+                end_dt=datetime.fromtimestamp(params['endTime']/1000, tz=timezone.utc)
+                completed=end_dt-timedelta(minutes=15)
+                completed_ms=int(completed.timestamp()*1000)
+                open_ms=int((end_dt+timedelta(minutes=10)).timestamp()*1000)
+                return [
+                    [completed_ms-900000,'1','2','1','1.5','10',completed_ms,'15','1','5','7','0'],
+                    [open_ms-900000,'1','2','1','1.6','10',open_ms,'15','1','5','7','0'],
+                ]
+            return []
+    monkeypatch.setattr(backfill, 'BinanceFuturesScanner', FakeScanner)
+    result=backfill.run_historical_backfill(base_url='https://x', database_url=str(db), top_symbols_limit=1, min_quote_volume=0, days=1, rate_limit_seconds=0)
+    assert result['candles_inserted'] == 1
+    assert result['open_candles_skipped'] == 1
+    with sqlite3.connect(db) as c:
+        assert c.execute('SELECT COUNT(*) FROM historical_klines').fetchone()[0] == 1
+        assert c.execute('SELECT COUNT(*) FROM signals').fetchone()[0] == 0
+        assert c.execute('SELECT COUNT(*) FROM flow_logs').fetchone()[0] == 0

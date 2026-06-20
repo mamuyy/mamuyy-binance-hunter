@@ -8,7 +8,7 @@ from database import init_db, sqlite_path
 from json_utils import atomic_write_json
 from symbol_validation import validate_symbol
 from infrastructure_capacity import lightweight_sync_allowed
-from interval_config import operational_kline_interval
+from interval_config import operational_kline_interval, interval_minutes
 from candidate_batch_state import load_active_batch_archives
 
 BASE_URL = os.getenv('BINANCE_BASE_URL', 'https://fapi.binance.com')
@@ -21,6 +21,18 @@ DEFAULT_CORE_LOOKBACK_HOURS = int(os.getenv('DATA_SYNC_CORE_LOOKBACK_HOURS', '24
 def _ms(dt): return int(dt.timestamp()*1000)
 def _iso(ms): return datetime.fromtimestamp(int(ms)/1000, tz=timezone.utc).isoformat()
 def _parse(v): return datetime.fromisoformat(str(v).replace('Z','+00:00'))
+
+def _latest_expected_closed_close_time(now: datetime, interval: str | None = None) -> datetime:
+    minutes = interval_minutes(interval)
+    step = minutes * 60
+    epoch = int(now.timestamp())
+    boundary_epoch = (epoch // step) * step
+    return datetime.fromtimestamp(boundary_epoch, tz=timezone.utc) - timedelta(milliseconds=1)
+
+def _is_closed_kline(kline: list[Any], now: datetime) -> bool:
+    if not isinstance(kline, list) or len(kline) < 11:
+        raise RuntimeError('INVALID_KLINE_ROW')
+    return int(kline[6]) <= _ms(now)
 
 def _http_json(url: str, *, params: dict[str, Any] | None = None, retries: int = 3) -> Any:
     last = None
@@ -92,7 +104,7 @@ def earliest_required_timestamp(conn, symbol: str, now: datetime, overlap_hours:
     if cand: candidates.append(cand)
     return min(candidates)
 
-def _fetch_kline_pages(base_url: str, symbol: str, start: datetime, end: datetime, max_pages: int) -> tuple[list[list[Any]], bool]:
+def _fetch_kline_pages(base_url: str, symbol: str, start: datetime, end: datetime, max_pages: int) -> tuple[list[list[Any]], bool, int]:
     rows=[]; cursor=_ms(start); end_ms=_ms(end); pages=0
     while cursor <= end_ms and pages < max_pages:
         batch=_http_json(base_url+'/fapi/v1/klines', params={'symbol': symbol, 'interval': operational_kline_interval(), 'startTime': cursor, 'endTime': end_ms, 'limit': LIMIT})
@@ -104,10 +116,14 @@ def _fetch_kline_pages(base_url: str, symbol: str, start: datetime, end: datetim
         if next_cursor <= cursor: break
         cursor = next_cursor
         if len(batch) < LIMIT: break
-    if not rows:
-        return rows, False
-    complete = cursor > end_ms or _parse(_iso(rows[-1][6])) >= end - timedelta(minutes=20)
-    return rows, complete
+    open_skipped = sum(1 for row in rows if not _is_closed_kline(row, end))
+    closed_rows = [row for row in rows if _is_closed_kline(row, end)]
+    if not closed_rows:
+        return closed_rows, False, open_skipped
+    expected_closed = _latest_expected_closed_close_time(end)
+    latest_closed = _parse(_iso(closed_rows[-1][6]))
+    complete = cursor > end_ms or latest_closed >= expected_closed
+    return closed_rows, complete, open_skipped
 
 def sync_market_data(db_path='mamuyy_hunter.db', base_url=BASE_URL, output=REPORT):
     path=sqlite_path(str(db_path)); init_db(path)
@@ -119,22 +135,22 @@ def sync_market_data(db_path='mamuyy_hunter.db', base_url=BASE_URL, output=REPOR
     exchange_info=fetch_exchange_info(base_url)
     symbols, rejected = build_universe(exchange_info)
     overlap=int(os.getenv('DATA_SYNC_OVERLAP_HOURS','3'))
-    end=datetime.now(timezone.utc); inserted=0; errors={}; per={}; incomplete=[]
+    end=datetime.now(timezone.utc); inserted=0; errors={}; per={}; incomplete=[]; open_candles_skipped=0
     with sqlite3.connect(path) as conn:
         for sym in symbols:
             start=earliest_required_timestamp(conn, sym, end, overlap)
             try:
-                rows, complete = _fetch_kline_pages(base_url, sym, start, end, MAX_PAGES)
+                rows, complete, skipped_open = _fetch_kline_pages(base_url, sym, start, end, MAX_PAGES)
                 before=conn.total_changes
                 for k in rows:
                     if not isinstance(k, list) or len(k) < 11: raise RuntimeError('INVALID_KLINE_ROW')
                     conn.execute("""INSERT OR IGNORE INTO historical_klines(timestamp,symbol,interval,open,high,low,close,volume,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (_iso(k[6]), sym, operational_kline_interval(), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5]), float(k[7]), float(k[8]), float(k[9]), float(k[10])))
-                conn.commit(); per[sym]={'requested_start': start.isoformat(), 'rows_received': len(rows), 'inserted': conn.total_changes-before, 'complete': complete}; inserted += per[sym]['inserted']
+                conn.commit(); per[sym]={'requested_start': start.isoformat(), 'rows_received': len(rows), 'inserted': conn.total_changes-before, 'complete': complete, 'open_candles_skipped': skipped_open}; inserted += per[sym]['inserted']; open_candles_skipped += skipped_open
                 if not complete: incomplete.append(sym)
             except Exception as exc:
                 errors[sym]=str(exc)
     status='INCOMPLETE_SYNC' if incomplete else 'ERROR' if errors else 'OK'
-    report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode': 'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status': status, 'database_path': path, 'symbols': symbols, 'rejected_symbols': rejected, 'interval': operational_kline_interval(), 'overlap_hours': overlap, 'max_pages_per_symbol': MAX_PAGES, 'candles_inserted': inserted, 'per_symbol': per, 'incomplete_symbols': incomplete, 'errors': errors, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
+    report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode': 'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status': status, 'database_path': path, 'symbols': symbols, 'rejected_symbols': rejected, 'interval': operational_kline_interval(), 'overlap_hours': overlap, 'max_pages_per_symbol': MAX_PAGES, 'candles_inserted': inserted, 'open_candles_skipped': open_candles_skipped, 'per_symbol': per, 'incomplete_symbols': incomplete, 'errors': errors, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
     atomic_write_json(output, report); return report
 
 def main():
