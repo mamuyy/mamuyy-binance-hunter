@@ -309,3 +309,95 @@ def test_index_gap_not_temporal_embargo(tmp_path):
     assert fold["index_gap"] == 1
     assert fold["temporal_embargo"] is None
     assert fold["leakage_status"] == "UNVERIFIABLE"
+
+
+def test_explicit_missing_custom_walkforward_does_not_use_repository_fallback(tmp_path, monkeypatch):
+    repo_wf = tmp_path / "walkforward_results.csv"
+    pd.DataFrame([{"fold": 1, "test_accuracy": 0.6438}]).to_csv(repo_wf, index=False)
+    custom = tmp_path / "missing_custom.csv"
+    monkeypatch.chdir(tmp_path)
+    artifacts = discover_artifacts(db_path=str(tmp_path / "missing.db"), walkforward_path=str(custom))
+    wf = next(item for item in artifacts if item["artifact_name"] == "walkforward_results")
+    assert wf["exists"] is False
+    assert wf["discovered_path"] is None
+    assert wf["explicit_path_authoritative"] is True
+
+
+def test_default_walkforward_path_can_use_documented_fallback(tmp_path, monkeypatch):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    fallback = reports / "walkforward_results.csv"
+    pd.DataFrame([{"fold": 1, "test_accuracy": 0.6438}]).to_csv(fallback, index=False)
+    monkeypatch.chdir(tmp_path)
+    artifacts = discover_artifacts(db_path=str(tmp_path / "missing.db"), walkforward_path="walkforward_results.csv")
+    wf = next(item for item in artifacts if item["artifact_name"] == "walkforward_results")
+    assert wf["exists"] is True
+    assert wf["discovered_path"].endswith("reports/walkforward_results.csv")
+    assert wf["fallbacks_allowed"] is True
+
+
+def test_production_default_sources_without_prediction_cohort_context(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    Path("model_output.json").write_text(json.dumps({"accuracy": 0.3281, "ai_confidence_score": 65}), encoding="utf-8")
+    report = run_ml_metric_reconciliation(output_dir="reports")
+    assert report["artifact_context"] == "RUNTIME_AUDIT_NO_PREDICTION_COHORT"
+    assert report["reproduced_metrics"]["metrics"] is None
+
+
+def test_artifact_discovery_and_lineage_agree_on_historical_outcomes(tmp_path):
+    db = tmp_path / "lineage.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute("create table historical_outcomes(symbol text, signal_timestamp text, status text)")
+        connection.execute("insert into historical_outcomes values ('BTCUSDT', '2024-01-01 00:00:00', 'WIN')")
+    artifacts = discover_artifacts(db_path=str(db), walkforward_path=str(tmp_path / "missing.csv"))
+    hist = next(item for item in artifacts if item["artifact_name"] == "database_table:historical_outcomes")
+    from ml_metric_reconciliation import dataset_lineage_readonly
+    lineage = dataset_lineage_readonly(str(db))
+    assert hist["exists"] is True
+    assert lineage["status"] == "AVAILABLE"
+    assert hist["row_count"] == lineage["row_count"] == 1
+    assert hist["sqlite_diagnostics"]["normalized_database_path"] == lineage["normalized_database_path"]
+    assert hist["sqlite_diagnostics"]["query_status"] == lineage["query_status"] == "OK"
+
+
+def test_sqlite_diagnostics_preserved_for_missing_database(tmp_path):
+    artifacts = discover_artifacts(db_path=str(tmp_path / "missing.db"), walkforward_path=str(tmp_path / "missing.csv"))
+    hist = next(item for item in artifacts if item["artifact_name"] == "database_table:historical_outcomes")
+    diag = hist["sqlite_diagnostics"]
+    assert diag["database_file_exists"] is False
+    assert diag["table_lookup_result"] is False
+    assert diag["schema"] == []
+    assert diag["row_count"] == 0
+    assert diag["query_status"] == "DATABASE_MISSING"
+    assert diag["sqlite_exception"] is None
+
+
+def test_display_integrity_passes_while_evaluation_integrity_reviews_or_blocks(tmp_path):
+    from ml_metric_reconciliation import metric_display_integrity_summary, metric_evaluation_integrity_summary, metric_identity, reconstruct_walkforward, summarize_walkforward_display
+    wf = tmp_path / "walkforward_results.csv"
+    pd.DataFrame([
+        {"fold": 1, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68},
+        {"fold": 2, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68},
+    ]).to_csv(wf, index=False)
+    model = {"accuracy": 0.3281, "ai_confidence_score": 65}
+    ids = metric_identity([], reconstruct_walkforward(str(wf)), model, summarize_walkforward_display(str(wf)), {"status": "SOURCE_MISSING"})
+    display = metric_display_integrity_summary(ids)
+    evaluation = metric_evaluation_integrity_summary(ids)
+    assert display["status"] == "PASS"
+    assert evaluation["status"] in {"REVIEW", "BLOCKED_UNREPRODUCIBLE"}
+
+
+def test_overall_readiness_remains_fail_closed_with_display_pass(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    Path("model_output.json").write_text(json.dumps({"accuracy": 0.3281, "ai_confidence_score": 65}), encoding="utf-8")
+    pd.DataFrame([
+        {"fold": 1, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68},
+        {"fold": 2, "train_accuracy": 0.9993, "test_accuracy": 0.6438, "winrate": 45.68},
+    ]).to_csv("walkforward_results.csv", index=False)
+    report = run_ml_metric_reconciliation(output_dir="reports")
+    assert report["display_metric_integrity_summary"]["status"] == "PASS"
+    assert report["evaluation_metric_integrity_summary"]["status"] in {"REVIEW", "BLOCKED_UNREPRODUCIBLE"}
+    assert report["model_readiness"]["overall_status"] != "PASS"
+    assert report["governance"]["paper_only"] is True
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["automatic_promotion_allowed"] is False

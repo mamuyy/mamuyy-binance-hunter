@@ -30,9 +30,12 @@ REPRO_STATUSES = {
     "SOURCE_STALE",
     "SOURCE_MISSING",
     "UNREPRODUCIBLE",
+    "UNVERIFIABLE",
 }
 MANDATORY_COMPONENTS = [
     "Metric Integrity",
+    "Display Metric Integrity",
+    "Evaluation Metric Integrity",
     "Data Lineage",
     "Label Integrity",
     "Leakage Safety",
@@ -175,17 +178,46 @@ def connect_readonly(database_url_or_path: str) -> sqlite3.Connection:
     return connection
 
 
-def table_exists_readonly(db_path: str, table: str) -> bool:
-    if not Path(sqlite_path(db_path)).exists():
-        return False
+def sqlite_table_diagnostics(db_path: str, table: str) -> Dict[str, Any]:
+    normalized_path = str(Path(sqlite_path(db_path)).expanduser().resolve())
+    diagnostics: Dict[str, Any] = {
+        "normalized_database_path": normalized_path,
+        "readonly_uri": normalize_sqlite_readonly_uri(db_path),
+        "database_file_exists": Path(sqlite_path(db_path)).exists(),
+        "table_lookup_result": None,
+        "sqlite_exception": None,
+        "schema": [],
+        "row_count": None,
+        "query_status": "NOT_RUN",
+    }
+    if not diagnostics["database_file_exists"]:
+        diagnostics["table_lookup_result"] = False
+        diagnostics["row_count"] = 0
+        diagnostics["query_status"] = "DATABASE_MISSING"
+        return diagnostics
     try:
         with connect_readonly(db_path) as connection:
-            return connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            table_row = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
                 (table,),
-            ).fetchone() is not None
-    except sqlite3.Error:
-        return False
+            ).fetchone()
+            exists = table_row is not None
+            diagnostics["table_lookup_result"] = exists
+            if not exists:
+                diagnostics["row_count"] = 0
+                diagnostics["query_status"] = "TABLE_MISSING"
+                return diagnostics
+            diagnostics["schema"] = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+            diagnostics["row_count"] = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+            diagnostics["query_status"] = "OK"
+    except sqlite3.Error as exc:
+        diagnostics["sqlite_exception"] = str(exc)
+        diagnostics["query_status"] = "SQLITE_ERROR"
+    return diagnostics
+
+
+def table_exists_readonly(db_path: str, table: str) -> bool:
+    return sqlite_table_diagnostics(db_path, table).get("table_lookup_result") is True
 
 
 def load_table_readonly(db_path: str, table: str) -> pd.DataFrame:
@@ -221,6 +253,8 @@ def discover_artifacts(
     model_output_path: str = "model_output.json",
     walkforward_path: str = "walkforward_results.csv",
     stale_ttl_days: float = DEFAULT_STALE_TTL_DAYS,
+    search_roots: Optional[Sequence[str | Path]] = None,
+    allow_fallbacks: bool = True,
 ) -> List[Dict[str, Any]]:
     candidates = [
         {
@@ -252,14 +286,24 @@ def discover_artifacts(
             "consumer": "Phase 9D candidate evidence reports",
         },
     ]
+    defaults = {"model_output": "model_output.json", "walkforward_results": "walkforward_results.csv", "ml_quality_audit": "ml_quality_audit.json", "candidate_evidence_ledger": "reports/candidate_evidence_ledger.jsonl"}
+    roots = [Path(root) for root in (search_roots or [Path.cwd()])]
     discovered: List[Dict[str, Any]] = []
     for candidate in candidates:
         configured = Path(str(candidate["configured_path"]))
+        artifact_name = str(candidate["artifact_name"])
+        explicit_non_default = str(candidate["configured_path"]) != defaults.get(artifact_name, str(candidate["configured_path"]))
         found = configured if configured.exists() else None
-        for fallback in candidate["fallback_paths"]:
-            fallback_path = Path(fallback)
-            if found is None and fallback_path.exists():
-                found = fallback_path
+        fallback_candidates: List[Path] = []
+        if allow_fallbacks and not explicit_non_default:
+            for fallback in candidate["fallback_paths"]:
+                fallback_path = Path(fallback)
+                fallback_candidates.append(fallback_path)
+                for root in roots:
+                    fallback_candidates.append(root / fallback_path)
+            for fallback_path in fallback_candidates:
+                if found is None and fallback_path.exists():
+                    found = fallback_path
         path = found or configured
         age, age_source, generated_ts, timestamp_field = artifact_age_days(path) if path.exists() else (None, "missing", None, None)
         discovered.append(
@@ -275,16 +319,17 @@ def discover_artifacts(
                 "stale_ttl_days": stale_ttl_days,
                 "stale_source": bool(age is not None and age > stale_ttl_days),
                 "schema": _schema_for_path(path),
+                "explicit_path_authoritative": explicit_non_default,
+                "fallbacks_allowed": bool(allow_fallbacks and not explicit_non_default),
+                "fallback_paths_considered": [str(item) for item in fallback_candidates],
                 "producer": candidate["producer"],
                 "consumer": candidate["consumer"],
             }
         )
     for table in ["ml_results", "walkforward_results", "historical_outcomes", "internal_paper_trades"]:
-        exists = table_exists_readonly(db_path, table)
-        schema: List[str] = []
-        if exists:
-            with connect_readonly(db_path) as connection:
-                schema = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+        diagnostics = sqlite_table_diagnostics(db_path, table)
+        exists = diagnostics.get("table_lookup_result") is True
+        schema = diagnostics.get("schema") or []
         db_age, db_age_source, db_generated_ts, db_timestamp_field = artifact_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else (None, "missing", None, None)
         discovered.append(
             {
@@ -299,6 +344,8 @@ def discover_artifacts(
                 "stale_ttl_days": stale_ttl_days,
                 "stale_source": bool(db_age is not None and db_age > stale_ttl_days),
                 "schema": schema,
+                "row_count": diagnostics.get("row_count"),
+                "sqlite_diagnostics": diagnostics,
                 "producer": "database.py insert_* or historical label/outcome producers",
                 "consumer": "dashboard/risk/audit modules",
             }
@@ -686,8 +733,15 @@ def dataset_lineage_readonly(db_path: str) -> Dict[str, Any]:
         "excluded_rows_and_reasons": [],
         "read_only": True,
     }
-    if not table_exists_readonly(db_path, "historical_outcomes"):
-        base["status"] = "SOURCE_MISSING"
+    diagnostics = sqlite_table_diagnostics(db_path, "historical_outcomes")
+    base["sqlite_diagnostics"] = diagnostics
+    base["normalized_database_path"] = diagnostics.get("normalized_database_path")
+    base["table_lookup_result"] = diagnostics.get("table_lookup_result")
+    base["schema"] = diagnostics.get("schema") or []
+    base["query_status"] = diagnostics.get("query_status")
+    base["sqlite_exception"] = diagnostics.get("sqlite_exception")
+    if diagnostics.get("table_lookup_result") is not True:
+        base["status"] = "SOURCE_MISSING" if not diagnostics.get("sqlite_exception") else "UNREPRODUCIBLE"
         return base
     try:
         with connect_readonly(db_path) as connection:
@@ -964,23 +1018,60 @@ def candidate_evidence_bridge(ledger_path: str = "reports/candidate_evidence_led
     }
 
 
+def _metric_blocker_for_status(status: Optional[str]) -> Optional[str]:
+    precedence = {
+        "SOURCE_STALE": "BLOCKED_STALE_SOURCE",
+        "CONTRACT_DIFFERENT": "BLOCKED_CONTRACT_DIFFERENT",
+        "SOURCE_MISSING": "BLOCKED_UNREPRODUCIBLE",
+        "UNREPRODUCIBLE": "BLOCKED_UNREPRODUCIBLE",
+        "UNVERIFIABLE": "REVIEW_EVIDENCE_UNAVAILABLE",
+    }
+    return precedence.get(str(status))
+
+
 def metric_integrity_summary(identities: List[Dict[str, Any]]) -> Dict[str, Any]:
+    display = metric_display_integrity_summary(identities)
+    evaluation = metric_evaluation_integrity_summary(identities)
+    return {
+        "primary_metric_integrity_blocker": evaluation["primary_metric_integrity_blocker"] or display["primary_metric_integrity_blocker"],
+        "all_mandatory_identity_blockers": display["all_mandatory_identity_blockers"] + evaluation["all_mandatory_identity_blockers"],
+        "status": evaluation["status"] if evaluation["status"] != "PASS" else display["status"],
+        "display_metric_integrity": display,
+        "evaluation_metric_integrity": evaluation,
+    }
+
+
+def metric_display_integrity_summary(identities: List[Dict[str, Any]]) -> Dict[str, Any]:
     blockers = []
-    precedence = {"SOURCE_STALE": "BLOCKED_STALE_SOURCE", "CONTRACT_DIFFERENT": "BLOCKED_CONTRACT_DIFFERENT", "SOURCE_MISSING": "BLOCKED_UNREPRODUCIBLE", "UNREPRODUCIBLE": "BLOCKED_UNREPRODUCIBLE"}
     for item in identities:
         if not item.get("mandatory_current_readiness"):
             continue
-        status = item.get("reproducibility_status")
-        if status in precedence:
-            blockers.append({"metric_name": item.get("metric_name"), "status": status, "blocker": precedence[status], "reason": item.get("identity")})
+        status = item.get("display_reproduction_status", item.get("reproducibility_status"))
+        blocker = _metric_blocker_for_status(status)
+        if blocker and blocker != "REVIEW_EVIDENCE_UNAVAILABLE":
+            blockers.append({"metric_name": item.get("metric_name"), "status": status, "blocker": blocker, "reason": item.get("identity"), "integrity_type": "display"})
     order = ["BLOCKED_STALE_SOURCE", "BLOCKED_CONTRACT_DIFFERENT", "BLOCKED_UNREPRODUCIBLE"]
-    primary = None
-    for candidate in order:
-        if any(blocker["blocker"] == candidate for blocker in blockers):
-            primary = candidate
-            break
+    primary = next((candidate for candidate in order if any(b["blocker"] == candidate for b in blockers)), None)
     return {"primary_metric_integrity_blocker": primary, "all_mandatory_identity_blockers": blockers, "status": primary or "PASS"}
 
+
+def metric_evaluation_integrity_summary(identities: List[Dict[str, Any]]) -> Dict[str, Any]:
+    blockers = []
+    reviews = []
+    for item in identities:
+        if not item.get("mandatory_current_readiness"):
+            continue
+        status = item.get("evaluation_reproduction_status", item.get("reproducibility_status"))
+        blocker = _metric_blocker_for_status(status)
+        row = {"metric_name": item.get("metric_name"), "status": status, "blocker": blocker, "reason": item.get("identity"), "integrity_type": "evaluation"}
+        if blocker == "REVIEW_EVIDENCE_UNAVAILABLE":
+            reviews.append(row)
+        elif blocker:
+            blockers.append(row)
+    order = ["BLOCKED_STALE_SOURCE", "BLOCKED_CONTRACT_DIFFERENT", "BLOCKED_UNREPRODUCIBLE"]
+    primary = next((candidate for candidate in order if any(b["blocker"] == candidate for b in blockers)), None)
+    status = primary or ("REVIEW" if reviews else "PASS")
+    return {"primary_metric_integrity_blocker": primary, "all_mandatory_identity_blockers": blockers, "review_identity_findings": reviews, "status": status}
 
 def data_lineage_status(lineage: Dict[str, Any]) -> str:
     if lineage.get("status") == "SOURCE_MISSING":
@@ -1062,9 +1153,13 @@ def run_ml_metric_reconciliation(
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
 
     metric_integrity = metric_integrity_summary(identities)
+    display_metric_integrity = metric_integrity["display_metric_integrity"]
+    evaluation_metric_integrity = metric_integrity["evaluation_metric_integrity"]
     label_contract = label_contract_audit()
     components = {
         "Metric Integrity": metric_integrity["status"],
+        "Display Metric Integrity": display_metric_integrity["status"],
+        "Evaluation Metric Integrity": evaluation_metric_integrity["status"],
         "Data Lineage": data_lineage_status(lineage),
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
         "Leakage Safety": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"),
@@ -1076,7 +1171,9 @@ def run_ml_metric_reconciliation(
         "Candidate-Evidence Support": candidate_bridge["status"],
     }
     ready = readiness(components)
-    context = artifact_context or ("NON_PRODUCTION_EMPTY_FIXTURE" if not metrics else "RUNTIME_AUDIT")
+    default_sources = db_path == "mamuyy_hunter.db" and model_output_path == "model_output.json" and walkforward_path == "walkforward_results.csv"
+    production_artifacts_exist = any(item.get("exists") for item in artifacts if item.get("artifact_name") in {"model_output", "walkforward_results", "database_table:historical_outcomes", "database_table:ml_results", "database_table:walkforward_results"})
+    context = artifact_context or ("RUNTIME_AUDIT" if metrics else ("RUNTIME_AUDIT_NO_PREDICTION_COHORT" if (default_sources and production_artifacts_exist) else "NON_PRODUCTION_EMPTY_FIXTURE"))
     report = {
         "phase": PHASE,
         "artifact_context": context,
@@ -1106,6 +1203,8 @@ def run_ml_metric_reconciliation(
         "segment_performance": segments,
         "candidate_evidence_bridge": candidate_bridge,
         "metric_integrity_summary": metric_integrity,
+        "display_metric_integrity_summary": display_metric_integrity,
+        "evaluation_metric_integrity_summary": evaluation_metric_integrity,
         "model_readiness": ready,
         "terminology_recommendations": ["Current Holdout Accuracy", "Walk-Forward OOS Accuracy", "Latest-Fold Accuracy", "Balanced Accuracy", "Candidate Evidence Accuracy", "Paper Trade Winrate", "AI Confidence Heuristic", "Model Readiness"],
         "artifact_paths": {
