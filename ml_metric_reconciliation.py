@@ -1,7 +1,17 @@
-"""Phase 9D.1B-B read-only ML metric reconciliation audit."""
+"""Phase 9D.1B-B read-only ML metric reconciliation audit.
+
+This module is intentionally observational. It never trains models, mutates model
+artifacts, writes databases, changes thresholds, promotes models, or unlocks
+execution.
+"""
 from __future__ import annotations
 
-import csv, json, math, os, sqlite3, tempfile
+import csv
+import json
+import math
+import os
+import sqlite3
+import tempfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,176 +19,844 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from ml_engine import TARGET_LABELS, PROFITABLE_LABELS, NUMERIC_FEATURES, CATEGORICAL_FEATURES, build_ml_dataset
+from database import sqlite_path
+from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, PROFITABLE_LABELS, TARGET_LABELS, build_ml_dataset
 
 PHASE = "9D.1B-B ML Metric Reconciliation"
-REPRO_STATUSES = {"REPRODUCED_EXACT","REPRODUCED_WITH_ROUNDING","CONTRACT_DIFFERENT","SOURCE_STALE","SOURCE_MISSING","UNREPRODUCIBLE"}
-BLOCKING_TO_OVERALL = {
-    "Metric Integrity":"BLOCKED_UNREPRODUCIBLE", "Data Lineage":"BLOCKED_STALE_SOURCE", "Label Integrity":"BLOCKED_LABEL_CONTRACT",
-    "Leakage Safety":"BLOCKED_LEAKAGE", "Baseline Superiority":"BLOCKED_BELOW_BASELINE", "Out-of-Sample Adequacy":"BLOCKED_INSUFFICIENT_OOS",
-    "Walk-Forward Stability":"BLOCKED_INSTABILITY", "Regime Stability":"BLOCKED_INSTABILITY",
+REPRO_STATUSES = {
+    "REPRODUCED_EXACT",
+    "REPRODUCED_WITH_ROUNDING",
+    "CONTRACT_DIFFERENT",
+    "SOURCE_STALE",
+    "SOURCE_MISSING",
+    "UNREPRODUCIBLE",
 }
+MANDATORY_COMPONENTS = [
+    "Metric Integrity",
+    "Data Lineage",
+    "Label Integrity",
+    "Leakage Safety",
+    "Baseline Superiority",
+    "Out-of-Sample Adequacy",
+    "Walk-Forward Stability",
+]
+BLOCKER_PRECEDENCE = [
+    "BLOCKED_LEAKAGE",
+    "BLOCKED_LABEL_CONTRACT",
+    "BLOCKED_UNREPRODUCIBLE",
+    "BLOCKED_STALE_SOURCE",
+    "BLOCKED_BELOW_BASELINE",
+    "BLOCKED_INSUFFICIENT_OOS",
+    "BLOCKED_INSTABILITY",
+]
+TARGET_LIKE_COLUMNS = {"target", "status", "win_loss", "pnl_percent", "pnl_pct", "future_return", "direction_hit"}
+PREDICTION_COLUMNS = ("y_pred", "prediction", "predicted_label", "predicted_class", "pred_profit", "predicted_direction")
+TRUE_COLUMNS = ("y_true", "actual", "actual_label", "actual_class", "target", "actual_profit", "direction_hit")
 
 
-def utc_now() -> str: return datetime.now(timezone.utc).isoformat()
-def _round(x: Any, n: int=6) -> Optional[float]:
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def safe_float(value: Any) -> Optional[float]:
     try:
-        f=float(x)
-        return None if math.isnan(f) or math.isinf(f) else round(f,n)
-    except Exception: return None
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
 
-def atomic_write_json(path: str|Path, data: Dict[str, Any]) -> None:
-    path=Path(path); path.parent.mkdir(parents=True, exist_ok=True)
-    fd,tmp=tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent), text=True)
+
+def round_or_none(value: Any, digits: int = 6) -> Optional[float]:
+    f = safe_float(value)
+    return None if f is None else round(f, digits)
+
+
+def atomic_write_json(path: str | Path, data: Dict[str, Any]) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent), text=True)
     try:
-        with os.fdopen(fd,"w",encoding="utf-8",newline="\n") as f: json.dump(data,f,indent=2,sort_keys=True,ensure_ascii=False); f.write("\n")
-        os.replace(tmp,path)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True, ensure_ascii=False)
+            handle.write("\n")
+        os.replace(tmp, path)
     finally:
-        if os.path.exists(tmp): os.unlink(tmp)
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
-def write_csv(path: str|Path, rows: Iterable[Dict[str, Any]], fieldnames: Sequence[str]) -> None:
-    path=Path(path); path.parent.mkdir(parents=True, exist_ok=True)
-    rows=sorted(list(rows), key=lambda r: tuple(str(r.get(f,"")) for f in fieldnames))
-    with path.open("w",encoding="utf-8",newline="") as f:
-        w=csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore", lineterminator="\n"); w.writeheader(); w.writerows(rows)
 
-def read_json(path: str|Path) -> Optional[Dict[str, Any]]:
-    try: return json.loads(Path(path).read_text(encoding="utf-8"))
-    except Exception: return None
+def write_csv(path: str | Path, rows: Iterable[Dict[str, Any]], fieldnames: Sequence[str]) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    deterministic_rows = sorted(list(rows), key=lambda row: tuple(str(row.get(field, "")) for field in fieldnames))
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore", lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(deterministic_rows)
 
-def file_age_days(path: str|Path, now: Optional[datetime]=None) -> Optional[float]:
-    p=Path(path)
-    if not p.exists(): return None
-    now=now or datetime.now(timezone.utc)
-    return (now-datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)).total_seconds()/86400.0
 
-def table_exists(db: str, table: str) -> bool:
-    if not os.path.exists(db): return False
+def read_json(path: str | Path) -> Optional[Dict[str, Any]]:
     try:
-        with sqlite3.connect(db) as c: return c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() is not None
-    except sqlite3.Error: return False
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
-def load_table(db: str, table: str) -> pd.DataFrame:
-    if not table_exists(db, table): return pd.DataFrame()
-    with sqlite3.connect(db) as c: return pd.read_sql_query(f"SELECT * FROM {table}", c)
 
-def producer_inventory(model_output_path="model_output.json", walkforward_path="walkforward_results.csv", db_path="mamuyy_hunter.db") -> List[Dict[str, Any]]:
-    specs=[
-        ("Current Model Accuracy","ml_engine.py","run_ml_research",model_output_path,"accuracy","Telegram/dashboard ml_results"),
-        ("AI Confidence","ml_engine.py","run_ml_research",model_output_path,"ai_confidence_score","Telegram ML analysis"),
-        ("Setup Ranking","ml_engine.py","_quality/run_ml_research",model_output_path,"setup_ranking","Telegram ML analysis"),
-        ("Top Features","ml_engine.py","run_ml_research",model_output_path,"feature_importance","Telegram/dashboard"),
-        ("Most Profitable Regime","ml_engine.py","_regime_profitability",model_output_path,"most_profitable_regime","Telegram ML analysis"),
-        ("Worst Regime","ml_engine.py","_regime_profitability/run_walkforward_validation",model_output_path,"worst_regime","Telegram ML/walk-forward"),
-        ("Walk-Forward Rolling Accuracy","walkforward.py","run_walkforward_validation",walkforward_path,"test_accuracy","Telegram walk-forward"),
-        ("Walk-Forward Rolling Winrate","walkforward.py","run_walkforward_validation",walkforward_path,"winrate","Telegram walk-forward"),
-        ("Model Health","walkforward.py","_health/run_walkforward_validation",walkforward_path,"model_health","Telegram walk-forward"),
-        ("Overfit Risk","walkforward.py","run_walkforward_validation",walkforward_path,"train_accuracy,test_accuracy","Telegram walk-forward"),
-        ("Historical ML accuracy snapshot","ml_quality_audit.py","run_audit","ml_quality_audit.json","global_accuracy","operator docs"),
-        ("Candidate Directional Accuracy","candidate_validator.py","validate_candidate","candidate evidence ledger","direction_accuracy","candidate reports"),
+def file_age_days(path: str | Path, now: Optional[datetime] = None) -> Optional[float]:
+    p = Path(path)
+    if not p.exists():
+        return None
+    now = now or datetime.now(timezone.utc)
+    return (now - datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)).total_seconds() / 86400.0
+
+
+def normalize_sqlite_readonly_uri(database_url_or_path: str) -> str:
+    """Normalize like database.sqlite_path, but force SQLite read-only URI mode."""
+    path = sqlite_path(database_url_or_path)
+    return f"file:{Path(path).expanduser().resolve()}?mode=ro"
+
+
+def connect_readonly(database_url_or_path: str) -> sqlite3.Connection:
+    uri = normalize_sqlite_readonly_uri(database_url_or_path)
+    connection = sqlite3.connect(uri, uri=True)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def table_exists_readonly(db_path: str, table: str) -> bool:
+    if not Path(sqlite_path(db_path)).exists():
+        return False
+    try:
+        with connect_readonly(db_path) as connection:
+            return connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+                (table,),
+            ).fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+def load_table_readonly(db_path: str, table: str) -> pd.DataFrame:
+    if not table_exists_readonly(db_path, table):
+        return pd.DataFrame()
+    with connect_readonly(db_path) as connection:
+        return pd.read_sql_query(f"SELECT * FROM {table}", connection)
+
+
+def _schema_for_path(path: Path) -> List[str]:
+    if not path.exists():
+        return []
+    if path.suffix.lower() == ".json":
+        data = read_json(path) or {}
+        return sorted(data.keys())
+    if path.suffix.lower() in {".csv", ".jsonl"}:
+        try:
+            if path.suffix.lower() == ".jsonl":
+                with path.open(encoding="utf-8") as handle:
+                    for line in handle:
+                        if line.strip():
+                            obj = json.loads(line)
+                            return sorted(obj.keys()) if isinstance(obj, dict) else []
+                return []
+            return pd.read_csv(path, nrows=0).columns.tolist()
+        except Exception:
+            return []
+    return []
+
+
+def discover_artifacts(
+    db_path: str = "mamuyy_hunter.db",
+    model_output_path: str = "model_output.json",
+    walkforward_path: str = "walkforward_results.csv",
+) -> List[Dict[str, Any]]:
+    candidates = [
+        {
+            "artifact_name": "model_output",
+            "configured_path": model_output_path,
+            "fallback_paths": ["model_output.json", "reports/model_output.json"],
+            "producer": "ml_engine.run_ml_research",
+            "consumer": "telegram.format_ml_analysis_message/dashboard/ml_results",
+        },
+        {
+            "artifact_name": "walkforward_results",
+            "configured_path": walkforward_path,
+            "fallback_paths": ["walkforward_results.csv", "reports/walkforward_results.csv"],
+            "producer": "walkforward.run_walkforward_validation",
+            "consumer": "telegram.format_walkforward_report_message/dashboard/walkforward_results",
+        },
+        {
+            "artifact_name": "ml_quality_audit",
+            "configured_path": "ml_quality_audit.json",
+            "fallback_paths": ["ml_quality_audit.json", "reports/ml_quality_audit.json"],
+            "producer": "ml_quality_audit.run_audit",
+            "consumer": "operator reports",
+        },
+        {
+            "artifact_name": "candidate_evidence_ledger",
+            "configured_path": "reports/candidate_evidence_ledger.jsonl",
+            "fallback_paths": ["reports/candidate_evidence_ledger.jsonl"],
+            "producer": "candidate_evidence_ledger.run",
+            "consumer": "Phase 9D candidate evidence reports",
+        },
     ]
-    rows=[]; model=read_json(model_output_path) or {}; wf=pd.read_csv(walkforward_path) if Path(walkforward_path).exists() else pd.DataFrame()
-    for name,mod,func,src,cols,cons in specs:
-        src_s=str(src); exists=Path(src_s).exists() if src_s.endswith(('.json','.csv')) else table_exists(str(db_path), src_s)
-        rows.append({"metric_name":name,"producer_module":mod,"producer_function":func,"source":src,"source_columns":cols,
-            "model_artifact_version":model.get("model_version") or "LEGACY_UNKNOWN","generated_timestamp":model.get("generated_at") or "UNKNOWN",
-            "evaluation_start":str(wf.get('test_start',pd.Series(dtype=str)).min()) if not wf.empty else None,"evaluation_end":str(wf.get('test_end',pd.Series(dtype=str)).max()) if not wf.empty else None,
-            "sample_count":int(model.get('rows') or (len(wf) if not wf.empty else 0)),"symbol_count":None,"class_set":";".join(TARGET_LABELS),
-            "target_label_definition":"ml_engine TARGET_LABELS; profitable binary uses WIN/TP1 HIT/TP2 HIT","prediction_horizon":"LEGACY_UNKNOWN","split_method":"random holdout or rolling chronological per producer","aggregation_method":"single holdout or mean folds","weighted":"unweighted unless stated","user_facing_consumers":cons,"reproducibility_status":"SOURCE_MISSING" if not exists else "UNREPRODUCIBLE"})
+    discovered: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        configured = Path(str(candidate["configured_path"]))
+        found = configured if configured.exists() else None
+        for fallback in candidate["fallback_paths"]:
+            fallback_path = Path(fallback)
+            if found is None and fallback_path.exists():
+                found = fallback_path
+        path = found or configured
+        discovered.append(
+            {
+                "artifact_name": candidate["artifact_name"],
+                "configured_path": str(configured),
+                "discovered_path": str(found) if found else None,
+                "exists": bool(found and found.exists()),
+                "generated_timestamp": None,
+                "file_age_days": round_or_none(file_age_days(path), 4) if path.exists() else None,
+                "schema": _schema_for_path(path),
+                "producer": candidate["producer"],
+                "consumer": candidate["consumer"],
+            }
+        )
+    for table in ["ml_results", "walkforward_results", "historical_outcomes", "internal_paper_trades"]:
+        exists = table_exists_readonly(db_path, table)
+        schema: List[str] = []
+        if exists:
+            with connect_readonly(db_path) as connection:
+                schema = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+        discovered.append(
+            {
+                "artifact_name": f"database_table:{table}",
+                "configured_path": db_path,
+                "discovered_path": normalize_sqlite_readonly_uri(db_path) if Path(sqlite_path(db_path)).exists() else None,
+                "exists": exists,
+                "generated_timestamp": None,
+                "file_age_days": round_or_none(file_age_days(sqlite_path(db_path)), 4) if Path(sqlite_path(db_path)).exists() else None,
+                "schema": schema,
+                "producer": "database.py insert_* or historical label/outcome producers",
+                "consumer": "dashboard/risk/audit modules",
+            }
+        )
+    return discovered
+
+
+def producer_inventory(artifacts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    artifact_by_name = {item["artifact_name"]: item for item in artifacts}
+    expected = [
+        ("Current Model Accuracy", "ml_engine.py", "run_ml_research", "model_output", "accuracy"),
+        ("AI Confidence", "ml_engine.py", "run_ml_research", "model_output", "ai_confidence_score"),
+        ("Setup Ranking", "ml_engine.py", "_quality/run_ml_research", "model_output", "setup_ranking"),
+        ("Top Features", "ml_engine.py", "run_ml_research", "model_output", "feature_importance"),
+        ("Most Profitable Regime", "ml_engine.py", "_regime_profitability", "model_output", "most_profitable_regime"),
+        ("Worst Regime", "ml_engine.py/walkforward.py", "_regime_profitability/run_walkforward_validation", "model_output", "worst_regime"),
+        ("Walk-Forward Rolling Accuracy", "walkforward.py", "run_walkforward_validation", "walkforward_results", "test_accuracy"),
+        ("Walk-Forward Rolling Winrate", "walkforward.py", "run_walkforward_validation", "walkforward_results", "winrate"),
+        ("Model Health", "walkforward.py", "_health/run_walkforward_validation", "walkforward_results", "model_health"),
+        ("Overfit Risk", "walkforward.py", "run_walkforward_validation", "walkforward_results", "train_accuracy,test_accuracy"),
+        ("Historical ML accuracy snapshot", "ml_quality_audit.py", "run_audit", "ml_quality_audit", "global_accuracy"),
+        ("Candidate Directional Accuracy", "candidate_validator.py/candidate_evidence_ledger.py", "validate_candidate/run", "candidate_evidence_ledger", "direction_hit"),
+    ]
+    rows: List[Dict[str, Any]] = []
+    for metric_name, module, function, artifact_name, columns in expected:
+        artifact = artifact_by_name.get(artifact_name, {})
+        schema = artifact.get("schema") or []
+        required_columns = [col.strip() for col in columns.split(",")]
+        source_verified = bool(artifact.get("exists"))
+        contract_verified = source_verified and all(col in schema for col in required_columns if artifact_name != "walkforward_results" or col != "model_health")
+        rows.append(
+            {
+                "metric_name": metric_name,
+                "expected_producer": f"{module}:{function}",
+                "discovered_producer": artifact.get("producer"),
+                "producer_verified": bool(artifact.get("producer")),
+                "source_artifact": artifact.get("discovered_path") or artifact.get("configured_path"),
+                "configured_path": artifact.get("configured_path"),
+                "source_columns": columns,
+                "source_verified": source_verified,
+                "contract_verified": contract_verified,
+                "user_facing_consumers": artifact.get("consumer"),
+                "reproducibility_status": "SOURCE_MISSING" if not source_verified else ("UNREPRODUCIBLE" if not contract_verified else "REPRODUCED_WITH_ROUNDING"),
+            }
+        )
     return rows
 
-def classification_metrics(y_true: Sequence[Any], y_pred: Sequence[Any], labels: Optional[Sequence[Any]]=None) -> Dict[str, Any]:
-    labels=list(labels or sorted(set(y_true)|set(y_pred), key=str)); n=len(y_true)
-    counts=Counter(y_true); correct=sum(1 for a,b in zip(y_true,y_pred) if a==b)
-    by={}; cms=[]
-    for lab in labels:
-        tp=sum(a==lab and b==lab for a,b in zip(y_true,y_pred)); fp=sum(a!=lab and b==lab for a,b in zip(y_true,y_pred)); fn=sum(a==lab and b!=lab for a,b in zip(y_true,y_pred)); sup=counts.get(lab,0)
-        prec=tp/(tp+fp) if tp+fp else 0.0; rec=tp/(tp+fn) if tp+fn else 0.0; f1=2*prec*rec/(prec+rec) if prec+rec else 0.0
-        by[str(lab)]={"precision":prec,"recall":rec,"f1":f1,"support":sup}
-        cms.append({"actual_class":str(lab), **{str(pl):sum(a==lab and b==pl for a,b in zip(y_true,y_pred)) for pl in labels}})
-    bal=sum(v["recall"] for v in by.values())/len(labels) if labels else None
-    macro=sum(v["f1"] for v in by.values())/len(labels) if labels else None
-    weighted=sum(v["f1"]*v["support"] for v in by.values())/n if n else None
-    maj=max(counts.values())/n if n else None; prior=sum((v/n)**2 for v in counts.values()) if n else None
-    return {"samples":n,"accuracy":correct/n if n else None,"balanced_accuracy":bal,"by_class":by,"macro_f1":macro,"weighted_f1":weighted,"confusion_matrix":cms,"class_support":dict(counts),"majority_class_baseline":maj,"random_prior_baseline":prior,"mcc":None if n==0 else _mcc_binary(y_true,y_pred)}
 
-def _mcc_binary(y_true,y_pred):
-    labs=list(set(y_true)|set(y_pred))
-    if len(labs)!=2: return None
-    pos=labs[0]; tp=sum(a==pos and b==pos for a,b in zip(y_true,y_pred)); tn=sum(a!=pos and b!=pos for a,b in zip(y_true,y_pred)); fp=sum(a!=pos and b==pos for a,b in zip(y_true,y_pred)); fn=sum(a==pos and b!=pos for a,b in zip(y_true,y_pred)); den=(tp+fp)*(tp+fn)*(tn+fp)*(tn+fn)
-    return ((tp*tn)-(fp*fn))/math.sqrt(den) if den else 0.0
+def find_column(columns: Sequence[str], candidates: Sequence[str]) -> Optional[str]:
+    lower = {str(col).lower(): str(col) for col in columns}
+    for candidate in candidates:
+        if candidate.lower() in lower:
+            return lower[candidate.lower()]
+    return None
 
-def leakage_status(train: pd.DataFrame, test: pd.DataFrame, time_col="timestamp", feature_cols: Optional[List[str]]=None) -> Dict[str, Any]:
-    reasons=[]
+
+def load_prediction_cohort(path: Optional[str]) -> Dict[str, Any]:
+    if not path:
+        return {"status": "SOURCE_MISSING", "reason": "no prediction artifact path discovered", "frame": pd.DataFrame()}
+    p = Path(path)
+    if not p.exists():
+        return {"status": "SOURCE_MISSING", "reason": f"prediction artifact missing: {path}", "frame": pd.DataFrame()}
+    try:
+        if p.suffix.lower() == ".csv":
+            frame = pd.read_csv(p)
+        elif p.suffix.lower() == ".json":
+            data = read_json(p) or {}
+            rows = data.get("predictions") or data.get("rows") or data.get("evaluation_rows")
+            frame = pd.DataFrame(rows if isinstance(rows, list) else [])
+        else:
+            return {"status": "UNREPRODUCIBLE", "reason": f"unsupported prediction artifact suffix: {p.suffix}", "frame": pd.DataFrame()}
+    except Exception as exc:
+        return {"status": "UNREPRODUCIBLE", "reason": str(exc), "frame": pd.DataFrame()}
+    y_true_col = find_column(frame.columns, TRUE_COLUMNS)
+    y_pred_col = find_column(frame.columns, PREDICTION_COLUMNS)
+    required_meta = {
+        "prediction_timestamp": find_column(frame.columns, ("prediction_timestamp", "timestamp", "signal_timestamp")),
+        "target_maturity_timestamp": find_column(frame.columns, ("target_maturity_timestamp", "target_timestamp", "close_timestamp")),
+        "model_version": find_column(frame.columns, ("model_version", "model_artifact_version")),
+        "evaluation_contract": find_column(frame.columns, ("evaluation_contract", "contract")),
+    }
+    missing = [key for key, value in {"y_true": y_true_col, "y_pred": y_pred_col, **required_meta}.items() if not value]
+    if missing:
+        return {"status": "UNREPRODUCIBLE", "reason": "missing required prediction cohort columns: " + ", ".join(missing), "frame": frame}
+    if y_true_col == y_pred_col:
+        return {"status": "UNREPRODUCIBLE", "reason": "y_true and y_pred resolve to the same column", "frame": frame}
+    out = frame.copy()
+    out["__y_true"] = out[y_true_col]
+    out["__y_pred"] = out[y_pred_col]
+    return {"status": "AVAILABLE", "reason": None, "frame": out, "columns": {"y_true": y_true_col, "y_pred": y_pred_col, **required_meta}}
+
+
+def no_evaluation_metrics(status: str, reason: str) -> Dict[str, Any]:
+    return {
+        "status": status,
+        "reason": reason,
+        "metrics": None,
+        "confusion_matrix": [{"actual_class": "NO_EVALUATION_SAMPLE", **{label: None for label in TARGET_LABELS}}],
+    }
+
+
+def classification_metrics(y_true: Sequence[Any], y_pred: Sequence[Any], labels: Optional[Sequence[Any]] = None) -> Dict[str, Any]:
+    labels = list(labels or sorted(set(y_true) | set(y_pred), key=str))
+    n = len(y_true)
+    if n == 0:
+        return {
+            "samples": 0,
+            "accuracy": None,
+            "balanced_accuracy": None,
+            "by_class": {str(label): {"precision": None, "recall": None, "f1": None, "support": 0} for label in labels},
+            "macro_f1": None,
+            "weighted_f1": None,
+            "confusion_matrix": [{"actual_class": "NO_EVALUATION_SAMPLE", **{str(label): None for label in labels}}],
+            "class_support": {},
+            "majority_class_baseline": None,
+            "random_prior_baseline": None,
+            "mcc": None,
+        }
+    counts = Counter(y_true)
+    correct = sum(1 for actual, pred in zip(y_true, y_pred) if actual == pred)
+    by_class: Dict[str, Dict[str, Any]] = {}
+    matrix: List[Dict[str, Any]] = []
+    for label in labels:
+        tp = sum(actual == label and pred == label for actual, pred in zip(y_true, y_pred))
+        fp = sum(actual != label and pred == label for actual, pred in zip(y_true, y_pred))
+        fn = sum(actual == label and pred != label for actual, pred in zip(y_true, y_pred))
+        support = counts.get(label, 0)
+        precision = tp / (tp + fp) if tp + fp else None
+        recall = tp / (tp + fn) if tp + fn else None
+        f1 = 2 * precision * recall / (precision + recall) if precision is not None and recall is not None and precision + recall else None
+        by_class[str(label)] = {"precision": precision, "recall": recall, "f1": f1, "support": support}
+        matrix.append({"actual_class": str(label), **{str(pred_label): sum(actual == label and pred == pred_label for actual, pred in zip(y_true, y_pred)) for pred_label in labels}})
+    recalls = [row["recall"] for row in by_class.values() if row["recall"] is not None]
+    f1s = [row["f1"] for row in by_class.values() if row["f1"] is not None]
+    weighted_terms = [row["f1"] * row["support"] for row in by_class.values() if row["f1"] is not None]
+    return {
+        "samples": n,
+        "accuracy": correct / n,
+        "balanced_accuracy": sum(recalls) / len(labels) if labels else None,
+        "by_class": by_class,
+        "macro_f1": sum(f1s) / len(labels) if labels else None,
+        "weighted_f1": sum(weighted_terms) / n if weighted_terms else None,
+        "confusion_matrix": matrix,
+        "class_support": dict(counts),
+        "majority_class_baseline": max(counts.values()) / n if counts else None,
+        "random_prior_baseline": sum((count / n) ** 2 for count in counts.values()) if counts else None,
+        "mcc": mcc_binary(y_true, y_pred),
+    }
+
+
+def mcc_binary(y_true: Sequence[Any], y_pred: Sequence[Any]) -> Optional[float]:
+    labels = list(set(y_true) | set(y_pred))
+    if len(labels) != 2:
+        return None
+    positive = labels[0]
+    tp = sum(actual == positive and pred == positive for actual, pred in zip(y_true, y_pred))
+    tn = sum(actual != positive and pred != positive for actual, pred in zip(y_true, y_pred))
+    fp = sum(actual != positive and pred == positive for actual, pred in zip(y_true, y_pred))
+    fn = sum(actual == positive and pred != positive for actual, pred in zip(y_true, y_pred))
+    denominator = (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)
+    return ((tp * tn) - (fp * fn)) / math.sqrt(denominator) if denominator else 0.0
+
+
+def baseline_status(metrics: Optional[Dict[str, Any]], min_samples: int = 30) -> Dict[str, Any]:
+    if not metrics:
+        return {"status": "BLOCKED_INSUFFICIENT_SAMPLE", "sample_size": 0, "absolute_accuracy_improvement": None, "practically_meaningful": False}
+    samples = metrics.get("samples") or 0
+    accuracy = metrics.get("accuracy")
+    baseline = metrics.get("majority_class_baseline")
+    if samples < min_samples:
+        status = "BLOCKED_INSUFFICIENT_SAMPLE"
+    elif accuracy is None or baseline is None:
+        status = "UNAVAILABLE"
+    elif accuracy <= baseline:
+        status = "BLOCKED_BELOW_BASELINE"
+    elif accuracy - baseline < 0.03:
+        status = "REVIEW_MARGINAL"
+    else:
+        status = "PASS_BASELINE"
+    return {
+        "status": status,
+        "sample_size": samples,
+        "absolute_accuracy_improvement": None if accuracy is None or baseline is None else accuracy - baseline,
+        "practically_meaningful": status == "PASS_BASELINE",
+    }
+
+
+def leakage_status(train: pd.DataFrame, test: pd.DataFrame, time_col: str = "timestamp", feature_cols: Optional[List[str]] = None) -> Dict[str, Any]:
+    if train.empty or test.empty:
+        return {"status": "UNVERIFIABLE", "reasons": ["missing train or test rows"]}
+    reasons: List[str] = []
     if time_col in train.columns and time_col in test.columns:
-        tr=pd.to_datetime(train[time_col], errors='coerce', utc=True); te=pd.to_datetime(test[time_col], errors='coerce', utc=True)
-        if te.notna().any() and tr.notna().any() and te.min() <= tr.max(): reasons.append("BLOCKED_TEMPORAL_LEAKAGE")
-    if {'symbol',time_col}.issubset(train.columns) and {'symbol',time_col}.issubset(test.columns):
-        a=set(zip(train['symbol'].astype(str), train[time_col].astype(str))); b=set(zip(test['symbol'].astype(str), test[time_col].astype(str)))
-        if a & b: reasons.append("BLOCKED_SPLIT_CONTAMINATION")
-    fcols=feature_cols or []
-    if any(str(c).lower() in {'target','status','win_loss','pnl_percent','pnl_pct','future_return'} for c in fcols): reasons.append("BLOCKED_TARGET_LEAKAGE")
-    return {"status": reasons[0] if reasons else "PASS", "reasons": reasons}
+        train_time = pd.to_datetime(train[time_col], errors="coerce", utc=True)
+        test_time = pd.to_datetime(test[time_col], errors="coerce", utc=True)
+        if train_time.notna().any() and test_time.notna().any() and test_time.min() <= train_time.max():
+            reasons.append("BLOCKED_TEMPORAL_LEAKAGE")
+    else:
+        reasons.append("UNVERIFIABLE_TIME_COLUMN")
+    if {"symbol", time_col}.issubset(train.columns) and {"symbol", time_col}.issubset(test.columns):
+        train_keys = set(zip(train["symbol"].astype(str), train[time_col].astype(str)))
+        test_keys = set(zip(test["symbol"].astype(str), test[time_col].astype(str)))
+        if train_keys & test_keys:
+            reasons.append("BLOCKED_SPLIT_CONTAMINATION")
+    feature_cols = feature_cols or []
+    if any(str(column).lower() in TARGET_LIKE_COLUMNS for column in feature_cols):
+        reasons.append("BLOCKED_TARGET_LEAKAGE")
+    blockers = [reason for reason in reasons if reason.startswith("BLOCKED")]
+    if blockers:
+        return {"status": blockers[0], "reasons": reasons}
+    if reasons:
+        return {"status": "UNVERIFIABLE", "reasons": reasons}
+    return {"status": "PASS", "reasons": []}
 
-def reconstruct_walkforward(path="walkforward_results.csv") -> Dict[str, Any]:
-    if not Path(path).exists(): return {"status":"SOURCE_MISSING","folds":[],"fold_count":0}
-    df=pd.read_csv(path); folds=[]
-    for _,r in df.iterrows():
-        acc=_round(r.get('test_accuracy')); base=None; imp=None
-        folds.append({"fold_id":int(r.get('fold',len(folds)+1)),"training_start":r.get('train_start'),"training_end":r.get('train_end'),"test_start":r.get('test_start'),"test_end":r.get('test_end'),"embargo_gap":0,"train_rows":None,"test_rows":None,"class_distribution":{},"accuracy":acc,"balanced_accuracy":None,"macro_f1":None,"baseline_accuracy":base,"improvement_over_baseline":imp,"regime_distribution":{},"excluded_rows":0,"leakage_status":"PASS"})
-    vals=[f['accuracy'] for f in folds if f['accuracy'] is not None]
-    return {"status":"REPRODUCED_WITH_ROUNDING" if vals else "UNREPRODUCIBLE","folds":folds,"fold_count":len(folds),"weighted_aggregate":_round(sum(vals)/len(vals)) if vals else None,"unweighted_aggregate":_round(sum(vals)/len(vals)) if vals else None,"median_fold":pd.Series(vals).median() if vals else None,"standard_deviation":pd.Series(vals).std(ddof=0) if vals else None,"worst_fold":min(folds,key=lambda x:x['accuracy'] if x['accuracy'] is not None else 9, default=None),"best_fold":max(folds,key=lambda x:x['accuracy'] if x['accuracy'] is not None else -1, default=None),"latest_fold":folds[-1] if folds else None,"pct_folds_above_60":sum(v>=0.60 for v in vals)/len(vals)*100 if vals else None,"pct_folds_beating_baseline":None,"responsible_method":"walkforward.run_walkforward_validation unweighted mean(test_accuracy)"}
 
-def baseline_status(metrics: Dict[str,Any], min_samples=30) -> Dict[str,Any]:
-    n=metrics.get('samples') or 0; acc=metrics.get('accuracy'); base=metrics.get('majority_class_baseline')
-    if n < min_samples: st="BLOCKED_INSUFFICIENT_SAMPLE"
-    elif acc is None or base is None: st="UNAVAILABLE"
-    elif acc <= base: st="BLOCKED_BELOW_BASELINE"
-    elif acc-base < 0.03: st="REVIEW_MARGINAL"
-    else: st="PASS_BASELINE"
-    return {"status":st,"sample_size":n,"absolute_accuracy_improvement":None if acc is None or base is None else acc-base,"practically_meaningful":st=="PASS_BASELINE"}
+def reconstruct_walkforward(path: Optional[str]) -> Dict[str, Any]:
+    if not path or not Path(path).exists():
+        return {
+            "status": "SOURCE_MISSING",
+            "folds": [],
+            "fold_count": 0,
+            "weighted_aggregate": None,
+            "weighted_aggregate_reason": "walk-forward artifact missing",
+            "unweighted_aggregate": None,
+            "responsible_method": "walkforward.run_walkforward_validation computes unweighted mean(test_accuracy)",
+        }
+    df = pd.read_csv(path)
+    required = {"fold", "train_start", "train_end", "test_start", "test_end", "test_accuracy"}
+    missing = sorted(required - set(df.columns))
+    if missing:
+        return {"status": "UNREPRODUCIBLE", "reason": "missing columns: " + ", ".join(missing), "folds": [], "fold_count": 0}
+    folds: List[Dict[str, Any]] = []
+    for _, row in df.iterrows():
+        train_start = row.get("train_start")
+        train_end = row.get("train_end")
+        test_start = row.get("test_start")
+        test_end = row.get("test_end")
+        accuracy = round_or_none(row.get("test_accuracy"))
+        train_rows = safe_float(row.get("train_rows"))
+        test_rows = safe_float(row.get("test_rows"))
+        try:
+            embargo_gap = float(test_start) - float(train_end)
+            ordering_ok = float(test_start) > float(train_end)
+        except (TypeError, ValueError):
+            embargo_gap = None
+            ordering_ok = False
+        leakage = "UNVERIFIABLE"
+        reasons = []
+        if not ordering_ok:
+            leakage = "BLOCKED_TEMPORAL_LEAKAGE"
+            reasons.append("test_start must be greater than train_end")
+        elif train_rows is None or test_rows is None:
+            leakage = "UNVERIFIABLE"
+            reasons.append("fold row counts unavailable")
+        else:
+            leakage = "PASS"
+        folds.append(
+            {
+                "fold_id": int(row.get("fold")),
+                "training_start": train_start,
+                "training_end": train_end,
+                "test_start": test_start,
+                "test_end": test_end,
+                "embargo_gap": embargo_gap,
+                "train_rows": None if train_rows is None else int(train_rows),
+                "test_rows": None if test_rows is None else int(test_rows),
+                "class_distribution": row.get("class_distribution") if "class_distribution" in df.columns else None,
+                "accuracy": accuracy,
+                "balanced_accuracy": round_or_none(row.get("balanced_accuracy")),
+                "macro_f1": round_or_none(row.get("macro_f1")),
+                "baseline_accuracy": round_or_none(row.get("baseline_accuracy")),
+                "improvement_over_baseline": None,
+                "regime_distribution": row.get("regime_distribution") if "regime_distribution" in df.columns else None,
+                "excluded_rows": row.get("excluded_rows") if "excluded_rows" in df.columns else None,
+                "leakage_status": leakage,
+                "leakage_reasons": ";".join(reasons),
+            }
+        )
+    accuracies = [fold["accuracy"] for fold in folds if fold["accuracy"] is not None]
+    unweighted = sum(accuracies) / len(accuracies) if accuracies else None
+    weighted = None
+    weighted_reason = None
+    if folds and all(fold["test_rows"] is not None and fold["accuracy"] is not None for fold in folds):
+        total_rows = sum(int(fold["test_rows"]) for fold in folds)
+        weighted = sum(float(fold["accuracy"]) * int(fold["test_rows"]) for fold in folds) / total_rows if total_rows else None
+    else:
+        weighted_reason = "test_rows unavailable for one or more folds"
+    return {
+        "status": "REPRODUCED_WITH_ROUNDING" if accuracies else "UNREPRODUCIBLE",
+        "folds": folds,
+        "fold_count": len(folds),
+        "weighted_aggregate": round_or_none(weighted),
+        "weighted_aggregate_reason": weighted_reason,
+        "unweighted_aggregate": round_or_none(unweighted),
+        "median_fold": round_or_none(pd.Series(accuracies).median()) if accuracies else None,
+        "standard_deviation": round_or_none(pd.Series(accuracies).std(ddof=0)) if accuracies else None,
+        "worst_fold": min(folds, key=lambda item: item["accuracy"] if item["accuracy"] is not None else 9, default=None),
+        "best_fold": max(folds, key=lambda item: item["accuracy"] if item["accuracy"] is not None else -1, default=None),
+        "latest_fold": folds[-1] if folds else None,
+        "pct_folds_above_60": round_or_none(sum(value >= 0.60 for value in accuracies) / len(accuracies) * 100) if accuracies else None,
+        "pct_folds_beating_baseline": None,
+        "responsible_method": "walkforward.run_walkforward_validation computes unweighted mean(test_accuracy); weighted aggregate is audit-only when test_rows exists",
+    }
 
-def segment_performance(df: pd.DataFrame, min_samples=10) -> List[Dict[str,Any]]:
-    rows=[]
-    for col in ['regime_name','symbol','target']:
-        if col not in df.columns: continue
-        for val,g in df.groupby(col):
-            y=g['target'].astype(str).tolist(); m=classification_metrics(y,y,TARGET_LABELS)
-            rows.append({"segment_type":col,"segment_value":str(val),"samples":len(g),"class_support":json.dumps(m['class_support'], sort_keys=True),"accuracy":m['accuracy'],"balanced_accuracy":m['balanced_accuracy'],"macro_f1":m['macro_f1'],"baseline":m['majority_class_baseline'],"improvement_over_baseline":(m['accuracy']-m['majority_class_baseline']) if m['majority_class_baseline'] is not None else None,"confidence_interval":None,"readiness_status":"REVIEW" if len(g)<min_samples else "PASS"})
+
+def compare_displayed(displayed: Any, reproduced: Optional[float], scale: float = 1.0, tolerance: float = 0.005) -> str:
+    expected = safe_float(str(displayed).replace("%", "").replace("/100", "").replace("~", ""))
+    if expected is None or reproduced is None:
+        return "UNREPRODUCIBLE"
+    value = reproduced * scale
+    if abs(value - expected) <= 1e-9:
+        return "REPRODUCED_EXACT"
+    if abs(value - expected) <= tolerance:
+        return "REPRODUCED_WITH_ROUNDING"
+    return "CONTRACT_DIFFERENT"
+
+
+def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any], model: Dict[str, Any]) -> List[Dict[str, Any]]:
+    walk_status = walkforward.get("status")
+    current = safe_float(model.get("accuracy"))
+    rows = [
+        {
+            "display_value": "32.81%",
+            "metric_name": "Current Model Accuracy",
+            "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+            "producer": "ml_engine.py:run_ml_research",
+            "contract_match_walkforward": False,
+            "sample_count": model.get("rows"),
+            "reproducibility_status": compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING",
+        },
+        {
+            "display_value": "64.38%",
+            "metric_name": "Walk-Forward Rolling Accuracy",
+            "identity": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
+            "producer": "walkforward.py:run_walkforward_validation",
+            "contract_match_walkforward": True,
+            "sample_count": walkforward.get("fold_count"),
+            "reproducibility_status": compare_displayed("64.38", walkforward.get("unweighted_aggregate"), scale=100) if walk_status != "SOURCE_MISSING" else "SOURCE_MISSING",
+        },
+        {
+            "display_value": "66.40%",
+            "metric_name": "Historical ML accuracy snapshot",
+            "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
+            "producer": "ml_quality_audit.py:run_audit",
+            "contract_match_walkforward": False,
+            "sample_count": None,
+            "reproducibility_status": "SOURCE_MISSING" if not any(a["artifact_name"] == "ml_quality_audit" and a["exists"] for a in artifacts) else "UNREPRODUCIBLE",
+        },
+        {
+            "display_value": "~70%",
+            "metric_name": "Earlier historical snapshot",
+            "identity": "legacy/operator snapshot with no authoritative source discovered in repository fixtures",
+            "producer": "LEGACY_UNKNOWN",
+            "contract_match_walkforward": False,
+            "sample_count": None,
+            "reproducibility_status": "SOURCE_MISSING",
+        },
+        {
+            "display_value": "45.68%",
+            "metric_name": "Walk-Forward Rolling Winrate",
+            "identity": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
+            "producer": "walkforward.py:_winrate/run_walkforward_validation",
+            "contract_match_walkforward": False,
+            "sample_count": walkforward.get("fold_count"),
+            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+        },
+        {
+            "display_value": "65/100",
+            "metric_name": "AI Confidence",
+            "identity": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
+            "producer": "ml_engine.py:run_ml_research",
+            "contract_match_walkforward": False,
+            "sample_count": model.get("rows"),
+            "reproducibility_status": compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING",
+        },
+        {
+            "display_value": "ROBUST",
+            "metric_name": "Model Health",
+            "identity": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
+            "producer": "walkforward.py:_health",
+            "contract_match_walkforward": False,
+            "sample_count": walkforward.get("fold_count"),
+            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+        },
+        {
+            "display_value": "35.55/100",
+            "metric_name": "Overfit Risk",
+            "identity": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+            "producer": "walkforward.py:run_walkforward_validation",
+            "contract_match_walkforward": False,
+            "sample_count": walkforward.get("fold_count"),
+            "reproducibility_status": "SOURCE_MISSING" if walk_status == "SOURCE_MISSING" else "UNREPRODUCIBLE",
+        },
+    ]
     return rows
 
-def run_ml_metric_reconciliation(output_dir="reports", db_path="mamuyy_hunter.db", model_output_path="model_output.json", walkforward_path="walkforward_results.csv") -> Dict[str,Any]:
-    out=Path(output_dir); out.mkdir(exist_ok=True)
-    inventory=producer_inventory(model_output_path, walkforward_path, db_path)
-    model=read_json(model_output_path) or {}; wf=reconstruct_walkforward(walkforward_path)
-    current_acc=model.get('accuracy')
-    metric_identity=[
-        {"display_value":"32.81%","metric_name":"Current Model Accuracy","identity":"random holdout multiclass accuracy from ml_engine.run_ml_research if model_output accuracy rounds to 32.81%; otherwise referenced stale/operator value","producer":"ml_engine.py:run_ml_research","contract_match_walkforward":False,"reproducibility_status":"REPRODUCED_WITH_ROUNDING" if _round((current_acc or 0)*100,2)==32.81 else "SOURCE_STALE"},
-        {"display_value":"64.38%","metric_name":"Walk-Forward Rolling Accuracy","identity":"unweighted mean of walkforward_results.csv test_accuracy folds","producer":"walkforward.py:run_walkforward_validation","contract_match_walkforward":True,"reproducibility_status":wf['status']},
-        {"display_value":"66.40%","metric_name":"Historical ML accuracy snapshot","identity":"historical audit snapshot; not current readiness evidence unless source contract matches","producer":"ml_quality_audit.py:run_audit","contract_match_walkforward":False,"reproducibility_status":"SOURCE_STALE"},
-        {"display_value":"~70%","metric_name":"Earlier historical snapshot","identity":"earlier historical/operator snapshot; authoritative artifact not guaranteed","producer":"LEGACY_UNKNOWN","contract_match_walkforward":False,"reproducibility_status":"UNREPRODUCIBLE"},
-        {"display_value":"45.68%","metric_name":"Walk-Forward Rolling Winrate","identity":"unweighted mean of test fold target profitable rate/trade winrate, not classifier accuracy","producer":"walkforward.py:_winrate","contract_match_walkforward":False,"reproducibility_status":"REPRODUCED_WITH_ROUNDING" if wf.get('fold_count') else "SOURCE_MISSING"},
-        {"display_value":"65/100","metric_name":"AI Confidence","identity":"heuristic latest-row profitable class probability converted to 0-100","producer":"ml_engine.py:run_ml_research","contract_match_walkforward":False,"reproducibility_status":"REPRODUCED_WITH_ROUNDING" if model.get('ai_confidence_score')==65 else "SOURCE_STALE"},
-        {"display_value":"ROBUST","metric_name":"Model Health","identity":"rule-derived health from walk-forward stability and overfit risk","producer":"walkforward.py:_health","contract_match_walkforward":False,"reproducibility_status":"REPRODUCED_EXACT"},
-        {"display_value":"35.55/100","metric_name":"Overfit Risk","identity":"100 * max(0, mean train_accuracy - mean test_accuracy)","producer":"walkforward.py:run_walkforward_validation","contract_match_walkforward":False,"reproducibility_status":"REPRODUCED_WITH_ROUNDING"},
-    ]
-    ds=build_ml_dataset("paper_trades.csv","signals_log.csv","flow_log.csv",database_path=db_path)
-    lineage={"dataset_source":"paper_trades if present else historical_outcomes","row_count":int(len(ds)),"feature_count":len(NUMERIC_FEATURES)+len(CATEGORICAL_FEATURES),"date_range":[str(ds['timestamp'].min()) if 'timestamp' in ds and len(ds) else None,str(ds['timestamp'].max()) if 'timestamp' in ds and len(ds) else None],"symbol_coverage":int(ds['symbol'].nunique()) if 'symbol' in ds else None,"class_distribution":ds['target'].value_counts().to_dict() if 'target' in ds else {},"duplicate_rows":int(ds.duplicated().sum()) if len(ds) else 0,"future_timestamps":int((pd.to_datetime(ds.get('timestamp'), errors='coerce', utc=True)>pd.Timestamp.now(tz='UTC')).sum()) if 'timestamp' in ds else 0,"lineage":"LEGACY_UNKNOWN where built from historical outcomes/signals joins","excluded_rows_and_reasons":[]}
-    base_metrics=classification_metrics(ds['target'].astype(str).tolist(), ds['target'].astype(str).tolist(), TARGET_LABELS) if len(ds) else classification_metrics([],[],TARGET_LABELS)
-    baseline=baseline_status(base_metrics)
-    segments=segment_performance(ds)
-    components={"Metric Integrity":"REVIEW","Data Lineage":"REVIEW","Label Integrity":"BLOCKED_LABEL_CONTRACT","Leakage Safety":"REVIEW","Baseline Superiority":baseline['status'],"Out-of-Sample Adequacy":"REVIEW","Walk-Forward Stability":"REVIEW","Regime Stability":"REVIEW","Calibration Quality":"REVIEW","Candidate-Evidence Support":"REVIEW"}
-    overall="REVIEW"
-    for k,v in components.items():
-        if str(v).startswith('BLOCKED'):
-            overall=BLOCKING_TO_OVERALL.get(k, v); break
-    report={"phase":PHASE,"generated_at":utc_now(),"governance":{"paper_only":True,"execution_allowed":False,"automatic_promotion_allowed":False,"model_promotion_allowed":False,"readiness_advisory_only":True,"read_only_audit":True},"source_inventory":inventory,"metric_identity":metric_identity,"dataset_lineage":lineage,"label_contracts":[{"contract":"ml_engine TARGET_LABELS","status":"BLOCKED_LABEL_CONTRACT","notes":"Horizon, price reference, fees/slippage, maturity requirements not fully encoded in artifacts."}],"split_and_leakage_audit":{"status":"REVIEW","methodology":"chronological fold ordering, future timestamp checks, duplicate symbol/timestamp checks, target-column feature checks","findings":[]},"reproduced_metrics":{"classification_contract_if_available":base_metrics,"unsupported_metrics":{"roc_auc":"null: probability contract unavailable","pr_auc":"null: probability contract unavailable"}},"baseline_comparison":baseline,"walkforward_reconciliation":wf,"current_accuracy_reconciliation":metric_identity[0],"historical_snapshot_reconciliation":metric_identity[2:4],"segment_performance":segments,"candidate_evidence_bridge":{"status":"REVIEW","model_evaluation_sample":len(ds),"candidate_evidence_sample":None,"paper_trade_outcome_sample":None,"note":"Populations are reported separately and never averaged."},"model_readiness":{"components":components,"overall_status":overall,"paper_only":True,"execution_allowed":False,"automatic_promotion_allowed":False,"model_promotion_allowed":False,"readiness_advisory_only":True},"terminology_recommendations":["Current Holdout Accuracy","Walk-Forward OOS Accuracy","Latest-Fold Accuracy","Balanced Accuracy","Candidate Evidence Accuracy","Paper Trade Winrate","AI Confidence Heuristic","Model Readiness"],"artifact_paths":{"json":str(out/'ml_metric_reconciliation.json'),"metric_identity_csv":str(out/'ml_metric_identity.csv'),"walkforward_folds_csv":str(out/'ml_walkforward_folds.csv'),"confusion_matrix_csv":str(out/'ml_confusion_matrix.csv'),"segment_performance_csv":str(out/'ml_segment_performance.csv')},"limitations":["No retraining, tuning, promotion, or execution changes performed.","Missing or stale artifacts are not invented; they are marked SOURCE_STALE/UNREPRODUCIBLE."]}
-    atomic_write_json(out/'ml_metric_reconciliation.json', report)
-    write_csv(out/'ml_metric_identity.csv', metric_identity, ["display_value","metric_name","identity","producer","contract_match_walkforward","reproducibility_status"])
-    write_csv(out/'ml_walkforward_folds.csv', wf.get('folds',[]), ["fold_id","training_start","training_end","test_start","test_end","embargo_gap","train_rows","test_rows","class_distribution","accuracy","balanced_accuracy","macro_f1","baseline_accuracy","improvement_over_baseline","regime_distribution","excluded_rows","leakage_status"])
-    write_csv(out/'ml_confusion_matrix.csv', base_metrics.get('confusion_matrix',[]), ["actual_class",*TARGET_LABELS])
-    write_csv(out/'ml_segment_performance.csv', segments, ["segment_type","segment_value","samples","class_support","accuracy","balanced_accuracy","macro_f1","baseline","improvement_over_baseline","confidence_interval","readiness_status"])
+
+def label_contract_audit() -> Dict[str, Any]:
+    return {
+        "source_module": "outcome_labeler.py",
+        "class_names_and_encoding": {"LOSS": "stop-loss or negative outcome", "WIN": "TP2 or positive holding-period outcome", "TP1 HIT": "TP1 outcome", "OPEN/FLAT": "not kept by ML TARGET_LABELS"},
+        "input_price": "historical_klines.close joined at signal timestamp as entry",
+        "target_price": "future candle low/high/close depending on SL/TP/horizon path",
+        "prediction_timestamp": "signals.timestamp",
+        "target_timestamp": "future candle timestamp or blank when no future candles",
+        "horizon": "holding_candles default 20",
+        "return_threshold": "SL 2%, TP1 3%, TP2 5% defaults",
+        "neutral_handling": "FLAT possible in outcome_labeler but excluded by ml_engine TARGET_LABELS",
+        "fees_slippage": "not applied in label_historical_outcomes",
+        "maturity_requirements": "requires future candles after signal timestamp; no future candles create OPEN/FLAT row",
+        "missing_future_data": "NO_FUTURE_CANDLES open/flat outcome",
+        "regime_assignment_timing": "regime is joined from signal timestamp in ml_engine historical dataset",
+        "status": "REVIEW",
+        "blocked_reason": "Fees/slippage and neutral treatment are explicit, but historical artifact lineage and all displayed metric horizons are not fully proven from prediction artifacts.",
+    }
+
+
+def segment_performance(cohort: pd.DataFrame, min_samples: int = 10) -> List[Dict[str, Any]]:
+    if cohort.empty or "__y_true" not in cohort.columns or "__y_pred" not in cohort.columns:
+        return []
+    rows: List[Dict[str, Any]] = []
+    for column in ["horizon", "regime_name", "volatility_regime", "symbol", "model_version"]:
+        if column not in cohort.columns:
+            continue
+        for value, group in cohort.groupby(column):
+            metrics = classification_metrics(group["__y_true"].astype(str).tolist(), group["__y_pred"].astype(str).tolist(), TARGET_LABELS)
+            rows.append(
+                {
+                    "segment_type": column,
+                    "segment_value": str(value),
+                    "samples": len(group),
+                    "class_support": json.dumps(metrics["class_support"], sort_keys=True),
+                    "accuracy": metrics["accuracy"],
+                    "balanced_accuracy": metrics["balanced_accuracy"],
+                    "macro_f1": metrics["macro_f1"],
+                    "baseline": metrics["majority_class_baseline"],
+                    "improvement_over_baseline": None if metrics["accuracy"] is None or metrics["majority_class_baseline"] is None else metrics["accuracy"] - metrics["majority_class_baseline"],
+                    "confidence_interval": None,
+                    "readiness_status": "REVIEW" if len(group) < min_samples else "PASS",
+                }
+            )
+    return rows
+
+
+def candidate_evidence_bridge(ledger_path: str = "reports/candidate_evidence_ledger.jsonl", model_sample: int = 0, paper_sample: Optional[int] = None) -> Dict[str, Any]:
+    path = Path(ledger_path)
+    if not path.exists():
+        return {
+            "status": "UNAVAILABLE",
+            "missing_key": str(path),
+            "model_evaluation_population": {"samples": model_sample},
+            "candidate_evidence_population": {"samples": 0},
+            "paper_trade_outcome_population": {"samples": paper_sample},
+            "by_horizon": {"24h": None, "48h": None, "72h": None},
+        }
+    records: List[Dict[str, Any]] = []
+    malformed = 0
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                malformed += 1
+                continue
+            if record.get("status") == "RECORDED" and record.get("direction_hit") is not None:
+                records.append(record)
+    by_horizon: Dict[str, Any] = {}
+    for horizon in ["24h", "48h", "72h"]:
+        group = [record for record in records if str(record.get("horizon")) == horizon]
+        hits = [bool(record.get("direction_hit")) for record in group]
+        by_horizon[horizon] = {"samples": len(hits), "direction_accuracy": (sum(hits) / len(hits) if hits else None)}
+    return {
+        "status": "AVAILABLE" if records else "UNAVAILABLE",
+        "missing_key": None if records else "READY mature horizon records with direction_hit",
+        "model_evaluation_population": {"samples": model_sample},
+        "candidate_evidence_population": {"samples": len(records), "malformed_lines": malformed},
+        "paper_trade_outcome_population": {"samples": paper_sample},
+        "by_horizon": by_horizon,
+        "merge_policy": "candidate evidence is not merged with classifier accuracy",
+    }
+
+
+def readiness(components: Dict[str, str]) -> Dict[str, Any]:
+    blockers = {name: status for name, status in components.items() if str(status).startswith("BLOCKED") or str(status) in {"SOURCE_MISSING", "UNREPRODUCIBLE"}}
+    review_reasons = {name: status for name, status in components.items() if str(status).startswith("REVIEW") or str(status) in {"UNVERIFIABLE", "UNAVAILABLE"}}
+    all_blocker_statuses = list(blockers.values())
+    primary = None
+    for status in BLOCKER_PRECEDENCE:
+        if status in all_blocker_statuses:
+            primary = status
+            break
+    if primary is None and blockers:
+        primary = next(iter(blockers.values()))
+    overall = primary or ("REVIEW" if review_reasons else "PASS")
+    return {
+        "components": components,
+        "mandatory_component_statuses": {name: components.get(name, "UNAVAILABLE") for name in MANDATORY_COMPONENTS},
+        "primary_blocker": primary,
+        "all_blockers": blockers,
+        "review_reasons": review_reasons,
+        "overall_status": overall,
+        "paper_only": True,
+        "execution_allowed": False,
+        "automatic_promotion_allowed": False,
+        "model_promotion_allowed": False,
+        "readiness_advisory_only": True,
+    }
+
+
+def run_ml_metric_reconciliation(
+    output_dir: str = "reports",
+    db_path: str = "mamuyy_hunter.db",
+    model_output_path: str = "model_output.json",
+    walkforward_path: str = "walkforward_results.csv",
+    prediction_artifact_path: Optional[str] = None,
+    artifact_context: Optional[str] = None,
+) -> Dict[str, Any]:
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    artifacts = discover_artifacts(db_path=db_path, model_output_path=model_output_path, walkforward_path=walkforward_path)
+    inventory = producer_inventory(artifacts)
+    model_artifact = next((item for item in artifacts if item["artifact_name"] == "model_output"), {})
+    model = read_json(model_artifact.get("discovered_path") or model_output_path) or {}
+    walk_artifact = next((item for item in artifacts if item["artifact_name"] == "walkforward_results"), {})
+    walkforward = reconstruct_walkforward(walk_artifact.get("discovered_path") or walkforward_path)
+    identities = metric_identity(artifacts, walkforward, model)
+
+    cohort_result = load_prediction_cohort(prediction_artifact_path or model_artifact.get("discovered_path"))
+    if cohort_result["status"] == "AVAILABLE":
+        cohort = cohort_result["frame"]
+        metrics = classification_metrics(cohort["__y_true"].astype(str).tolist(), cohort["__y_pred"].astype(str).tolist(), TARGET_LABELS)
+        reproduced_metrics: Dict[str, Any] = {"status": "REPRODUCED_WITH_ROUNDING", "reason": None, "metrics": metrics, "confusion_matrix": metrics["confusion_matrix"], "cohort_columns": cohort_result.get("columns")}
+    else:
+        cohort = pd.DataFrame()
+        reproduced_metrics = no_evaluation_metrics(cohort_result["status"], cohort_result["reason"])
+        metrics = None
+
+    try:
+        dataset = build_ml_dataset("paper_trades.csv", "signals_log.csv", "flow_log.csv", database_path=db_path)
+    except Exception:
+        dataset = pd.DataFrame()
+    lineage = {
+        "dataset_source": "paper_trades if present else historical_outcomes",
+        "row_count": int(len(dataset)),
+        "feature_count": len(NUMERIC_FEATURES) + len(CATEGORICAL_FEATURES),
+        "date_range": [str(dataset["timestamp"].min()) if "timestamp" in dataset and len(dataset) else None, str(dataset["timestamp"].max()) if "timestamp" in dataset and len(dataset) else None],
+        "symbol_coverage": int(dataset["symbol"].nunique()) if "symbol" in dataset else None,
+        "class_distribution": dataset["target"].value_counts().to_dict() if "target" in dataset else {},
+        "duplicate_rows": int(dataset.duplicated().sum()) if len(dataset) else 0,
+        "future_timestamps": int((pd.to_datetime(dataset.get("timestamp"), errors="coerce", utc=True) > pd.Timestamp.now(tz="UTC")).sum()) if "timestamp" in dataset else 0,
+        "lineage": "LEGACY_UNKNOWN where built from historical outcomes/signals joins",
+        "excluded_rows_and_reasons": [],
+    }
+    baseline = baseline_status(metrics)
+    segments = segment_performance(cohort)
+    candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage["row_count"])
+
+    metric_integrity = "BLOCKED_UNREPRODUCIBLE" if any(item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE"} for item in identities[:2]) else "PASS"
+    label_contract = label_contract_audit()
+    components = {
+        "Metric Integrity": metric_integrity,
+        "Data Lineage": "REVIEW" if lineage["row_count"] else "BLOCKED_STALE_SOURCE",
+        "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
+        "Leakage Safety": "UNVERIFIABLE" if cohort.empty else "REVIEW",
+        "Baseline Superiority": baseline["status"],
+        "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
+        "Walk-Forward Stability": "UNVERIFIABLE" if walkforward.get("status") == "SOURCE_MISSING" else "REVIEW",
+        "Regime Stability": "UNAVAILABLE" if not segments else "REVIEW",
+        "Calibration Quality": "UNAVAILABLE",
+        "Candidate-Evidence Support": candidate_bridge["status"],
+    }
+    ready = readiness(components)
+    context = artifact_context or ("NON_PRODUCTION_EMPTY_FIXTURE" if not metrics else "RUNTIME_AUDIT")
+    report = {
+        "phase": PHASE,
+        "artifact_context": context,
+        "generated_at": utc_now(),
+        "governance": {
+            "paper_only": True,
+            "execution_allowed": False,
+            "automatic_promotion_allowed": False,
+            "model_promotion_allowed": False,
+            "readiness_advisory_only": True,
+            "read_only_audit": True,
+        },
+        "artifact_discovery": artifacts,
+        "source_inventory": inventory,
+        "metric_identity": identities,
+        "dataset_lineage": lineage,
+        "label_contracts": [label_contract],
+        "split_and_leakage_audit": {"status": "UNVERIFIABLE" if cohort.empty else "REVIEW", "findings": ["No valid prediction/label cohort available"] if cohort.empty else []},
+        "reproduced_metrics": reproduced_metrics,
+        "baseline_comparison": baseline,
+        "walkforward_reconciliation": walkforward,
+        "current_accuracy_reconciliation": identities[0],
+        "historical_snapshot_reconciliation": identities[2:4],
+        "segment_performance": segments,
+        "candidate_evidence_bridge": candidate_bridge,
+        "model_readiness": ready,
+        "terminology_recommendations": ["Current Holdout Accuracy", "Walk-Forward OOS Accuracy", "Latest-Fold Accuracy", "Balanced Accuracy", "Candidate Evidence Accuracy", "Paper Trade Winrate", "AI Confidence Heuristic", "Model Readiness"],
+        "artifact_paths": {
+            "json": str(output / "ml_metric_reconciliation.json"),
+            "metric_identity_csv": str(output / "ml_metric_identity.csv"),
+            "walkforward_folds_csv": str(output / "ml_walkforward_folds.csv"),
+            "confusion_matrix_csv": str(output / "ml_confusion_matrix.csv"),
+            "segment_performance_csv": str(output / "ml_segment_performance.csv"),
+        },
+        "limitations": ["No predictions are fabricated from labels.", "Missing or stale artifacts are not invented.", "Report is advisory and PAPER_ONLY."],
+    }
+    atomic_write_json(output / "ml_metric_reconciliation.json", report)
+    write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "reproducibility_status"])
+    write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "embargo_gap", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
+    write_csv(output / "ml_confusion_matrix.csv", reproduced_metrics.get("confusion_matrix", []), ["actual_class", *TARGET_LABELS])
+    write_csv(output / "ml_segment_performance.csv", segments, ["segment_type", "segment_value", "samples", "class_support", "accuracy", "balanced_accuracy", "macro_f1", "baseline", "improvement_over_baseline", "confidence_interval", "readiness_status"])
     return report
 
+
 if __name__ == "__main__":
-    r=run_ml_metric_reconciliation(); print(json.dumps({"phase":r['phase'],"overall_status":r['model_readiness']['overall_status'],"json":r['artifact_paths']['json']}, indent=2))
+    result = run_ml_metric_reconciliation()
+    print(json.dumps({"phase": result["phase"], "overall_status": result["model_readiness"]["overall_status"], "json": result["artifact_paths"]["json"]}, indent=2))
