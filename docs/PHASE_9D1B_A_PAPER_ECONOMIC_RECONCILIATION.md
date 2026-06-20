@@ -43,3 +43,27 @@ Engineering readiness verifies data readability, audit execution, PAPER_ONLY gov
 ## Safety and rollback
 
 The audit opens SQLite in read-only mode, writes only JSON/CSV/doc artifacts, and never mutates trade rows. It makes no broker API calls, places no orders, promotes no strategy, changes no thresholds, changes no scoring, changes no lifecycle behavior, changes no scheduler, and changes no Telegram output. Rollback is removal of the new script, docs, generated artifacts, tests, and CLI command.
+
+## Phase 9D.1B-A.1 Economic Robustness and Legacy Cohort Reconciliation
+
+Phase 9D.1B-A.1 separates core economic validity from temporal simulation validity without mutating historical `internal_paper_trades` rows. CLOSED rows are classified as `CORE_AND_TEMPORAL_VALID`, `LEGACY_TEMPORAL_INCOMPLETE`, or `BLOCKING_INVALID`. Legacy temporal-incomplete rows must have valid symbol, side, positive entry, valid exit, matching or small-difference recomputed return, and an opened timestamp; only the close/updated timestamp may be missing.
+
+Core non-temporal statistics may include both `CORE_AND_TEMPORAL_VALID` and `LEGACY_TEMPORAL_INCOMPLETE` rows. Time-dependent calculations (overlap, concurrency, holding periods, realized equity simulation, drawdown, and chronological capital allocation) use only the `CORE_AND_TEMPORAL_VALID` cohort.
+
+The audit now emits four capital-normalized robustness scenarios using the same allocation, fee, slippage, and exposure assumptions as the original capital scenario: original temporal-valid, one-active-trade-per-symbol, no-outlier, and combined one-symbol/no-outlier. Each scenario reports accepted/rejected trades, initial and ending capital, gross and cost-adjusted net return, maximum drawdown, profit factor, winrate, fees, slippage, and maximum gross exposure.
+
+Maximum concurrency is computed with a sweep-line algorithm that processes close events before open events at identical timestamps. The report retains pairwise overlap diagnostics separately and reports maximum total concurrency, maximum same-symbol concurrency, and the timestamp(s) where sweep-line maxima occurred.
+
+Readiness remains advisory and paper-only. Legacy temporal incompleteness is reported transparently and does not automatically become a PASS; blocking-invalid rows still block data quality, and execution plus automatic promotion remain disabled.
+
+### Readiness semantics after HOLD review
+
+The strict global data-quality block is driven by unavailable sources, empty CLOSED input, or `BLOCKING_INVALID` rows. `LEGACY_TEMPORAL_INCOMPLETE` rows are included in the core economic cohort, excluded from temporal simulation, disclosed as a legacy warning, and make temporal simulation readiness `REVIEW` rather than globally blocking data quality.
+
+Core economic readiness evaluates blocking-invalid status, sample adequacy, expectancy, profit factor, concentration, and outlier dependence on the core economic cohort. Temporal simulation readiness evaluates temporal-valid coverage, capital scenario completion, normalized net return, realized drawdown, sample adequacy, and legacy temporal incompleteness. Robustness readiness evaluates every required scenario for completion, accepted funded sample, cost-adjusted net return, profit factor, and maximum drawdown; completed scenarios with negative returns or excessive drawdown cannot pass.
+
+### Aggregate overall readiness after audit round 2
+
+Authoritative `overall_economic_readiness_status` is now a deterministic aggregate of `core_economic_readiness.status`, `temporal_simulation_readiness.status`, and `robustness_readiness.status`: any `BLOCKED`/`BLOCKED_*` component makes overall `BLOCKED`; otherwise any `REVIEW` component makes overall `REVIEW`; only three `PASS` components make overall `PASS`. The previous detailed status is retained only as `legacy_compatibility_economic_status` and cannot override the aggregate.
+
+Robustness accepted-sample adequacy uses `ECON_AUDIT_MIN_VALID_CLOSED_TRADES`: zero accepted funded trades is `BLOCKED_DATA_QUALITY`, a positive accepted count below the configured minimum is `REVIEW`, and accepted count at or above the configured minimum is `PASS`.

@@ -100,7 +100,7 @@ def test_realized_close_to_close_drawdown_is_from_closed_equity(tmp_path):
     cap=rep['equal_allocation_capital_scenario']
     assert cap['realized_close_to_close_equity_curve']
     assert cap['maximum_drawdown_pct'] > 0
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DRAWDOWN'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DRAWDOWN'
 
 
 def test_empty_and_unavailable_database_are_blocked(tmp_path):
@@ -108,10 +108,10 @@ def test_empty_and_unavailable_database_are_blocked(tmp_path):
     assert rep['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
     assert rep['equal_allocation_capital_scenario']['normalized_net_return_pct'] is None
     assert rep['equal_allocation_capital_scenario']['maximum_drawdown_pct'] is None
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DATA_QUALITY'
     missing=generate_paper_economic_reconciliation(str(tmp_path/'missing.db'), str(tmp_path/'m.json'), str(tmp_path/'meq.csv'), str(tmp_path/'mov.csv'), True)
     assert missing['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
-    assert missing['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    assert missing['readiness']['overall_economic_readiness_status']=='BLOCKED' and missing['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DATA_QUALITY'
 
 
 def test_zero_valid_rows_does_not_complete_and_material_mismatch_counts(tmp_path):
@@ -120,14 +120,14 @@ def test_zero_valid_rows_does_not_complete_and_material_mismatch_counts(tmp_path
     assert rep['reconciliation_summary']['reconciliation_status_counts']['MATERIAL_DIFFERENCE']==1
     assert rep['reconciliation_summary']['valid_closed_trades']==0
     assert rep['equal_allocation_capital_scenario']['scenario_status']=='BLOCKED_DATA_QUALITY'
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DATA_QUALITY'
 
 
 def test_negative_normalized_return_does_not_pass(tmp_path):
     rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-01T01:00:00')]
     rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, min_cost_adjusted_normalized_return_pct=0))
     assert rep['equal_allocation_capital_scenario']['normalized_net_return_pct'] < 0
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_NEGATIVE_EXPECTANCY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_NEGATIVE_EXPECTANCY'
 
 
 def test_excessive_concentration_blocks_and_top_contributions(tmp_path):
@@ -139,7 +139,7 @@ def test_excessive_concentration_blocks_and_top_contributions(tmp_path):
     assert c['top_5_symbol_contribution_pct'] is not None
     assert c['top_10_symbol_contribution_pct'] is not None
     assert c['herfindahl_concentration'] is not None
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_CONCENTRATION'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_CONCENTRATION'
 
 
 def test_overlap_dependence_percentage_and_review(tmp_path):
@@ -147,7 +147,8 @@ def test_overlap_dependence_percentage_and_review(tmp_path):
     rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_overlap_dependence_pct=10, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
     assert rep['overlap_audit']['same_symbol_overlap_trade_pct']==100
     assert rep['overlap_audit']['overlap_event_return_contribution_pct'] is not None
-    assert rep['readiness']['overall_economic_readiness_status']=='REVIEW'
+    assert rep['readiness']['overall_economic_readiness_status']=='PASS'
+    assert rep['readiness']['legacy_compatibility_economic_status']=='REVIEW'
 
 
 def test_holding_period_and_calendar_breakdowns(tmp_path):
@@ -175,7 +176,7 @@ def test_overall_readiness_is_deterministic_and_safety_locked(tmp_path):
 def test_blocked_data_has_no_passing_data_dependent_subgates(tmp_path):
     rep,_=run(tmp_path,[])
     econ=rep['readiness']['economic_readiness']
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DATA_QUALITY'
     for gate in ('sample_adequacy','data_quality_adequacy','positive_expectancy','profit_factor','normalized_scenario_return','normalized_maximum_drawdown','concentration','overlap_dependence','outlier_dependence','cost_adjusted_result'):
         assert econ[gate]=='BLOCKED_DATA_QUALITY'
 
@@ -195,7 +196,7 @@ def test_gross_absolute_concentration_and_signed_attribution_are_separate(tmp_pa
     c=rep['concentration']
     assert c['top_1_symbol_contribution_pct']==60
     assert c['top_1_signed_return_contribution_pct']==300
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_CONCENTRATION'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_CONCENTRATION'
 
 
 def test_outlier_gate_uses_absolute_contribution_not_signed(tmp_path):
@@ -203,7 +204,7 @@ def test_outlier_gate_uses_absolute_contribution_not_signed(tmp_path):
     rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=60))
     assert rep['outlier_analysis']['outlier_contribution_pct']==66.6667
     assert rep['outlier_analysis']['signed_outlier_return_contribution_pct']==200
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_OUTLIER_DEPENDENCE'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_OUTLIER_DEPENDENCE'
 
 
 def test_excluded_closed_row_blocks_readiness_even_when_valid_trades_are_profitable(tmp_path):
@@ -219,7 +220,7 @@ def test_excluded_closed_row_blocks_readiness_even_when_valid_trades_are_profita
     assert 'excluded_required_closed_rows' in rep['reconciliation_summary']['data_quality_block_reasons']
     econ=rep['readiness']['economic_readiness']
     assert econ['data_quality_adequacy']=='BLOCKED_DATA_QUALITY'
-    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED_DATA_QUALITY'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED' and rep['readiness']['legacy_compatibility_economic_status']=='BLOCKED_DATA_QUALITY'
     for gate in ('sample_adequacy','data_quality_adequacy','positive_expectancy','profit_factor','normalized_scenario_return','normalized_maximum_drawdown','concentration','overlap_dependence','outlier_dependence','cost_adjusted_result'):
         assert econ[gate] != 'PASS'
 
@@ -234,3 +235,191 @@ def test_zero_total_absolute_return_does_not_pass_outlier_dependence(tmp_path):
     assert rep['outlier_analysis']['outlier_contribution_pct'] is None
     assert rep['readiness']['economic_readiness']['outlier_dependence']=='REVIEW'
     assert rep['readiness']['economic_readiness']['outlier_dependence'] != 'PASS'
+
+def test_phase9d1ba1_legacy_temporal_incomplete_classification_and_cohorts(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP',None),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    tr={t['trade_id']:t for t in rep['reconciliation_summary']['trades']}
+    assert tr[2]['quality_classification']=='LEGACY_TEMPORAL_INCOMPLETE'
+    assert rep['reconciliation_summary']['core_economic_valid_count']==2
+    assert rep['reconciliation_summary']['temporal_valid_count']==1
+    assert rep['reconciliation_summary']['legacy_temporal_incomplete_count']==1
+    assert rep['closed_trade_statistics']['trades']==2
+    assert rep['temporal_closed_trade_statistics']['trades']==1
+    assert rep['robustness_capital_scenarios']['original_temporal_valid_scenario']['accepted_trades']==1
+    assert rep['readiness']['temporal_simulation_readiness']['status']=='REVIEW'
+
+
+def test_phase9d1ba1_sweep_line_close_before_open_and_maximums(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,102,102,2,80,'R','CLOSED','TP','2026-01-01T02:00:00'),
+        (3,'2026-01-01T01:30:00','ETH','LONG',100,103,103,3,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    sweep=rep['overlap_audit']['sweep_line_concurrency']
+    assert sweep['maximum_total_concurrency']==2
+    assert sweep['maximum_same_symbol_concurrency']==1
+    assert '2026-01-01T01:00:00' not in sweep['maximum_total_concurrency_timestamps']
+
+
+def test_phase9d1ba1_robustness_capital_scenarios(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,200,200,100,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T02:00:00'),
+        (3,'2026-01-02T00:00:00','ETH','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-02T01:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    sc=rep['robustness_capital_scenarios']
+    assert sc['one_active_trade_per_symbol_scenario']['rejected_trades']==1
+    assert sc['no_outlier_scenario']['rejected_trades']==1
+    assert sc['one_symbol_no_outlier_scenario']['rejected_trades']==1
+    for name in ('original_temporal_valid_scenario','one_active_trade_per_symbol_scenario','no_outlier_scenario','one_symbol_no_outlier_scenario'):
+        for key in ('accepted_trades','rejected_trades','initial_capital','ending_capital','gross_return','cost_adjusted_net_return','maximum_drawdown','profit_factor','winrate','fees','slippage','maximum_gross_exposure'):
+            assert key in sc[name]
+
+
+def test_phase9d1ba1_paper_only_no_execution_no_promotion(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['governance']['paper_only'] is True
+    assert rep['governance']['execution_allowed'] is False
+    assert rep['governance']['automatic_promotion_allowed'] is False
+    assert rep['readiness']['execution_allowed'] is False
+    assert rep['readiness']['automatic_promotion_allowed'] is False
+
+
+def test_phase9d1ba1_legacy_incomplete_does_not_globally_block_quality(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP',None),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['reconciliation_summary']['data_quality_blocked'] is False
+    assert rep['readiness']['core_economic_readiness']['status']=='PASS'
+    assert rep['readiness']['temporal_simulation_readiness']['status']=='REVIEW'
+    assert rep['reconciliation_summary']['legacy_temporal_incomplete_count']==1
+
+
+def test_phase9d1ba1_invalid_timestamp_ordering_blocks_and_excludes_core(tmp_path):
+    rows=[
+        (1,'2026-01-01T02:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP','2026-01-02T01:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    tr={t['trade_id']:t for t in rep['reconciliation_summary']['trades']}
+    assert tr[1]['quality_classification']=='BLOCKING_INVALID'
+    assert rep['reconciliation_summary']['core_economic_valid_count']==1
+    assert rep['temporal_closed_trade_statistics']['trades']==1
+    assert rep['closed_trade_statistics']['trades']==1
+    assert rep['reconciliation_summary']['data_quality_blocked'] is True
+
+
+def test_phase9d1ba1_negative_robustness_scenario_cannot_pass(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    rr=rep['readiness']['robustness_readiness']
+    assert rr['scenarios']['original_temporal_valid_scenario']['gates']['cost_adjusted_net_return']=='BLOCKED_NEGATIVE_EXPECTANCY'
+    assert rr['status']!='PASS'
+
+
+def test_phase9d1ba1_excessive_robustness_drawdown_cannot_pass(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,50,50,-50,80,'R','CLOSED','SL','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,200,200,100,80,'R','CLOSED','TP','2026-01-02T01:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_realized_drawdown_pct=0.1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    rr=rep['readiness']['robustness_readiness']
+    assert rr['scenarios']['original_temporal_valid_scenario']['gates']['maximum_drawdown']=='BLOCKED_DRAWDOWN'
+    assert rr['status']!='PASS'
+
+
+def test_phase9d1ba1_capacity_rejected_trades_excluded_from_scenario_stats(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T02:00:00'),
+        (2,'2026-01-01T00:30:00','ETH','LONG',100,50,50,-50,80,'R','CLOSED','SL','2026-01-01T03:00:00'),
+    ]
+    cfg=EconomicAuditConfig(initial_capital=10000, allocation_pct_per_trade=60, max_gross_exposure_pct=100, min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999)
+    rep,_=run(tmp_path,rows,cfg)
+    sc=rep['robustness_capital_scenarios']['original_temporal_valid_scenario']
+    assert sc['accepted_trade_ids']==[1]
+    assert sc['capacity_rejected_trade_ids']==[2]
+    assert sc['winrate']==100
+    assert sc['profit_factor_state']=='NO_LOSSES'
+
+
+def test_phase9d1ba1_overlap_denominator_uses_temporal_cohort(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,105,105,5,80,'R','CLOSED','TP','2026-01-01T04:00:00'),
+        (3,'2026-01-02T00:00:00','ETH','LONG',100,185,185,85,80,'R','CLOSED','TP',None),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    ov=rep['overlap_audit']
+    assert ov['overlap_event_return_sum_pct']==15
+    assert ov['temporal_event_return_sum_pct']==15
+    assert ov['overlap_event_return_contribution_pct']==100
+    assert ov['legacy_overlap_event_return_contribution_pct']==15
+
+
+def test_phase9d1ba1_aggregate_blocks_when_robustness_blocked(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['readiness']['robustness_readiness']['status']=='BLOCKED'
+    assert rep['readiness']['overall_economic_readiness_status']=='BLOCKED'
+
+
+def test_phase9d1ba1_temporal_review_forces_overall_review_when_others_pass(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP',None),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['readiness']['core_economic_readiness']['status']=='PASS'
+    assert rep['readiness']['robustness_readiness']['status']=='PASS'
+    assert rep['readiness']['temporal_simulation_readiness']['status']=='REVIEW'
+    assert rep['readiness']['overall_economic_readiness_status']=='REVIEW'
+
+
+def test_phase9d1ba1_accepted_sample_threshold_review_and_pass(tmp_path):
+    (tmp_path/'review').mkdir(); (tmp_path/'passed').mkdir()
+    one=[(1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00')]
+    review,_=run(tmp_path/'review',one,EconomicAuditConfig(min_valid_closed_trades=2, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    gate=review['readiness']['robustness_readiness']['scenarios']['original_temporal_valid_scenario']['gates']['accepted_sample']
+    assert gate=='REVIEW'
+    two=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP','2026-01-02T01:00:00'),
+    ]
+    passed,_=run(tmp_path/'passed',two,EconomicAuditConfig(min_valid_closed_trades=2, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    gate=passed['readiness']['robustness_readiness']['scenarios']['original_temporal_valid_scenario']['gates']['accepted_sample']
+    assert gate=='PASS'
+
+
+def test_phase9d1ba1_overall_pass_requires_all_components_pass_and_governance_locked(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP','2026-01-02T01:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=2, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['readiness']['core_economic_readiness']['status']=='PASS'
+    assert rep['readiness']['temporal_simulation_readiness']['status']=='PASS'
+    assert rep['readiness']['robustness_readiness']['status']=='PASS'
+    assert rep['readiness']['overall_economic_readiness_status']=='PASS'
+    assert rep['governance']['paper_only'] is True
+    assert rep['governance']['writes_to_broker'] is False
+    assert rep['governance']['execution_allowed'] is False
+    assert rep['governance']['automatic_promotion_allowed'] is False
+
+
+def test_phase9d1ba1_legacy_overall_cannot_override_aggregate(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,111,111,11,80,'R','CLOSED','TP','2026-01-01T04:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_overlap_dependence_pct=10, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['readiness']['legacy_compatibility_economic_status']=='REVIEW'
+    assert rep['readiness']['overall_economic_readiness_status']=='PASS'
