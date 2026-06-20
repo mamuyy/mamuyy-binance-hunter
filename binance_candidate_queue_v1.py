@@ -48,7 +48,7 @@ def fetch_exchange_info(base_url: str | None = None, cache_path: Path = EXCHANGE
 
 def fetch_candidates(db_path: Path = DB_PATH, exchange_info: dict | None = None):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=MAX_SIGNAL_AGE_HOURS)).isoformat()
-    diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "rejected_symbol_count": 0, "rejection_reasons": {}}
+    diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "rejected_symbol_count": 0, "rejection_reasons": {}, "rejected_symbols": []}
     if exchange_info is None:
         exchange_info = fetch_exchange_info()
     with _connect_readonly(db_path) as conn:
@@ -75,6 +75,7 @@ def fetch_candidates(db_path: Path = DB_PATH, exchange_info: dict | None = None)
         if not validation.valid:
             diagnostics["rejected_symbol_count"] += 1
             diagnostics["rejection_reasons"][validation.reason] = diagnostics["rejection_reasons"].get(validation.reason, 0) + 1
+            diagnostics["rejected_symbols"].append(validation.as_dict())
             continue
         candidates.append({"rank": len(candidates)+1, "symbol": symbol, "timestamp": row["timestamp"], "score": row["score"], "price": row["price"], "regime_name": row["regime_name"], "pressure_score": row["pressure_score"], "oi_expansion_rate": row["oi_expansion_rate"], "taker_delta": row["taker_delta"], "squeeze_probability": row["squeeze_probability"], "whale_activity": row["whale_activity"], "squeeze_risk": row["squeeze_risk"], "funding_warning": row["funding_warning"], "data_source": CANDIDATE_SOURCE, "symbol_validation": validation.as_dict(), "status": "PROPOSAL_ONLY", "execution_allowed": False})
         if len(candidates) >= MAX_CANDIDATES: break

@@ -101,8 +101,10 @@ def _fetch_kline_pages(base_url: str, symbol: str, start: datetime, end: datetim
         if next_cursor <= cursor: break
         cursor = next_cursor
         if len(batch) < LIMIT: break
-    complete = cursor > end_ms or (rows and _parse(_iso(rows[-1][6])) >= end - timedelta(minutes=20)) or not rows
-    return rows, complete and pages < max_pages or complete
+    if not rows:
+        return rows, False
+    complete = cursor > end_ms or _parse(_iso(rows[-1][6])) >= end - timedelta(minutes=20)
+    return rows, complete
 
 def sync_market_data(db_path='mamuyy_hunter.db', base_url=BASE_URL, output=REPORT):
     path=sqlite_path(str(db_path)); init_db(path)

@@ -191,3 +191,43 @@ def test_backfill_lineage_helpers(tmp_path):
         assert _insert_flow_if_missing(c, {'timestamp':'2026-01-01T00:00:00+00:00','symbol':'BTCUSDT'})
         assert c.execute("SELECT data_source FROM signals").fetchone()[0] == 'HISTORICAL_BACKFILL'
         assert c.execute("SELECT data_source FROM flow_logs").fetchone()[0] == 'HISTORICAL_BACKFILL'
+
+
+def test_queue_persists_rejected_symbol_details(tmp_path):
+    db=tmp_path/'q3.db'; init_db(str(db)); now=datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO signals(timestamp,symbol,price,score,pressure_score,squeeze_risk,funding_warning,data_source) VALUES(?,?,?,?,?,?,?,?)", (now,'NOPEUSDT',100,90,80,'LOW','','LIVE_SCANNER'))
+    candidates, diag=fetch_candidates(db, exchange_info={'symbols':[]})
+    assert candidates == []
+    assert diag['rejected_symbols'][0]['symbol'] == 'NOPEUSDT'
+    assert diag['rejected_symbols'][0]['reason'] == 'SYMBOL_NOT_FOUND'
+
+
+def test_sync_paginates_more_than_1500_candles_and_no_data_is_incomplete(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'p.db'; init_db(str(db)); Path('reports').mkdir()
+    monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
+    import market_data_sync as mds
+    mds.MAX_PAGES=3; mds.LIMIT=1500; mds.DEFAULT_CORE_LOOKBACK_HOURS=400
+    ex={'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}
+    page_calls={'n':0}
+    def page(start, count):
+        return [[start+i*900000,'1','2','1','1','1',start+(i+1)*900000,'1','1','1','1','0'] for i in range(count)]
+    def fake_get(url, **kwargs):
+        resp=Mock(); resp.status_code=200; resp.text=''; resp.raise_for_status=lambda: None
+        if 'exchangeInfo' in url: resp.json.return_value=ex; return resp
+        page_calls['n'] += 1; start=kwargs['params']['startTime']
+        resp.json.return_value=page(start, 1500 if page_calls['n'] == 1 else 10)
+        return resp
+    with patch('requests.get', fake_get):
+        r=sync_market_data(str(db), 'https://x', tmp_path/'p.json')
+    assert page_calls['n'] == 2
+    with sqlite3.connect(db) as c:
+        assert c.execute('SELECT COUNT(*) FROM historical_klines').fetchone()[0] == 1510
+    def empty_get(url, **kwargs):
+        resp=Mock(); resp.status_code=200; resp.text=''; resp.raise_for_status=lambda: None
+        resp.json.return_value=ex if 'exchangeInfo' in url else []
+        return resp
+    with patch('requests.get', empty_get):
+        r=sync_market_data(str(tmp_path/'empty.db'), 'https://x', tmp_path/'e.json')
+    assert r['status'] == 'INCOMPLETE_SYNC'
+    assert 'BTCUSDT' in r['incomplete_symbols']
