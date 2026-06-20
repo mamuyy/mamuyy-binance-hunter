@@ -7,16 +7,12 @@ from json_utils import atomic_write_json
 from symbol_validation import validate_symbol, SymbolValidationResult
 from database import sqlite_path
 from exchange_info_cache import get_exchange_info
+from interval_config import operational_kline_interval, interval_minutes
+from candidate_batch_state import update_state_from_validation
 
 QUEUE_PATH=Path('reports/binance_candidate_queue.json'); OUTPUT_PATH=Path('reports/candidate_validation_report.json'); DB_PATH=Path('mamuyy_hunter.db'); HORIZONS_HOURS=[24,48,72]
 
 def parse_ts(v): return datetime.fromisoformat(str(v).replace('Z','+00:00'))
-
-def interval_minutes(interval: str | None = None) -> int:
-    value = (interval or os.getenv('CANDLE_INTERVAL', '15m')).strip().lower()
-    if value.endswith('m'): return int(value[:-1])
-    if value.endswith('h'): return int(value[:-1]) * 60
-    return 15
 
 def max_observation_lag_minutes() -> int:
     explicit = os.getenv('CANDIDATE_VALIDATION_MAX_OBSERVATION_LAG_MINUTES')
@@ -27,7 +23,7 @@ def max_observation_lag_minutes() -> int:
 def nearest_price_after(conn, symbol, target_ts, max_lag_minutes: int | None = None, interval: str | None = None):
     lag = max_lag_minutes if max_lag_minutes is not None else max_observation_lag_minutes()
     latest_allowed = target_ts + timedelta(minutes=lag)
-    use_interval = interval or os.getenv('CANDLE_INTERVAL', '15m')
+    use_interval = interval or operational_kline_interval()
     r=conn.execute('SELECT timestamp, close FROM historical_klines WHERE symbol=? AND interval=? AND timestamp>=? AND timestamp<=? AND close IS NOT NULL ORDER BY timestamp ASC LIMIT 1', (symbol, use_interval, target_ts.isoformat(), latest_allowed.isoformat())).fetchone()
     if not r: return None
     observed_ts = parse_ts(str(r[0])); observed_price = float(r[1])
@@ -80,6 +76,8 @@ def main(argv=None):
     exchange_reason = exchange_result.reason if exchange_result else None
     with sqlite3.connect(f'file:{sqlite_path(str(DB_PATH))}?mode=ro', uri=True) as conn: results=[validate_candidate(conn,c, freshness, exchange_info=exchange_info, exchange_reason=exchange_reason) for c in candidates]
     ready_h=sum(1 for r in results for h in r['horizons'].values() if h['status']=='READY')
-    report={'phase':'Phase 9D.1A Candidate Validation','mode':'READ_ONLY_ANALYTICS','source_queue':ns.input,'source_db':str(DB_PATH),'candidate_count':len(results),'ready_count':sum(1 for r in results if r['status'] in {'READY','PARTIALLY_READY'}),'pending_count':sum(1 for r in results if r['status']=='PENDING'),'blocked_count':sum(1 for r in results if r['status']=='BLOCKED'),'ready_horizon_count':ready_h,'freshness_status':freshness.get('status'),'governance':{'paper_only':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False},'results':results}
-    atomic_write_json(ns.output, report); print(f"Report generated: {ns.output}")
+    report={'phase':'Phase 9D.1A Candidate Validation', 'interval': operational_kline_interval(),'mode':'READ_ONLY_ANALYTICS','source_queue':ns.input,'source_db':str(DB_PATH),'candidate_count':len(results),'ready_count':sum(1 for r in results if r['status'] in {'READY','PARTIALLY_READY'}),'pending_count':sum(1 for r in results if r['status']=='PENDING'),'blocked_count':sum(1 for r in results if r['status']=='BLOCKED'),'ready_horizon_count':ready_h,'freshness_status':freshness.get('status'),'governance':{'paper_only':True,'writes_to_database':False,'writes_to_broker':False,'execution_allowed':False,'automatic_promotion_allowed':False},'results':results}
+    atomic_write_json(ns.output, report)
+    update_state_from_validation(report, ns.output, archive_path=ns.input)
+    print(f"Report generated: {ns.output}")
 if __name__=='__main__': main()

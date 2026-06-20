@@ -6,6 +6,7 @@ from config import config
 from json_utils import atomic_write_json
 from infrastructure_capacity import build_capacity_report
 from database import sqlite_path
+from interval_config import operational_kline_interval
 
 def _parse(v): return datetime.fromisoformat(str(v).replace('Z','+00:00')) if v else None
 def _age(ts, now): return round((now-ts).total_seconds()/60,2) if ts else None
@@ -15,7 +16,7 @@ def load_candidates(path=Path('reports/binance_candidate_queue.json')):
     except Exception: return []
 
 def check_freshness(db_path='mamuyy_hunter.db', candidate_path=Path('reports/binance_candidate_queue.json'), max_age_minutes=None):
-    now=datetime.now(timezone.utc); max_age=max_age_minutes or int(os.getenv('DATA_FRESHNESS_MAX_AGE_MINUTES','30')); interval=os.getenv('CANDLE_INTERVAL', '15m')
+    now=datetime.now(timezone.utc); max_age=max_age_minutes or int(os.getenv('DATA_FRESHNESS_MAX_AGE_MINUTES','30')); interval=operational_kline_interval()
     reasons=[]; missing=[]; stale=[]; future=0; latest=None; per={}
     candidates=load_candidates(candidate_path); symbols=sorted({str(c.get('symbol','')).upper() for c in candidates if c.get('symbol')})
     try:

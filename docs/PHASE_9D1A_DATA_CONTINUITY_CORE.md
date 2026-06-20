@@ -71,3 +71,11 @@ Legacy candidate batches without embedded symbol-validation evidence are validat
 Candidate batches now have lifecycle sidecars (`<batch_id>.state.json`) and an atomic `reports/candidate_batches/registry.json` registry so archived batch status can be tracked without rewriting immutable batch payloads.
 
 Freshness checks and horizon observations filter strictly on the configured candle interval. Data from another interval cannot satisfy global freshness, candidate-symbol coverage, or validation horizon observations.
+
+## Final audit round 4 lifecycle controls
+
+Immutable batch JSON files remain append-only artifacts. Operational lifecycle now lives in mutable sidecars (`<batch_id>.state.json`) and the atomic registry. Validation updates sidecar counts for READY, pending, retriable blocked, terminal invalid, total required horizons, close reason, closed timestamp, and validation report path.
+
+Lifecycle status is `OPEN` before evaluation, `WAITING_DATA` for immature or retriable blocked horizons, `COMPLETE` only when every required horizon is READY, and `TERMINAL_INVALID` only when all unresolved horizons are permanently invalid. Market data sync loads active batches from sidecars/registry only and ignores closed batches, state files, registry files, and the latest-pointer queue.
+
+All data-continuity components now resolve the operational kline interval through one shared helper and include the resolved interval in sync, freshness, validation, and batch state/report metadata.

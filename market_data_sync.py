@@ -8,9 +8,11 @@ from database import init_db, sqlite_path
 from json_utils import atomic_write_json
 from symbol_validation import validate_symbol
 from infrastructure_capacity import lightweight_sync_allowed
+from interval_config import operational_kline_interval
+from candidate_batch_state import load_active_batch_archives
 
 BASE_URL = os.getenv('BINANCE_BASE_URL', 'https://fapi.binance.com')
-INTERVAL = os.getenv('DATA_SYNC_INTERVAL', '15m')
+INTERVAL = operational_kline_interval()
 REPORT = Path('reports/market_data_sync_report.json')
 MAX_PAGES = int(os.getenv('DATA_SYNC_MAX_PAGES_PER_SYMBOL', '10'))
 LIMIT = int(os.getenv('DATA_SYNC_KLINE_LIMIT', '1500'))
@@ -44,14 +46,14 @@ def fetch_exchange_info(base_url=BASE_URL):
     return data
 
 def _load_open_batches(reports_dir=Path('reports')):
-    paths=[reports_dir/'binance_candidate_queue.json']
-    if (reports_dir/'candidate_batches').exists(): paths += list((reports_dir/'candidate_batches').glob('*.json'))
     batches=[]
-    for path in paths:
+    for path in load_active_batch_archives(reports_dir):
+        if path.name == 'registry.json' or path.name.endswith('.state.json'):
+            continue
         try:
-            data=json.loads(path.read_text(encoding='utf-8'))
-            if data.get('status') == 'OPEN' or path.name == 'binance_candidate_queue.json': batches.append(data)
-        except Exception: pass
+            batches.append(json.loads(path.read_text(encoding='utf-8')))
+        except Exception:
+            pass
     return batches
 
 def _open_candidate_symbols(reports_dir=Path('reports')):
@@ -81,7 +83,8 @@ def _candidate_earliest(symbol: str, reports_dir=Path('reports')) -> datetime | 
     return earliest
 
 def earliest_required_timestamp(conn, symbol: str, now: datetime, overlap_hours: int) -> datetime:
-    row=conn.execute("SELECT MAX(timestamp) FROM historical_klines WHERE symbol=? AND interval=?", (symbol, INTERVAL)).fetchone()
+    interval = operational_kline_interval()
+    row=conn.execute("SELECT MAX(timestamp) FROM historical_klines WHERE symbol=? AND interval=?", (symbol, interval)).fetchone()
     latest=_parse(row[0]) if row and row[0] else None
     candidates=[now - timedelta(hours=DEFAULT_CORE_LOOKBACK_HOURS)]
     if latest: candidates.append(latest - timedelta(hours=overlap_hours))
@@ -92,7 +95,7 @@ def earliest_required_timestamp(conn, symbol: str, now: datetime, overlap_hours:
 def _fetch_kline_pages(base_url: str, symbol: str, start: datetime, end: datetime, max_pages: int) -> tuple[list[list[Any]], bool]:
     rows=[]; cursor=_ms(start); end_ms=_ms(end); pages=0
     while cursor <= end_ms and pages < max_pages:
-        batch=_http_json(base_url+'/fapi/v1/klines', params={'symbol': symbol, 'interval': INTERVAL, 'startTime': cursor, 'endTime': end_ms, 'limit': LIMIT})
+        batch=_http_json(base_url+'/fapi/v1/klines', params={'symbol': symbol, 'interval': operational_kline_interval(), 'startTime': cursor, 'endTime': end_ms, 'limit': LIMIT})
         if not isinstance(batch, list): raise RuntimeError('INVALID_KLINES_RESPONSE')
         pages += 1
         if not batch: break
@@ -111,7 +114,7 @@ def sync_market_data(db_path='mamuyy_hunter.db', base_url=BASE_URL, output=REPOR
     min_free=int(os.getenv('DATA_SYNC_MIN_FREE_BYTES','50000000'))
     allowed, capacity = lightweight_sync_allowed(db_path=path, min_free_bytes=min_free)
     if not allowed:
-        report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode':'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status':'BLOCKED_CAPACITY', 'database_path': path, 'errors': {'capacity':'INSUFFICIENT_FREE_SPACE'}, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
+        report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode':'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status':'BLOCKED_CAPACITY', 'database_path': path, 'interval': operational_kline_interval(), 'errors': {'capacity':'INSUFFICIENT_FREE_SPACE'}, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
         atomic_write_json(output, report); return report
     exchange_info=fetch_exchange_info(base_url)
     symbols, rejected = build_universe(exchange_info)
@@ -125,13 +128,13 @@ def sync_market_data(db_path='mamuyy_hunter.db', base_url=BASE_URL, output=REPOR
                 before=conn.total_changes
                 for k in rows:
                     if not isinstance(k, list) or len(k) < 11: raise RuntimeError('INVALID_KLINE_ROW')
-                    conn.execute("""INSERT OR IGNORE INTO historical_klines(timestamp,symbol,interval,open,high,low,close,volume,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (_iso(k[6]), sym, INTERVAL, float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5]), float(k[7]), float(k[8]), float(k[9]), float(k[10])))
+                    conn.execute("""INSERT OR IGNORE INTO historical_klines(timestamp,symbol,interval,open,high,low,close,volume,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (_iso(k[6]), sym, operational_kline_interval(), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5]), float(k[7]), float(k[8]), float(k[9]), float(k[10])))
                 conn.commit(); per[sym]={'requested_start': start.isoformat(), 'rows_received': len(rows), 'inserted': conn.total_changes-before, 'complete': complete}; inserted += per[sym]['inserted']
                 if not complete: incomplete.append(sym)
             except Exception as exc:
                 errors[sym]=str(exc)
     status='INCOMPLETE_SYNC' if incomplete else 'ERROR' if errors else 'OK'
-    report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode': 'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status': status, 'database_path': path, 'symbols': symbols, 'rejected_symbols': rejected, 'overlap_hours': overlap, 'max_pages_per_symbol': MAX_PAGES, 'candles_inserted': inserted, 'per_symbol': per, 'incomplete_symbols': incomplete, 'errors': errors, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
+    report={'generated_at': datetime.now(timezone.utc).isoformat(), 'mode': 'LIGHTWEIGHT_KLINE_SYNC_ONLY', 'status': status, 'database_path': path, 'symbols': symbols, 'rejected_symbols': rejected, 'interval': operational_kline_interval(), 'overlap_hours': overlap, 'max_pages_per_symbol': MAX_PAGES, 'candles_inserted': inserted, 'per_symbol': per, 'incomplete_symbols': incomplete, 'errors': errors, 'capacity': capacity, 'governance': {'paper_only': True, 'writes_to_broker': False, 'execution_allowed': False, 'automatic_promotion_allowed': False}}
     atomic_write_json(output, report); return report
 
 def main():

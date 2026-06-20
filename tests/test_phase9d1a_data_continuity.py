@@ -160,7 +160,7 @@ def test_validator_honors_all_freshness_blocks_and_tolerance(tmp_path, monkeypat
 def test_sync_pagination_retry_incomplete_candidate_earliest_and_capacity(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path); db=tmp_path/'sync.db'; init_db(str(db))
     old=(datetime.now(timezone.utc)-timedelta(days=2)).isoformat()
-    Path('reports').mkdir(); Path('reports/binance_candidate_queue.json').write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'BTCUSDT','timestamp':old}]}), encoding='utf-8')
+    Path('reports/candidate_batches').mkdir(parents=True); active=Path('reports/candidate_batches/active_sync.json'); active.write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'BTCUSDT','timestamp':old}]}), encoding='utf-8'); active.with_name(active.stem + '.state.json').write_text(json.dumps({'batch_id':'active_sync','archive_path':str(active),'lifecycle_status':'WAITING_DATA'}), encoding='utf-8')
     monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT'); monkeypatch.setenv('DATA_SYNC_MAX_PAGES_PER_SYMBOL','2')
     import market_data_sync as mds
     mds.MAX_PAGES=2; mds.LIMIT=2
@@ -298,3 +298,108 @@ def test_exchange_cache_metadata_ttl_malformed_and_queue_empty_reason(tmp_path, 
     report=build_report(candidates, diag)
     assert diag['exchange_info']['reason'] == 'EXCHANGE_INFO_CACHE_MALFORMED'
     assert report['empty_reason'] == 'EXCHANGE_INFO_CACHE_MALFORMED'
+
+
+def _queue_report_with_one_candidate(sig_ts, symbol='BTCUSDT'):
+    return {
+        'batch_id': 'batch_' + symbol.lower(),
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'candidate_count': 1,
+        'status': 'OPEN',
+        'validation_horizons': [24, 48, 72],
+        'source': 'LIVE_SCANNER',
+        'interval': '15m',
+        'governance': {'paper_only': True},
+        'candidates': [{'rank':1,'symbol':symbol,'timestamp':sig_ts.isoformat(),'price':100,'score':90,'symbol_validation':{'symbol':symbol,'valid': symbol == 'BTCUSDT','reason': None if symbol == 'BTCUSDT' else 'SYMBOL_NOT_FOUND'}}],
+    }
+
+
+def test_new_batch_starts_open_and_registry_updates_on_waiting_data(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir()
+    report=_queue_report_with_one_candidate(datetime.now(timezone.utc))
+    from binance_candidate_queue_v1 import write_reports
+    archive=write_reports(report)
+    state=json.loads(archive.with_name(archive.stem + '.state.json').read_text())
+    assert state['lifecycle_status'] == 'OPEN'
+    validator_main(['--input', str(archive), '--output', str(tmp_path/'validation.json')])
+    state=json.loads(archive.with_name(archive.stem + '.state.json').read_text())
+    registry=json.loads(Path('reports/candidate_batches/registry.json').read_text())
+    assert state['lifecycle_status'] == 'WAITING_DATA'
+    assert state['pending_horizon_count'] == 3
+    assert registry['batches'][0]['lifecycle_status'] == 'WAITING_DATA'
+
+
+def test_batch_lifecycle_complete_terminal_invalid_and_reload(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir()
+    from binance_candidate_queue_v1 import write_reports
+    sig_dt=datetime.now(timezone.utc)-timedelta(hours=73)
+    complete_report=_queue_report_with_one_candidate(sig_dt)
+    complete_report['batch_id']='complete_batch'
+    archive=write_reports(complete_report)
+    with sqlite3.connect(db) as c:
+        for h in [24,48,72]:
+            c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((sig_dt+timedelta(hours=h, minutes=5)).isoformat(),'BTCUSDT','15m',101+h))
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (datetime.now(timezone.utc).isoformat(),'BTCUSDT','15m',101))
+    validator_main(['--input', str(archive), '--output', str(tmp_path/'complete_validation.json')])
+    state_path=archive.with_name(archive.stem + '.state.json')
+    state=json.loads(state_path.read_text())
+    assert state['lifecycle_status'] == 'COMPLETE'
+    assert state['ready_horizon_count'] == 3
+    assert state['closed_at'] is not None
+    # Reload from disk to prove process-restart persistence.
+    assert json.loads(state_path.read_text())['lifecycle_status'] == 'COMPLETE'
+    invalid_report=_queue_report_with_one_candidate(sig_dt, symbol='NOPEUSDT')
+    invalid_report['batch_id']='invalid_batch'
+    invalid_archive=write_reports(invalid_report)
+    validator_main(['--input', str(invalid_archive), '--output', str(tmp_path/'invalid_validation.json')])
+    invalid_state=json.loads(invalid_archive.with_name(invalid_archive.stem + '.state.json').read_text())
+    assert invalid_state['lifecycle_status'] == 'TERMINAL_INVALID'
+    assert invalid_state['terminal_invalid_horizon_count'] == 3
+
+
+def test_stale_or_missing_data_lifecycle_waiting_data(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir()
+    from binance_candidate_queue_v1 import write_reports
+    sig_dt=datetime.now(timezone.utc)-timedelta(hours=25)
+    report=_queue_report_with_one_candidate(sig_dt); report['batch_id']='missing_batch'
+    archive=write_reports(report)
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((datetime.now(timezone.utc)-timedelta(hours=2)).isoformat(),'BTCUSDT','15m',100))
+    validator_main(['--input', str(archive), '--output', str(tmp_path/'missing_validation.json')])
+    state=json.loads(archive.with_name(archive.stem + '.state.json').read_text())
+    assert state['lifecycle_status'] == 'WAITING_DATA'
+    assert state['retriable_blocked_horizon_count'] >= 1
+    assert state['closed_at'] is None
+
+
+def test_sync_uses_lifecycle_state_not_latest_or_closed_archives(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); Path('reports/candidate_batches').mkdir(parents=True)
+    active_archive=Path('reports/candidate_batches/active.json'); complete_archive=Path('reports/candidate_batches/complete.json'); terminal_archive=Path('reports/candidate_batches/terminal.json')
+    active_archive.write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'BTCUSDT','timestamp':'2026-01-01T00:00:00+00:00'}]}), encoding='utf-8')
+    complete_archive.write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'ETHUSDT','timestamp':'2026-01-01T00:00:00+00:00'}]}), encoding='utf-8')
+    terminal_archive.write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'BNBUSDT','timestamp':'2026-01-01T00:00:00+00:00'}]}), encoding='utf-8')
+    for path,status in [(active_archive,'WAITING_DATA'),(complete_archive,'COMPLETE'),(terminal_archive,'TERMINAL_INVALID')]:
+        path.with_name(path.stem + '.state.json').write_text(json.dumps({'batch_id':path.stem,'archive_path':str(path),'lifecycle_status':status}), encoding='utf-8')
+    Path('reports/candidate_batches/registry.json').write_text(json.dumps({'batches':[{'batch_id':'active','archive_path':str(active_archive),'lifecycle_status':'WAITING_DATA'},{'batch_id':'complete','archive_path':str(complete_archive),'lifecycle_status':'COMPLETE'},{'batch_id':'terminal','archive_path':str(terminal_archive),'lifecycle_status':'TERMINAL_INVALID'}]}), encoding='utf-8')
+    Path('reports/binance_candidate_queue.json').write_text(json.dumps({'status':'OPEN','candidates':[{'symbol':'DOGEUSDT','timestamp':'2026-01-01T00:00:00+00:00'}]}), encoding='utf-8')
+    from market_data_sync import _open_candidate_symbols, _load_open_batches
+    assert _open_candidate_symbols() == {'BTCUSDT'}
+    loaded_names=[Path(b.get('archive_path','')).name for b in _load_open_batches() if isinstance(b, dict)]
+    assert 'registry.json' not in loaded_names and not any(name.endswith('.state.json') for name in loaded_names)
+
+
+def test_shared_interval_is_reported_across_components(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir(); monkeypatch.setenv('OPERATIONAL_KLINE_INTERVAL','5m'); monkeypatch.setenv('DATA_SYNC_CORE_SYMBOLS','BTCUSDT')
+    from exchange_info_cache import write_exchange_info_cache
+    from interval_config import operational_kline_interval
+    assert operational_kline_interval() == '5m'
+    q=tmp_path/'q.json'; q.write_text(json.dumps({'candidates':[]}), encoding='utf-8')
+    freshness=check_freshness(str(db), q, max_age_minutes=30)
+    assert freshness['interval'] == '5m'
+    # Block sync before HTTP so report still proves interval propagation.
+    with patch('shutil.disk_usage', return_value=(100, 99, 1)):
+        sync_report=sync_market_data(str(db), 'https://x', tmp_path/'sync.json')
+    assert sync_report['interval'] == '5m'
+    validation_out=tmp_path/'val.json'; q.write_text(json.dumps({'candidates':[]}), encoding='utf-8')
+    validator_main(['--input', str(q), '--output', str(validation_out)])
+    assert json.loads(validation_out.read_text())['interval'] == '5m'

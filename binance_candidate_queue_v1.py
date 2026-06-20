@@ -7,7 +7,9 @@ from uuid import uuid4
 from json_utils import atomic_write_json
 from database import sqlite_path
 from exchange_info_cache import get_exchange_info
+from candidate_batch_state import initial_state_for_report, update_registry
 from symbol_validation import validate_symbol, DEFAULT_POLICY_DENYLIST, SymbolValidationResult, policy_denylist
+from interval_config import operational_kline_interval
 
 DB_PATH = Path("mamuyy_hunter.db")
 REPORTS_DIR = Path("reports")
@@ -97,7 +99,8 @@ def build_report(candidates, diagnostics, db_path: Path = DB_PATH):
             reason = "SYMBOL_VALIDATION_BLOCKED"
         else:
             reason = "NO_QUALIFYING_LIVE_SCANNER_CANDIDATES"
-    return {"batch_id": batch_id, "generated_at": generated_at, "phase": "Phase 9D.1A Candidate Queue", "mode": "READ_ONLY_PROPOSAL", "source_db": str(db_path), "candidate_source": CANDIDATE_SOURCE, "source": CANDIDATE_SOURCE, "status": "OPEN", "validation_horizons": [24,48,72], "empty_reason": reason, "rules": {"min_score": MIN_SCORE, "squeeze_risk": "LOW", "funding_warning": "empty_or_null", "excluded_symbols": sorted(DEFAULT_POLICY_DENYLIST), "max_candidates": MAX_CANDIDATES, "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS}, "safety": {"paper_only": True, "real_binance_enabled": False, "testnet_order_enabled": False, "auto_execution_enabled": False, "manual_review_required": True, "writes_to_database": False, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "governance": {"paper_only": True, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "diagnostics": diagnostics, "candidate_count": len(candidates), "candidates": candidates}
+    interval = operational_kline_interval()
+    return {"batch_id": batch_id, "generated_at": generated_at, "phase": "Phase 9D.1A Candidate Queue", "mode": "READ_ONLY_PROPOSAL", "source_db": str(db_path), "candidate_source": CANDIDATE_SOURCE, "source": CANDIDATE_SOURCE, "status": "OPEN", "lifecycle_status": "OPEN", "interval": interval, "validation_horizons": [24,48,72], "empty_reason": reason, "rules": {"interval": interval, "min_score": MIN_SCORE, "squeeze_risk": "LOW", "funding_warning": "empty_or_null", "excluded_symbols": sorted(DEFAULT_POLICY_DENYLIST), "max_candidates": MAX_CANDIDATES, "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS}, "safety": {"paper_only": True, "real_binance_enabled": False, "testnet_order_enabled": False, "auto_execution_enabled": False, "manual_review_required": True, "writes_to_database": False, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "governance": {"paper_only": True, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "diagnostics": diagnostics, "candidate_count": len(candidates), "candidates": candidates}
 
 
 def _update_batch_registry(report, batch_path: Path, state_path: Path) -> None:
@@ -128,16 +131,12 @@ def write_reports(report):
     if not batch_path.exists():
         atomic_write_json(batch_path, report)
     if not state_path.exists():
-        atomic_write_json(state_path, {
-            "batch_id": report["batch_id"],
-            "status": report.get("status", "OPEN"),
-            "archive_path": str(batch_path),
-            "generated_at": report.get("generated_at"),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "validation_horizons": report.get("validation_horizons", []),
-            "governance": report.get("governance", {}),
-        })
-    _update_batch_registry(report, batch_path, state_path)
+        atomic_write_json(state_path, initial_state_for_report(report, batch_path))
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        update_registry(state, BATCH_DIR / "registry.json")
+    except Exception:
+        _update_batch_registry(report, batch_path, state_path)
     latest = dict(report); latest["archive_path"] = str(batch_path); latest["state_path"] = str(state_path)
     atomic_write_json(OUTPUT_PATH, latest)
     return batch_path
