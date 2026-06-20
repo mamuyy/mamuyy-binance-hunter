@@ -61,3 +61,9 @@ Readiness remains advisory and paper-only. Legacy temporal incompleteness is rep
 The strict global data-quality block is driven by unavailable sources, empty CLOSED input, or `BLOCKING_INVALID` rows. `LEGACY_TEMPORAL_INCOMPLETE` rows are included in the core economic cohort, excluded from temporal simulation, disclosed as a legacy warning, and make temporal simulation readiness `REVIEW` rather than globally blocking data quality.
 
 Core economic readiness evaluates blocking-invalid status, sample adequacy, expectancy, profit factor, concentration, and outlier dependence on the core economic cohort. Temporal simulation readiness evaluates temporal-valid coverage, capital scenario completion, normalized net return, realized drawdown, sample adequacy, and legacy temporal incompleteness. Robustness readiness evaluates every required scenario for completion, accepted funded sample, cost-adjusted net return, profit factor, and maximum drawdown; completed scenarios with negative returns or excessive drawdown cannot pass.
+
+### Aggregate overall readiness after audit round 2
+
+Authoritative `overall_economic_readiness_status` is now a deterministic aggregate of `core_economic_readiness.status`, `temporal_simulation_readiness.status`, and `robustness_readiness.status`: any `BLOCKED`/`BLOCKED_*` component makes overall `BLOCKED`; otherwise any `REVIEW` component makes overall `REVIEW`; only three `PASS` components make overall `PASS`. The previous detailed status is retained only as `legacy_compatibility_economic_status` and cannot override the aggregate.
+
+Robustness accepted-sample adequacy uses `ECON_AUDIT_MIN_VALID_CLOSED_TRADES`: zero accepted funded trades is `BLOCKED_DATA_QUALITY`, a positive accepted count below the configured minimum is `REVIEW`, and accepted count at or above the configured minimum is `PASS`.
