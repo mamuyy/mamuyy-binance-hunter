@@ -10,6 +10,14 @@ from database import get_connection, init_db
 from scanner import BinanceFuturesScanner
 
 
+def _is_closed_candle(close_time: Any, now: datetime) -> bool:
+    if hasattr(close_time, "to_pydatetime"):
+        close_time = close_time.to_pydatetime()
+    if close_time.tzinfo is None:
+        close_time = close_time.replace(tzinfo=timezone.utc)
+    return close_time <= now
+
+
 KLINE_COLUMNS = [
     "open_time",
     "open",
@@ -30,6 +38,7 @@ KLINE_COLUMNS = [
 class BackfillResult:
     symbols: int = 0
     candles_inserted: int = 0
+    open_candles_skipped: int = 0
     funding_inserted: int = 0
     open_interest_inserted: int = 0
     signals_inserted: int = 0
@@ -41,6 +50,7 @@ class BackfillResult:
         return {
             "symbols": self.symbols,
             "candles_inserted": self.candles_inserted,
+            "open_candles_skipped": self.open_candles_skipped,
             "funding_inserted": self.funding_inserted,
             "open_interest_inserted": self.open_interest_inserted,
             "signals_inserted": self.signals_inserted,
@@ -377,6 +387,12 @@ def run_historical_backfill(
             print(f"[{index}/{len(symbols)}] Backfill {symbol}")
             try:
                 candles = _fetch_klines(scanner, symbol, interval, start, end, rate_limit_seconds)
+                open_mask = candles["close_time"].apply(lambda close_time: not _is_closed_candle(close_time, end)) if not candles.empty else []
+                skipped_open = int(open_mask.sum()) if len(open_mask) else 0
+                if skipped_open:
+                    result.open_candles_skipped += skipped_open
+                    print(f"  skipped unfinished candles={skipped_open}")
+                    candles = candles.loc[~open_mask].copy()
                 funding_rows = _fetch_funding_history(scanner, symbol, start, end, rate_limit_seconds)
                 oi_rows = _fetch_open_interest_history(scanner, symbol, interval, start, end, rate_limit_seconds)
 
