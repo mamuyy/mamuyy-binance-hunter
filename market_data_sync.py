@@ -26,8 +26,8 @@ def _latest_expected_closed_close_time(now: datetime, interval: str | None = Non
     minutes = interval_minutes(interval)
     step = minutes * 60
     epoch = int(now.timestamp())
-    closed_epoch = (epoch // step) * step
-    return datetime.fromtimestamp(closed_epoch, tz=timezone.utc)
+    boundary_epoch = (epoch // step) * step
+    return datetime.fromtimestamp(boundary_epoch, tz=timezone.utc) - timedelta(milliseconds=1)
 
 def _is_closed_kline(kline: list[Any], now: datetime) -> bool:
     if not isinstance(kline, list) or len(kline) < 11:
