@@ -26,6 +26,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "paper-trade-diagnostics": "--paper-trade-diagnostics",
     "paper-portfolio": "--paper-portfolio",
     "paper-outcome-audit": "--paper-outcome-audit",
+    "paper-economic-audit": "--paper-economic-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -300,6 +301,7 @@ from internal_paper_engine import (
 from logger import log_signal
 from paper_portfolio import format_paper_portfolio_report, generate_paper_portfolio_report
 from paper_outcome_audit import format_paper_outcome_audit, generate_paper_outcome_audit
+from paper_economic_reconciliation import format_paper_economic_reconciliation, generate_paper_economic_reconciliation
 from market_regime import (
     MarketRegimeEngine,
     apply_regime_to_signal,
@@ -479,6 +481,17 @@ def run_paper_outcome_audit() -> Dict[str, Any]:
         write_report=True,
     )
     print(format_paper_outcome_audit(result))
+    return result
+
+
+def run_paper_economic_audit() -> Dict[str, Any]:
+    result = generate_paper_economic_reconciliation(
+        db_path=config.database_path,
+        output_path="reports/paper_economic_reconciliation.json",
+        equity_curve_path="reports/paper_economic_equity_curve.csv",
+        overlap_path="reports/paper_overlap_audit.csv",
+    )
+    print(format_paper_economic_reconciliation(result))
     return result
 
 
@@ -1306,6 +1319,11 @@ def parse_args() -> argparse.Namespace:
         help="Tampilkan read-only CLOSED internal paper outcome audit dan tulis reports/paper_outcome_audit.json.",
     )
     parser.add_argument(
+        "--paper-economic-audit",
+        action="store_true",
+        help="Tampilkan read-only paper economic reconciliation dan tulis reports/paper_economic_reconciliation.json.",
+    )
+    parser.add_argument(
         "--webhook-test",
         action="store_true",
         help="Generate TradingView-compatible webhook payload localhost test.",
@@ -1577,6 +1595,8 @@ if __name__ == "__main__":
         run_paper_portfolio()
     elif args.paper_outcome_audit or args.command == "paper-outcome-audit":
         run_paper_outcome_audit()
+    elif args.paper_economic_audit or args.command == "paper-economic-audit":
+        run_paper_economic_audit()
     elif args.webhook_test:
         run_webhook_test()
     elif args.macro_observer:
