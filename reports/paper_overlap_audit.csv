@@ -1,0 +1,1 @@
+trade_id,symbol,opened_at,closed_at,return_pct,same_symbol_overlap_count,total_concurrent_count,overlap_cluster_id,duplicate_event_flag,included_in_one_symbol_policy
