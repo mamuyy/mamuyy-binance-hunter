@@ -2,6 +2,7 @@
   "artifact_context": "NON_PRODUCTION_EMPTY_FIXTURE",
   "artifact_discovery": [
     {
+      "age_source": "missing",
       "artifact_name": "model_output",
       "configured_path": "model_output.json",
       "consumer": "telegram.format_ml_analysis_message/dashboard/ml_results",
@@ -15,6 +16,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "walkforward_results",
       "configured_path": "walkforward_results.csv",
       "consumer": "telegram.format_walkforward_report_message/dashboard/walkforward_results",
@@ -28,6 +30,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "ml_quality_audit",
       "configured_path": "ml_quality_audit.json",
       "consumer": "operator reports",
@@ -41,6 +44,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "candidate_evidence_ledger",
       "configured_path": "reports/candidate_evidence_ledger.jsonl",
       "consumer": "Phase 9D candidate evidence reports",
@@ -54,6 +58,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "database_table:ml_results",
       "configured_path": "mamuyy_hunter.db",
       "consumer": "dashboard/risk/audit modules",
@@ -67,6 +72,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "database_table:walkforward_results",
       "configured_path": "mamuyy_hunter.db",
       "consumer": "dashboard/risk/audit modules",
@@ -80,6 +86,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "database_table:historical_outcomes",
       "configured_path": "mamuyy_hunter.db",
       "consumer": "dashboard/risk/audit modules",
@@ -93,6 +100,7 @@
       "stale_ttl_days": 7.0
     },
     {
+      "age_source": "missing",
       "artifact_name": "database_table:internal_paper_trades",
       "configured_path": "mamuyy_hunter.db",
       "consumer": "dashboard/risk/audit modules",
@@ -142,11 +150,14 @@
     "display_reproduction_status": "SOURCE_MISSING",
     "display_value": "32.81%",
     "evaluation_reproduction_status": "UNREPRODUCIBLE",
+    "holdout_sample_count": null,
     "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+    "mandatory_current_readiness": true,
     "metric_name": "Current Model Accuracy",
     "producer": "ml_engine.py:run_ml_research",
     "reproducibility_status": "SOURCE_MISSING",
-    "sample_count": null
+    "sample_count": null,
+    "total_dataset_rows": null
   },
   "dataset_lineage": {
     "class_distribution": {},
@@ -165,7 +176,7 @@
     "status": "SOURCE_MISSING",
     "symbol_coverage": null
   },
-  "generated_at": "2026-06-20T15:55:51.931274+00:00",
+  "generated_at": "2026-06-20T16:06:31.096932+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -182,22 +193,26 @@
   },
   "historical_snapshot_reconciliation": [
     {
+      "advisory_only": true,
       "contract_match_walkforward": false,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "66.40%",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
+      "mandatory_current_readiness": false,
       "metric_name": "Historical ML accuracy snapshot",
       "producer": "ml_quality_audit.py:run_audit",
       "reproducibility_status": "SOURCE_MISSING",
       "sample_count": null
     },
     {
+      "advisory_only": true,
       "contract_match_walkforward": false,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "~70%",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "legacy/operator snapshot with no authoritative source discovered in repository fixtures",
+      "mandatory_current_readiness": false,
       "metric_name": "Earlier historical snapshot",
       "producer": "LEGACY_UNKNOWN",
       "reproducibility_status": "SOURCE_MISSING",
@@ -235,46 +250,64 @@
     "Missing or stale artifacts are not invented.",
     "Report is advisory and PAPER_ONLY."
   ],
+  "mandatory_current_readiness_metrics": [
+    "AI Confidence",
+    "Current Model Accuracy",
+    "Model Health",
+    "Overfit Risk",
+    "Walk-Forward Rolling Accuracy",
+    "Walk-Forward Rolling Winrate"
+  ],
   "metric_identity": [
     {
       "contract_match_walkforward": false,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "32.81%",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
+      "holdout_sample_count": null,
       "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+      "mandatory_current_readiness": true,
       "metric_name": "Current Model Accuracy",
       "producer": "ml_engine.py:run_ml_research",
       "reproducibility_status": "SOURCE_MISSING",
-      "sample_count": null
+      "sample_count": null,
+      "total_dataset_rows": null
     },
     {
       "contract_match_walkforward": true,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "64.38%",
       "evaluation_reproduction_status": "UNVERIFIABLE",
+      "holdout_sample_count": null,
       "identity": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
+      "mandatory_current_readiness": true,
       "metric_name": "Walk-Forward Rolling Accuracy",
       "producer": "walkforward.py:run_walkforward_validation",
       "reproducibility_status": "SOURCE_MISSING",
-      "sample_count": 0
+      "sample_count": 0,
+      "total_dataset_rows": null
     },
     {
+      "advisory_only": true,
       "contract_match_walkforward": false,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "66.40%",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "requires ml_quality_audit artifact or DB evidence; not current readiness evidence until matching contract is proven",
+      "mandatory_current_readiness": false,
       "metric_name": "Historical ML accuracy snapshot",
       "producer": "ml_quality_audit.py:run_audit",
       "reproducibility_status": "SOURCE_MISSING",
       "sample_count": null
     },
     {
+      "advisory_only": true,
       "contract_match_walkforward": false,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "~70%",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
       "identity": "legacy/operator snapshot with no authoritative source discovered in repository fixtures",
+      "mandatory_current_readiness": false,
       "metric_name": "Earlier historical snapshot",
       "producer": "LEGACY_UNKNOWN",
       "reproducibility_status": "SOURCE_MISSING",
@@ -286,6 +319,7 @@
       "display_value": "45.68%",
       "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
+      "mandatory_current_readiness": true,
       "metric_name": "Walk-Forward Rolling Winrate",
       "producer": "walkforward.py:_winrate/run_walkforward_validation",
       "reproducibility_status": "SOURCE_MISSING",
@@ -296,11 +330,14 @@
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "65/100",
       "evaluation_reproduction_status": "UNREPRODUCIBLE",
+      "holdout_sample_count": null,
       "identity": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
+      "mandatory_current_readiness": true,
       "metric_name": "AI Confidence",
       "producer": "ml_engine.py:run_ml_research",
       "reproducibility_status": "SOURCE_MISSING",
-      "sample_count": null
+      "sample_count": null,
+      "total_dataset_rows": null
     },
     {
       "contract_match_walkforward": false,
@@ -308,6 +345,7 @@
       "display_value": "ROBUST",
       "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
+      "mandatory_current_readiness": true,
       "metric_name": "Model Health",
       "producer": "walkforward.py:_health",
       "reproducibility_status": "SOURCE_MISSING",
@@ -319,6 +357,7 @@
       "display_value": "35.55/100",
       "evaluation_reproduction_status": "UNVERIFIABLE",
       "identity": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+      "mandatory_current_readiness": true,
       "metric_name": "Overfit Risk",
       "producer": "walkforward.py:run_walkforward_validation",
       "reproducibility_status": "SOURCE_MISSING",
@@ -330,8 +369,10 @@
       "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
       "Data Lineage": "BLOCKED_STALE_SOURCE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
+      "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
-      "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS"
+      "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
+      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
     },
     "automatic_promotion_allowed": false,
     "components": {
@@ -340,33 +381,31 @@
       "Candidate-Evidence Support": "UNAVAILABLE",
       "Data Lineage": "BLOCKED_STALE_SOURCE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
-      "Leakage Safety": "UNVERIFIABLE",
+      "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
       "Regime Stability": "UNAVAILABLE",
-      "Walk-Forward Stability": "UNVERIFIABLE"
+      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
     },
     "execution_allowed": false,
     "mandatory_component_statuses": {
       "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
       "Data Lineage": "BLOCKED_STALE_SOURCE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
-      "Leakage Safety": "UNVERIFIABLE",
+      "Leakage Safety": "BLOCKED_LEAKAGE",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
-      "Walk-Forward Stability": "UNVERIFIABLE"
+      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
     },
     "model_promotion_allowed": false,
-    "overall_status": "BLOCKED_LABEL_CONTRACT",
+    "overall_status": "BLOCKED_LEAKAGE",
     "paper_only": true,
-    "primary_blocker": "BLOCKED_LABEL_CONTRACT",
+    "primary_blocker": "BLOCKED_LEAKAGE",
     "readiness_advisory_only": true,
     "review_reasons": {
       "Calibration Quality": "UNAVAILABLE",
       "Candidate-Evidence Support": "UNAVAILABLE",
-      "Leakage Safety": "UNVERIFIABLE",
-      "Regime Stability": "UNAVAILABLE",
-      "Walk-Forward Stability": "UNVERIFIABLE"
+      "Regime Stability": "UNAVAILABLE"
     }
   },
   "phase": "9D.1B-B ML Metric Reconciliation",
@@ -392,6 +431,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py:run_ml_research",
       "metric_name": "Current Model Accuracy",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -406,6 +451,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py:run_ml_research",
       "metric_name": "AI Confidence",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -420,6 +471,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py:_quality/run_ml_research",
       "metric_name": "Setup Ranking",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -434,6 +491,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py:run_ml_research",
       "metric_name": "Top Features",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -448,6 +511,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py:_regime_profitability",
       "metric_name": "Most Profitable Regime",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -462,6 +531,12 @@
       "discovered_producer": "ml_engine.run_ml_research",
       "expected_producer": "ml_engine.py/walkforward.py:_regime_profitability/run_walkforward_validation",
       "metric_name": "Worst Regime",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_engine.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "model_output.json",
@@ -476,6 +551,12 @@
       "discovered_producer": "walkforward.run_walkforward_validation",
       "expected_producer": "walkforward.py:run_walkforward_validation",
       "metric_name": "Walk-Forward Rolling Accuracy",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "walkforward.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
@@ -490,6 +571,12 @@
       "discovered_producer": "walkforward.run_walkforward_validation",
       "expected_producer": "walkforward.py:run_walkforward_validation",
       "metric_name": "Walk-Forward Rolling Winrate",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "walkforward.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
@@ -504,6 +591,12 @@
       "discovered_producer": "walkforward.run_walkforward_validation",
       "expected_producer": "walkforward.py:_health/run_walkforward_validation",
       "metric_name": "Model Health",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "walkforward.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
@@ -518,6 +611,12 @@
       "discovered_producer": "walkforward.run_walkforward_validation",
       "expected_producer": "walkforward.py:run_walkforward_validation",
       "metric_name": "Overfit Risk",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "walkforward.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "walkforward_results.csv",
@@ -532,6 +631,12 @@
       "discovered_producer": "ml_quality_audit.run_audit",
       "expected_producer": "ml_quality_audit.py:run_audit",
       "metric_name": "Historical ML accuracy snapshot",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "ml_quality_audit.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "ml_quality_audit.json",
@@ -546,6 +651,12 @@
       "discovered_producer": "candidate_evidence_ledger.run",
       "expected_producer": "candidate_validator.py/candidate_evidence_ledger.py:validate_candidate/run",
       "metric_name": "Candidate Directional Accuracy",
+      "producer_evidence": {
+        "fields_found": true,
+        "function_found": true,
+        "module_path": "candidate_validator.py",
+        "verified": true
+      },
       "producer_verified": true,
       "reproducibility_status": "SOURCE_MISSING",
       "source_artifact": "reports/candidate_evidence_ledger.jsonl",
@@ -561,15 +672,15 @@
       {
         "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
         "finding": "latest_by_symbol_feature_join",
-        "status": "REVIEW"
+        "status": "BLOCKED_TEMPORAL_LEAKAGE"
       },
       {
         "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
         "finding": "preprocessor_fit_scope",
-        "status": "REVIEW"
+        "status": "BLOCKED_PREPROCESSOR_LEAKAGE"
       }
     ],
-    "status": "UNVERIFIABLE"
+    "status": "BLOCKED_LEAKAGE"
   },
   "terminology_recommendations": [
     "Current Holdout Accuracy",

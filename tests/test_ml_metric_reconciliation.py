@@ -123,7 +123,7 @@ def test_walkforward_aggregates_latest_worst_weighted_and_unverifiable(tmp_path)
     assert r["weighted_aggregate"] == 0.7
     assert r["latest_fold"]["fold_id"] == 2
     assert r["worst_fold"]["accuracy"] == 0.4
-    assert all(f["leakage_status"] == "PASS" for f in r["folds"])
+    assert all(f["leakage_status"] == "UNVERIFIABLE" for f in r["folds"])
 
 
 def test_walkforward_weighted_null_without_test_rows_and_overlap_block(tmp_path):
@@ -247,3 +247,15 @@ def test_dataset_lineage_readonly_does_not_create_db(tmp_path):
     assert lineage["status"] == "SOURCE_MISSING"
     assert lineage["read_only"] is True
     assert not missing.exists()
+
+
+def test_model_health_contract_different_when_computed_not_robust(tmp_path):
+    from ml_metric_reconciliation import summarize_walkforward_display, metric_identity
+    wf = tmp_path / "walk.csv"
+    pd.DataFrame([
+        {"fold": 1, "train_start": "2024-01-01", "train_end": "2024-01-02", "test_start": "2024-01-03", "test_end": "2024-01-04", "train_accuracy": 0.95, "test_accuracy": 0.10, "winrate": 10, "train_rows": 10, "test_rows": 10}
+    ]).to_csv(wf, index=False)
+    summary = summarize_walkforward_display(str(wf))
+    ids = {row["metric_name"]: row for row in metric_identity([], reconstruct_walkforward(str(wf)), {}, summary, {"status": "SOURCE_MISSING"})}
+    assert summary["model_health"] == "OVERFIT RISK"
+    assert ids["Model Health"]["display_reproduction_status"] == "CONTRACT_DIFFERENT"

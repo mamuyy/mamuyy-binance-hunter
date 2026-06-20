@@ -53,6 +53,8 @@ TARGET_LIKE_COLUMNS = {"target", "status", "win_loss", "pnl_percent", "pnl_pct",
 PREDICTION_COLUMNS = ("y_pred", "prediction", "predicted_label", "predicted_class", "pred_profit", "predicted_direction")
 TRUE_COLUMNS = ("y_true", "actual", "actual_label", "actual_class", "target", "actual_profit", "direction_hit")
 DEFAULT_STALE_TTL_DAYS = 7.0
+MANDATORY_CURRENT_READINESS_METRICS = {"Current Model Accuracy", "Walk-Forward Rolling Accuracy", "Walk-Forward Rolling Winrate", "AI Confidence", "Model Health", "Overfit Risk"}
+
 
 
 
@@ -113,6 +115,50 @@ def file_age_days(path: str | Path, now: Optional[datetime] = None) -> Optional[
         return None
     now = now or datetime.now(timezone.utc)
     return (now - datetime.fromtimestamp(p.stat().st_mtime, timezone.utc)).total_seconds() / 86400.0
+
+
+def internal_artifact_timestamp(path: str | Path) -> Optional[datetime]:
+    p = Path(path)
+    if not p.exists():
+        return None
+    if p.suffix.lower() == ".json":
+        data = read_json(p) or {}
+        for key in ("generated_at", "timestamp", "created_at", "recorded_at"):
+            value = data.get(key)
+            if value:
+                parsed = pd.to_datetime(value, errors="coerce", utc=True)
+                if pd.notna(parsed):
+                    return parsed.to_pydatetime()
+    if p.suffix.lower() == ".csv":
+        try:
+            frame = pd.read_csv(p, nrows=20)
+            for key in ("generated_at", "timestamp", "created_at"):
+                if key in frame.columns and frame[key].notna().any():
+                    parsed = pd.to_datetime(frame[key].dropna().iloc[0], errors="coerce", utc=True)
+                    if pd.notna(parsed):
+                        return parsed.to_pydatetime()
+        except Exception:
+            return None
+    return None
+
+
+def artifact_age_days(path: str | Path, now: Optional[datetime] = None) -> Tuple[Optional[float], str]:
+    ts = internal_artifact_timestamp(path)
+    now = now or datetime.now(timezone.utc)
+    if ts is not None:
+        return (now - ts).total_seconds() / 86400.0, "internal_timestamp"
+    age = file_age_days(path, now=now)
+    return age, "filesystem_mtime" if age is not None else "missing"
+
+
+def producer_evidence(module_path: str, function_name: str, field_names: Sequence[str]) -> Dict[str, Any]:
+    path = Path(module_path)
+    if not path.exists():
+        return {"verified": False, "evidence": "module missing"}
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    function_ok = f"def {function_name}" in text if function_name else True
+    fields_ok = all(str(field) in text for field in field_names if field)
+    return {"verified": bool(function_ok and fields_ok), "function_found": function_ok, "fields_found": fields_ok, "module_path": module_path}
 
 
 def normalize_sqlite_readonly_uri(database_url_or_path: str) -> str:
@@ -214,7 +260,7 @@ def discover_artifacts(
             if found is None and fallback_path.exists():
                 found = fallback_path
         path = found or configured
-        age = file_age_days(path) if path.exists() else None
+        age, age_source = artifact_age_days(path) if path.exists() else (None, "missing")
         discovered.append(
             {
                 "artifact_name": candidate["artifact_name"],
@@ -223,6 +269,7 @@ def discover_artifacts(
                 "exists": bool(found and found.exists()),
                 "generated_timestamp": None,
                 "file_age_days": round_or_none(age, 4),
+                "age_source": age_source,
                 "stale_ttl_days": stale_ttl_days,
                 "stale_source": bool(age is not None and age > stale_ttl_days),
                 "schema": _schema_for_path(path),
@@ -236,7 +283,7 @@ def discover_artifacts(
         if exists:
             with connect_readonly(db_path) as connection:
                 schema = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
-        db_age = file_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else None
+        db_age, db_age_source = artifact_age_days(sqlite_path(db_path)) if Path(sqlite_path(db_path)).exists() else (None, "missing")
         discovered.append(
             {
                 "artifact_name": f"database_table:{table}",
@@ -245,6 +292,7 @@ def discover_artifacts(
                 "exists": exists,
                 "generated_timestamp": None,
                 "file_age_days": round_or_none(db_age, 4),
+                "age_source": db_age_source,
                 "stale_ttl_days": stale_ttl_days,
                 "stale_source": bool(db_age is not None and db_age > stale_ttl_days),
                 "schema": schema,
@@ -278,13 +326,17 @@ def producer_inventory(artifacts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         required_columns = [col.strip() for col in columns.split(",")]
         source_verified = bool(artifact.get("exists"))
         source_stale = bool(artifact.get("stale_source"))
+        module_path = module.split("/")[0] if "/" in module else module
+        first_function = function.split("/")[0]
+        evidence = producer_evidence(module_path, first_function, required_columns)
         contract_verified = source_verified and not source_stale and all(col in schema for col in required_columns if artifact_name != "walkforward_results" or col != "model_health")
         rows.append(
             {
                 "metric_name": metric_name,
                 "expected_producer": f"{module}:{function}",
                 "discovered_producer": artifact.get("producer"),
-                "producer_verified": bool(artifact.get("producer")),
+                "producer_verified": bool(evidence.get("verified")),
+                "producer_evidence": evidence,
                 "source_artifact": artifact.get("discovered_path") or artifact.get("configured_path"),
                 "configured_path": artifact.get("configured_path"),
                 "source_columns": columns,
@@ -497,9 +549,13 @@ def reconstruct_walkforward(path: Optional[str]) -> Dict[str, Any]:
             ordering_ok = False
         leakage = "UNVERIFIABLE"
         reasons = []
+        index_only = all(str(value).replace(".", "", 1).isdigit() for value in [train_start, train_end, test_start, test_end])
         if not ordering_ok:
             leakage = "BLOCKED_TEMPORAL_LEAKAGE"
             reasons.append("test_start must be greater than train_end")
+        elif index_only:
+            leakage = "UNVERIFIABLE"
+            reasons.append("fold boundaries are positional indexes, not row-level timestamps")
         elif train_rows is None or test_rows is None:
             leakage = "UNVERIFIABLE"
             reasons.append("fold row counts unavailable")
@@ -647,12 +703,12 @@ def code_leakage_findings() -> List[Dict[str, Any]]:
     return [
         {
             "finding": "latest_by_symbol_feature_join",
-            "status": "REVIEW",
+            "status": "BLOCKED_TEMPORAL_LEAKAGE",
             "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
         },
         {
             "finding": "preprocessor_fit_scope",
-            "status": "REVIEW",
+            "status": "BLOCKED_PREPROCESSOR_LEAKAGE",
             "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
         },
     ]
@@ -671,8 +727,14 @@ def compare_displayed(displayed: Any, reproduced: Optional[float], scale: float 
 
 
 def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any], model: Dict[str, Any], wf_display: Dict[str, Any], hist66: Dict[str, Any]) -> List[Dict[str, Any]]:
-    walk_status = walkforward.get("status")
+    artifact_map = {item.get("artifact_name"): item for item in artifacts}
+    model_stale = bool(artifact_map.get("model_output", {}).get("stale_source"))
+    walk_stale = bool(artifact_map.get("walkforward_results", {}).get("stale_source"))
+    hist_stale = bool(artifact_map.get("ml_quality_audit", {}).get("stale_source"))
+    walk_status = "SOURCE_STALE" if walk_stale else walkforward.get("status")
     current = safe_float(model.get("accuracy"))
+    current_status = "SOURCE_STALE" if model_stale else (compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING")
+    hist_status = "SOURCE_STALE" if hist_stale else (compare_displayed("66.40", hist66.get("global_accuracy"), scale=100) if hist66.get("global_accuracy") is not None else hist66.get("status", "SOURCE_MISSING"))
     rows = [
         {
             "display_value": "32.81%",
@@ -680,10 +742,13 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
             "producer": "ml_engine.py:run_ml_research",
             "contract_match_walkforward": False,
-            "sample_count": model.get("rows"),
-            "display_reproduction_status": compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING",
+            "total_dataset_rows": model.get("rows"),
+            "holdout_sample_count": None,
+            "sample_count": None,
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": current_status,
             "evaluation_reproduction_status": "UNREPRODUCIBLE",
-            "reproducibility_status": compare_displayed("32.81", current, scale=100) if current is not None else "SOURCE_MISSING",
+            "reproducibility_status": current_status,
         },
         {
             "display_value": "64.38%",
@@ -691,10 +756,13 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "identity": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
             "producer": "walkforward.py:run_walkforward_validation",
             "contract_match_walkforward": True,
+            "total_dataset_rows": None,
+            "holdout_sample_count": None,
             "sample_count": walkforward.get("fold_count"),
-            "display_reproduction_status": compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": "SOURCE_STALE" if walk_stale else (compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING")),
             "evaluation_reproduction_status": "UNVERIFIABLE" if walkforward.get("weighted_aggregate") is None else walkforward.get("status"),
-            "reproducibility_status": compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "reproducibility_status": "SOURCE_STALE" if walk_stale else (compare_displayed("64.38", wf_display.get("average_accuracy"), scale=100) if wf_display.get("average_accuracy") is not None else wf_display.get("status", "SOURCE_MISSING")),
         },
         {
             "display_value": "66.40%",
@@ -703,9 +771,11 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "ml_quality_audit.py:run_audit",
             "contract_match_walkforward": False,
             "sample_count": hist66.get("rows"),
-            "display_reproduction_status": compare_displayed("66.40", hist66.get("global_accuracy"), scale=100) if hist66.get("global_accuracy") is not None else hist66.get("status", "SOURCE_MISSING"),
+            "mandatory_current_readiness": False,
+            "advisory_only": True,
+            "display_reproduction_status": hist_status,
             "evaluation_reproduction_status": "UNREPRODUCIBLE",
-            "reproducibility_status": compare_displayed("66.40", hist66.get("global_accuracy"), scale=100) if hist66.get("global_accuracy") is not None else hist66.get("status", "SOURCE_MISSING"),
+            "reproducibility_status": hist_status,
         },
         {
             "display_value": "~70%",
@@ -714,6 +784,8 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "LEGACY_UNKNOWN",
             "contract_match_walkforward": False,
             "sample_count": None,
+            "mandatory_current_readiness": False,
+            "advisory_only": True,
             "display_reproduction_status": "SOURCE_MISSING",
             "evaluation_reproduction_status": "UNREPRODUCIBLE",
             "reproducibility_status": "SOURCE_MISSING",
@@ -725,9 +797,10 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:_winrate/run_walkforward_validation",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "display_reproduction_status": compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": "SOURCE_STALE" if walk_stale else (compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING")),
             "evaluation_reproduction_status": "UNVERIFIABLE",
-            "reproducibility_status": compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "reproducibility_status": "SOURCE_STALE" if walk_stale else (compare_displayed("45.68", wf_display.get("average_winrate"), scale=1) if wf_display.get("average_winrate") is not None else wf_display.get("status", "SOURCE_MISSING")),
         },
         {
             "display_value": "65/100",
@@ -735,10 +808,13 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "identity": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
             "producer": "ml_engine.py:run_ml_research",
             "contract_match_walkforward": False,
-            "sample_count": model.get("rows"),
-            "display_reproduction_status": compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING",
+            "total_dataset_rows": model.get("rows"),
+            "holdout_sample_count": None,
+            "sample_count": None,
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": "SOURCE_STALE" if model_stale else (compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING"),
             "evaluation_reproduction_status": "UNREPRODUCIBLE",
-            "reproducibility_status": compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING",
+            "reproducibility_status": "SOURCE_STALE" if model_stale else (compare_displayed("65", safe_float(model.get("ai_confidence_score"))) if model else "SOURCE_MISSING"),
         },
         {
             "display_value": "ROBUST",
@@ -747,9 +823,10 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:_health",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "display_reproduction_status": "REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else wf_display.get("status", "SOURCE_MISSING"),
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": ("SOURCE_STALE" if walk_stale else ("REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else ("CONTRACT_DIFFERENT" if wf_display.get("model_health") else wf_display.get("status", "SOURCE_MISSING")))),
             "evaluation_reproduction_status": "UNVERIFIABLE",
-            "reproducibility_status": "REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else wf_display.get("status", "SOURCE_MISSING"),
+            "reproducibility_status": ("SOURCE_STALE" if walk_stale else ("REPRODUCED_EXACT" if wf_display.get("model_health") == "ROBUST" else ("CONTRACT_DIFFERENT" if wf_display.get("model_health") else wf_display.get("status", "SOURCE_MISSING")))),
         },
         {
             "display_value": "35.55/100",
@@ -758,9 +835,10 @@ def metric_identity(artifacts: List[Dict[str, Any]], walkforward: Dict[str, Any]
             "producer": "walkforward.py:run_walkforward_validation",
             "contract_match_walkforward": False,
             "sample_count": walkforward.get("fold_count"),
-            "display_reproduction_status": compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "mandatory_current_readiness": True,
+            "display_reproduction_status": "SOURCE_STALE" if walk_stale else (compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING")),
             "evaluation_reproduction_status": "UNVERIFIABLE",
-            "reproducibility_status": compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING"),
+            "reproducibility_status": "SOURCE_STALE" if walk_stale else (compare_displayed("35.55", wf_display.get("overfit_risk_score"), scale=1, tolerance=0.01) if wf_display.get("overfit_risk_score") is not None else wf_display.get("status", "SOURCE_MISSING")),
         },
     ]
     return rows
@@ -919,17 +997,17 @@ def run_ml_metric_reconciliation(
     segments = segment_performance(cohort)
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
 
-    principal_blockers = [item for item in identities if item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE", "SOURCE_STALE", "CONTRACT_DIFFERENT"}]
+    principal_blockers = [item for item in identities if item.get("mandatory_current_readiness") and item["reproducibility_status"] in {"SOURCE_MISSING", "UNREPRODUCIBLE", "SOURCE_STALE", "CONTRACT_DIFFERENT"}]
     metric_integrity = "BLOCKED_UNREPRODUCIBLE" if principal_blockers else "PASS"
     label_contract = label_contract_audit()
     components = {
         "Metric Integrity": metric_integrity,
-        "Data Lineage": "REVIEW" if lineage.get("row_count") else "BLOCKED_STALE_SOURCE",
+        "Data Lineage": "PASS" if lineage.get("status") == "AVAILABLE" and not lineage.get("future_timestamps") and not lineage.get("duplicate_rows") else "BLOCKED_STALE_SOURCE",
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
-        "Leakage Safety": "UNVERIFIABLE" if cohort.empty else "REVIEW",
+        "Leakage Safety": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"),
         "Baseline Superiority": baseline["status"],
         "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
-        "Walk-Forward Stability": "UNVERIFIABLE" if walkforward.get("status") == "SOURCE_MISSING" else "REVIEW",
+        "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS" if walkforward.get("status") in {"SOURCE_MISSING", "UNREPRODUCIBLE"} else ("UNVERIFIABLE" if any(f.get("leakage_status") == "UNVERIFIABLE" for f in walkforward.get("folds", [])) else "REVIEW"),
         "Regime Stability": "UNAVAILABLE" if not segments else "REVIEW",
         "Calibration Quality": "UNAVAILABLE",
         "Candidate-Evidence Support": candidate_bridge["status"],
@@ -950,10 +1028,11 @@ def run_ml_metric_reconciliation(
         },
         "artifact_discovery": artifacts,
         "source_inventory": inventory,
+        "mandatory_current_readiness_metrics": sorted(MANDATORY_CURRENT_READINESS_METRICS),
         "metric_identity": identities,
         "dataset_lineage": lineage,
         "label_contracts": [label_contract],
-        "split_and_leakage_audit": {"status": "UNVERIFIABLE" if cohort.empty else "REVIEW", "findings": (["No valid prediction/label cohort available"] if cohort.empty else []) + code_leakage_findings()},
+        "split_and_leakage_audit": {"status": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"), "findings": (["No valid prediction/label cohort available"] if cohort.empty else []) + code_leakage_findings()},
         "reproduced_metrics": reproduced_metrics,
         "baseline_comparison": baseline,
         "walkforward_display_reproduction": wf_display,
