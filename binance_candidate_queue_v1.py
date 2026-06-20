@@ -1,128 +1,85 @@
 import json
-import shutil
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from uuid import uuid4
+from json_utils import atomic_write_json
+from symbol_validation import validate_symbol, DEFAULT_POLICY_DENYLIST
 
 DB_PATH = Path("mamuyy_hunter.db")
-TMP_DIR = Path("tmp")
 REPORTS_DIR = Path("reports")
-SNAPSHOT_PATH = TMP_DIR / "mamuyy_hunter_candidate_queue_snapshot.db"
+BATCH_DIR = REPORTS_DIR / "candidate_batches"
 OUTPUT_PATH = REPORTS_DIR / "binance_candidate_queue.json"
-
-EXCLUDED_SYMBOLS = {
-    "XAUUSDT", "XAGUSDT",
-    "SOXLUSDT", "MRVLUSDT", "SNDKUSDT", "MUUSDT", "INTCUSDT",
-}
-
+SNAPSHOT_PATH = Path("tmp/mamuyy_hunter_candidate_queue_snapshot.db")
 MIN_SCORE = 85
 MAX_CANDIDATES = 20
 MAX_SIGNAL_AGE_HOURS = 72
+CANDIDATE_SOURCE = "LIVE_SCANNER"
 
 
-def snapshot_db() -> None:
-    TMP_DIR.mkdir(exist_ok=True)
-    shutil.copyfile(DB_PATH, SNAPSHOT_PATH)
-
-
-def fetch_candidates():
-    conn = sqlite3.connect(SNAPSHOT_PATH)
+def _connect_readonly(db_path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
 
-    query = """
-    WITH latest AS (
-        SELECT MAX(id) AS latest_id
-        FROM signals
-        WHERE score >= ?
-          AND squeeze_risk = 'LOW'
-          AND (funding_warning IS NULL OR funding_warning = '')
-          AND timestamp >= ?
-        GROUP BY symbol
-    )
-    SELECT s.*
-    FROM signals s
-    JOIN latest l ON s.id = l.latest_id
-    ORDER BY s.score DESC, s.pressure_score DESC, s.id DESC
-    LIMIT ?;
-    """
 
+def fetch_candidates(db_path: Path = DB_PATH):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=MAX_SIGNAL_AGE_HOURS)).isoformat()
-    rows = conn.execute(query, (MIN_SCORE, cutoff, MAX_CANDIDATES * 2)).fetchall()
-    conn.close()
-
-    candidates = []
+    diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "rejected_symbol_count": 0, "rejection_reasons": {}}
+    with _connect_readonly(db_path) as conn:
+        counts = conn.execute("SELECT data_source, COUNT(*) c FROM signals WHERE timestamp >= ? GROUP BY data_source", (cutoff,)).fetchall()
+        for row in counts:
+            source = row["data_source"] or "LEGACY_UNKNOWN"
+            if source == CANDIDATE_SOURCE: diagnostics["live_rows_considered"] = int(row["c"])
+            elif source == "HISTORICAL_BACKFILL": diagnostics["historical_rows_excluded"] += int(row["c"])
+            else: diagnostics["legacy_rows_excluded"] += int(row["c"])
+        rows = conn.execute("""
+        WITH latest AS (
+            SELECT MAX(id) AS latest_id FROM signals
+            WHERE data_source = ? AND score >= ? AND squeeze_risk = 'LOW'
+              AND (funding_warning IS NULL OR funding_warning = '') AND timestamp >= ?
+            GROUP BY symbol
+        )
+        SELECT s.* FROM signals s JOIN latest l ON s.id = l.latest_id
+        ORDER BY s.score DESC, s.pressure_score DESC, s.id DESC LIMIT ?
+        """, (CANDIDATE_SOURCE, MIN_SCORE, cutoff, MAX_CANDIDATES * 2)).fetchall()
+    candidates=[]
     for row in rows:
-        symbol = row["symbol"]
-        if symbol in EXCLUDED_SYMBOLS:
+        symbol = str(row["symbol"] or "").upper()
+        validation = validate_symbol(symbol)
+        if not validation.valid:
+            diagnostics["rejected_symbol_count"] += 1
+            diagnostics["rejection_reasons"][validation.reason] = diagnostics["rejection_reasons"].get(validation.reason, 0) + 1
             continue
+        candidates.append({"rank": len(candidates)+1, "symbol": symbol, "timestamp": row["timestamp"], "score": row["score"], "price": row["price"], "regime_name": row["regime_name"], "pressure_score": row["pressure_score"], "oi_expansion_rate": row["oi_expansion_rate"], "taker_delta": row["taker_delta"], "squeeze_probability": row["squeeze_probability"], "whale_activity": row["whale_activity"], "squeeze_risk": row["squeeze_risk"], "funding_warning": row["funding_warning"], "data_source": CANDIDATE_SOURCE, "status": "PROPOSAL_ONLY", "execution_allowed": False})
+        if len(candidates) >= MAX_CANDIDATES: break
+    return candidates, diagnostics
 
-        candidates.append({
-            "rank": len(candidates) + 1,
-            "symbol": symbol,
-            "timestamp": row["timestamp"],
-            "score": row["score"],
-            "price": row["price"],
-            "regime_name": row["regime_name"],
-            "pressure_score": row["pressure_score"],
-            "oi_expansion_rate": row["oi_expansion_rate"],
-            "taker_delta": row["taker_delta"],
-            "squeeze_probability": row["squeeze_probability"],
-            "whale_activity": row["whale_activity"],
-            "squeeze_risk": row["squeeze_risk"],
-            "funding_warning": row["funding_warning"],
-            "status": "PROPOSAL_ONLY",
-            "execution_allowed": False,
-        })
 
-        if len(candidates) >= MAX_CANDIDATES:
-            break
+def build_report(candidates, diagnostics, db_path: Path = DB_PATH):
+    generated_at = datetime.now(timezone.utc).isoformat()
+    batch_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex[:8]
+    reason = None if candidates else "NO_LIVE_SCANNER_CANDIDATES"
+    return {"batch_id": batch_id, "generated_at": generated_at, "phase": "Phase 9D.1A Candidate Queue", "mode": "READ_ONLY_PROPOSAL", "source_db": str(db_path), "candidate_source": CANDIDATE_SOURCE, "source": CANDIDATE_SOURCE, "status": "OPEN", "validation_horizons": [24,48,72], "empty_reason": reason, "rules": {"min_score": MIN_SCORE, "squeeze_risk": "LOW", "funding_warning": "empty_or_null", "excluded_symbols": sorted(DEFAULT_POLICY_DENYLIST), "max_candidates": MAX_CANDIDATES, "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS}, "safety": {"paper_only": True, "real_binance_enabled": False, "testnet_order_enabled": False, "auto_execution_enabled": False, "manual_review_required": True, "writes_to_database": False, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "governance": {"paper_only": True, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "diagnostics": diagnostics, "candidate_count": len(candidates), "candidates": candidates}
 
-    return candidates
+
+def write_reports(report):
+    BATCH_DIR.mkdir(parents=True, exist_ok=True)
+    batch_path = BATCH_DIR / f"{report['batch_id']}.json"
+    if not batch_path.exists():
+        atomic_write_json(batch_path, report)
+    latest = dict(report); latest["archive_path"] = str(batch_path)
+    atomic_write_json(OUTPUT_PATH, latest)
+    return batch_path
 
 
 def main() -> None:
-    REPORTS_DIR.mkdir(exist_ok=True)
-    snapshot_db()
-    candidates = fetch_candidates()
+    candidates, diagnostics = fetch_candidates(DB_PATH)
+    report = build_report(candidates, diagnostics, DB_PATH)
+    path = write_reports(report)
+    print(f"Candidate Queue generated: {OUTPUT_PATH}; archive: {path}; Candidates: {len(candidates)}")
+    if SNAPSHOT_PATH.exists():
+        raise RuntimeError(f"Forbidden stale snapshot remains: {SNAPSHOT_PATH}")
 
-    report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "phase": "Phase 9A Candidate Queue V1",
-        "mode": "READ_ONLY_PROPOSAL",
-        "source_db": str(DB_PATH),
-        "snapshot_db": str(SNAPSHOT_PATH),
-        "rules": {
-            "min_score": MIN_SCORE,
-            "squeeze_risk": "LOW",
-            "funding_warning": "empty_or_null",
-            "excluded_symbols": sorted(EXCLUDED_SYMBOLS),
-            "max_candidates": MAX_CANDIDATES,
-            "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS,
-        },
-        "safety": {
-            "real_binance_enabled": False,
-            "testnet_order_enabled": False,
-            "auto_execution_enabled": False,
-            "manual_review_required": True,
-            "writes_to_database": False,
-            "writes_to_broker": False,
-        },
-        "candidate_count": len(candidates),
-        "candidates": candidates,
-    }
-
-    OUTPUT_PATH.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    print(f"Candidate Queue generated: {OUTPUT_PATH}")
-    print(f"Candidates: {len(candidates)}")
-    for item in candidates[:10]:
-        print(
-            f"#{item['rank']} {item['symbol']} | "
-            f"Score {item['score']} | "
-            f"Pressure {item['pressure_score']} | "
-            f"Status {item['status']}"
-        )
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()

@@ -46,7 +46,8 @@ SCHEMAS = {
             liquidity_sweep INTEGER,
             taker_buy_ratio REAL,
             funding REAL,
-            open_interest REAL
+            open_interest REAL,
+            data_source TEXT DEFAULT 'LEGACY_UNKNOWN'
         )
     """,
     "paper_trades": """
@@ -81,7 +82,8 @@ SCHEMAS = {
             squeeze_risk TEXT,
             funding_warning TEXT,
             flow_adjustment REAL,
-            final_score REAL
+            final_score REAL,
+            data_source TEXT DEFAULT 'LEGACY_UNKNOWN'
         )
     """,
     "regime_logs": """
@@ -299,10 +301,13 @@ SCHEMAS = {
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_signals_source_timestamp ON signals(data_source, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_signals_source_symbol_timestamp ON signals(data_source, symbol, timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_paper_trades_timestamp ON paper_trades(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_paper_trades_symbol ON paper_trades(symbol)",
     "CREATE INDEX IF NOT EXISTS idx_flow_logs_timestamp ON flow_logs(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_flow_logs_symbol ON flow_logs(symbol)",
+    "CREATE INDEX IF NOT EXISTS idx_flow_logs_source_timestamp ON flow_logs(data_source, timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_regime_logs_timestamp ON regime_logs(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_ml_results_timestamp ON ml_results(timestamp)",
     "CREATE INDEX IF NOT EXISTS idx_walkforward_results_timestamp ON walkforward_results(timestamp)",
@@ -401,10 +406,15 @@ def _ensure_columns(connection: sqlite3.Connection) -> None:
         "calculated_score": "REAL",
         "shadow_score": "REAL",
         "penalty_applied": "INTEGER",
+        "data_source": "TEXT DEFAULT 'LEGACY_UNKNOWN'",
     }
     for column, column_type in columns.items():
         if column not in existing:
             connection.execute(f"ALTER TABLE signals ADD COLUMN {column} {column_type}")
+
+    flow_existing = {row["name"] for row in connection.execute("PRAGMA table_info(flow_logs)")}
+    if "data_source" not in flow_existing:
+        connection.execute("ALTER TABLE flow_logs ADD COLUMN data_source TEXT DEFAULT 'LEGACY_UNKNOWN'")
 
     internal_paper_existing = {row["name"] for row in connection.execute("PRAGMA table_info(internal_paper_trades)")}
     internal_paper_columns = {
@@ -453,7 +463,9 @@ def insert_row(table: str, data: Dict[str, Any], database_url: str = "") -> None
 
 
 def insert_signal(signal: Dict[str, Any], database_url: str = "") -> None:
-    insert_row("signals", signal, database_url)
+    row = dict(signal)
+    row.setdefault("data_source", "LIVE_SCANNER")
+    insert_row("signals", row, database_url)
 
 
 def insert_paper_trade(trade: Dict[str, Any], database_url: str = "") -> None:
@@ -461,7 +473,9 @@ def insert_paper_trade(trade: Dict[str, Any], database_url: str = "") -> None:
 
 
 def insert_flow_log(flow: Dict[str, Any], database_url: str = "") -> None:
-    insert_row("flow_logs", flow, database_url)
+    row = dict(flow)
+    row.setdefault("data_source", "LIVE_SCANNER")
+    insert_row("flow_logs", row, database_url)
 
 
 def insert_regime_log(regime: Dict[str, Any], database_url: str = "") -> None:

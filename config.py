@@ -95,6 +95,9 @@ class Config:
     health_guardian_project_dir: str = os.getenv("HEALTH_GUARDIAN_PROJECT_DIR", "~/mamuyy-binance-hunter")
     health_guardian_hunter_session: str = os.getenv("HEALTH_GUARDIAN_HUNTER_SESSION", "hunter")
     health_guardian_dashboard_session: str = os.getenv("HEALTH_GUARDIAN_DASHBOARD_SESSION", "dashboard")
+    data_sync_core_symbols: str = os.getenv("DATA_SYNC_CORE_SYMBOLS", "BTCUSDT,ETHUSDT")
+    data_sync_overlap_hours: int = _get_int("DATA_SYNC_OVERLAP_HOURS", 3)
+    data_freshness_max_age_minutes: int = _get_int("DATA_FRESHNESS_MAX_AGE_MINUTES", 30)
 
     @property
     def telegram_enabled(self) -> bool:
