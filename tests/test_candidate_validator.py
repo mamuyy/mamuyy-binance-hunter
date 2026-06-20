@@ -14,6 +14,7 @@ def make_conn() -> sqlite3.Connection:
         CREATE TABLE historical_klines (
             symbol TEXT,
             timestamp TEXT,
+            interval TEXT,
             close REAL
         )
         """

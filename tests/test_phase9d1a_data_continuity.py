@@ -108,13 +108,15 @@ def test_symbol_validation_fail_closed_and_reasons():
     assert validate_symbol('BTCUSDT', None).reason == 'EXCHANGE_INFO_UNAVAILABLE'
 
 
-def test_queue_exchange_info_fail_closed(tmp_path):
+def test_queue_exchange_info_fail_closed(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     db=tmp_path/'q2.db'; init_db(str(db)); now=datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(db) as c:
         c.execute("INSERT INTO signals(timestamp,symbol,price,score,pressure_score,squeeze_risk,funding_warning,data_source) VALUES(?,?,?,?,?,?,?,?)", (now,'BTCUSDT',100,90,80,'LOW','','LIVE_SCANNER'))
-    candidates, diag=fetch_candidates(db, exchange_info=None)
+    with patch('requests.get', side_effect=RuntimeError('offline')):
+        candidates, diag=fetch_candidates(db, exchange_info=None)
     assert candidates == []
-    assert diag['rejection_reasons'].get('EXCHANGE_INFO_UNAVAILABLE') == 1
+    assert diag['rejection_reasons'].get('EXCHANGE_INFO_CACHE_MISSING') == 1
 
 
 def test_freshness_stale_missing_and_future_block(tmp_path, monkeypatch):
@@ -231,3 +233,68 @@ def test_sync_paginates_more_than_1500_candles_and_no_data_is_incomplete(tmp_pat
         r=sync_market_data(str(tmp_path/'empty.db'), 'https://x', tmp_path/'e.json')
     assert r['status'] == 'INCOMPLETE_SYNC'
     assert 'BTCUSDT' in r['incomplete_symbols']
+
+
+def test_legacy_batch_uses_fresh_exchange_cache_fallback(tmp_path, monkeypatch):
+    from exchange_info_cache import write_exchange_info_cache
+    monkeypatch.chdir(tmp_path); db=tmp_path/'mamuyy_hunter.db'; init_db(str(db)); Path('reports').mkdir()
+    write_exchange_info_cache({'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}, Path('reports/binance_futures_exchange_info_cache.json'))
+    sig_dt=datetime.now(timezone.utc)-timedelta(hours=25)
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((sig_dt+timedelta(hours=24, minutes=5)).isoformat(),'BTCUSDT','15m',101))
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (datetime.now(timezone.utc).isoformat(),'BTCUSDT','15m',101))
+    queue={'status':'OPEN','candidates':[{'symbol':'BTCUSDT','timestamp':sig_dt.isoformat(),'price':100,'score':90}]}
+    inp=tmp_path/'legacy.json'; out=tmp_path/'legacy_out.json'; inp.write_text(json.dumps(queue), encoding='utf-8')
+    with patch('requests.get', side_effect=RuntimeError('offline')):
+        validator_main(['--input', str(inp), '--output', str(out)])
+    data=json.loads(out.read_text())
+    assert data['results'][0]['horizons']['24h']['status'] == 'READY'
+
+
+def test_candidate_batch_state_registry_sidecars(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    diag={'live_rows_considered':0,'historical_rows_excluded':0,'legacy_rows_excluded':0,'rejected_symbol_count':0,'rejection_reasons':{},'rejected_symbols':[]}
+    report=build_report([], diag)
+    batch_path=write_reports(report)
+    state_path=batch_path.with_name(batch_path.stem + '.state.json')
+    registry_path=Path('reports/candidate_batches/registry.json')
+    assert batch_path.exists() and state_path.exists() and registry_path.exists()
+    registry=json.loads(registry_path.read_text())
+    assert registry['batches'][0]['batch_id'] == report['batch_id']
+    assert json.loads(state_path.read_text())['status'] == 'OPEN'
+
+
+def test_strict_interval_filtering_for_freshness_and_validation(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); db=tmp_path/'i.db'; init_db(str(db)); monkeypatch.setenv('CANDLE_INTERVAL','15m')
+    signal_ts=datetime.now(timezone.utc)-timedelta(hours=25); target=signal_ts+timedelta(hours=24)
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", (datetime.now(timezone.utc).isoformat(),'BTCUSDT','1h',100))
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((datetime.now(timezone.utc)-timedelta(hours=2)).isoformat(),'BTCUSDT','15m',100))
+        c.execute("INSERT INTO historical_klines(timestamp,symbol,interval,close) VALUES(?,?,?,?)", ((target+timedelta(minutes=5)).isoformat(),'BTCUSDT','1h',101))
+        item={'symbol':'BTCUSDT','timestamp':signal_ts.isoformat(),'price':100,'score':90,'symbol_validation':{'symbol':'BTCUSDT','valid':True,'reason':None}}
+        result=validate_candidate(c, item, {'validation_allowed':True,'status':'GREEN','reasons':[]})
+    q=tmp_path/'q.json'; q.write_text(json.dumps({'candidates':[{'symbol':'BTCUSDT'}]}), encoding='utf-8')
+    freshness=check_freshness(str(db), q, max_age_minutes=30)
+    assert freshness['status'] == 'BLOCKED_STALE_DATA'
+    assert result['horizons']['24h']['status'] == 'BLOCKED_MISSING_DATA'
+
+
+def test_exchange_cache_metadata_ttl_malformed_and_queue_empty_reason(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path); Path('reports').mkdir(); db=tmp_path/'cache.db'; init_db(str(db)); now=datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO signals(timestamp,symbol,price,score,pressure_score,squeeze_risk,funding_warning,data_source) VALUES(?,?,?,?,?,?,?,?)", (now,'BTCUSDT',100,90,80,'LOW','','LIVE_SCANNER'))
+    stale=(datetime.now(timezone.utc)-timedelta(days=3)).isoformat()
+    Path('reports/binance_futures_exchange_info_cache.json').write_text(json.dumps({'cached_at':stale,'source':'test','cache_schema':'binance_futures_exchange_info_v1','exchange_info':{'symbols':[{'symbol':'BTCUSDT','status':'TRADING','quoteAsset':'USDT','contractType':'PERPETUAL'}]}}), encoding='utf-8')
+    monkeypatch.setenv('EXCHANGE_INFO_CACHE_TTL_MINUTES','1')
+    with patch('requests.get', side_effect=RuntimeError('offline')):
+        candidates, diag=fetch_candidates(db, exchange_info=None)
+    report=build_report(candidates, diag)
+    assert candidates == []
+    assert diag['exchange_info']['reason'] == 'EXCHANGE_INFO_CACHE_STALE'
+    assert report['empty_reason'] == 'EXCHANGE_INFO_CACHE_STALE'
+    Path('reports/binance_futures_exchange_info_cache.json').write_text('{bad json', encoding='utf-8')
+    with patch('requests.get', side_effect=RuntimeError('offline')):
+        candidates, diag=fetch_candidates(db, exchange_info=None)
+    report=build_report(candidates, diag)
+    assert diag['exchange_info']['reason'] == 'EXCHANGE_INFO_CACHE_MALFORMED'
+    assert report['empty_reason'] == 'EXCHANGE_INFO_CACHE_MALFORMED'

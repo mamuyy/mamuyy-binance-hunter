@@ -63,3 +63,11 @@ Validation observations are bounded by `CANDIDATE_VALIDATION_MAX_OBSERVATION_LAG
 Symbol validation is fail-closed. Queue generation uses Binance Futures exchange metadata or a validated atomic cache; unavailable metadata yields `EXCHANGE_INFO_UNAVAILABLE`, and accepted candidates persist symbol-validation evidence in the immutable batch.
 
 Lightweight sync now paginates bounded kline requests, validates HTTP and Binance API errors with retry/backoff, computes candidate-aware earliest timestamps, reports `INCOMPLETE_SYNC` when request caps are reached before coverage is current, and checks lightweight free-space safety before writes.
+
+## Final audit round 3 controls
+
+Legacy candidate batches without embedded symbol-validation evidence are validated with fresh Binance Futures exchange metadata or a TTL-bounded metadata cache. Cache files include `cached_at`, `source`, and schema metadata; stale, malformed, or missing caches fail closed with explicit reasons.
+
+Candidate batches now have lifecycle sidecars (`<batch_id>.state.json`) and an atomic `reports/candidate_batches/registry.json` registry so archived batch status can be tracked without rewriting immutable batch payloads.
+
+Freshness checks and horizon observations filter strictly on the configured candle interval. Data from another interval cannot satisfy global freshness, candidate-symbol coverage, or validation horizon observations.
