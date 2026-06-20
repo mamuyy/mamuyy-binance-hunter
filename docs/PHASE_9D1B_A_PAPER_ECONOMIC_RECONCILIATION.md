@@ -43,3 +43,15 @@ Engineering readiness verifies data readability, audit execution, PAPER_ONLY gov
 ## Safety and rollback
 
 The audit opens SQLite in read-only mode, writes only JSON/CSV/doc artifacts, and never mutates trade rows. It makes no broker API calls, places no orders, promotes no strategy, changes no thresholds, changes no scoring, changes no lifecycle behavior, changes no scheduler, and changes no Telegram output. Rollback is removal of the new script, docs, generated artifacts, tests, and CLI command.
+
+## Phase 9D.1B-A.1 Economic Robustness and Legacy Cohort Reconciliation
+
+Phase 9D.1B-A.1 separates core economic validity from temporal simulation validity without mutating historical `internal_paper_trades` rows. CLOSED rows are classified as `CORE_AND_TEMPORAL_VALID`, `LEGACY_TEMPORAL_INCOMPLETE`, or `BLOCKING_INVALID`. Legacy temporal-incomplete rows must have valid symbol, side, positive entry, valid exit, matching or small-difference recomputed return, and an opened timestamp; only the close/updated timestamp may be missing.
+
+Core non-temporal statistics may include both `CORE_AND_TEMPORAL_VALID` and `LEGACY_TEMPORAL_INCOMPLETE` rows. Time-dependent calculations (overlap, concurrency, holding periods, realized equity simulation, drawdown, and chronological capital allocation) use only the `CORE_AND_TEMPORAL_VALID` cohort.
+
+The audit now emits four capital-normalized robustness scenarios using the same allocation, fee, slippage, and exposure assumptions as the original capital scenario: original temporal-valid, one-active-trade-per-symbol, no-outlier, and combined one-symbol/no-outlier. Each scenario reports accepted/rejected trades, initial and ending capital, gross and cost-adjusted net return, maximum drawdown, profit factor, winrate, fees, slippage, and maximum gross exposure.
+
+Maximum concurrency is computed with a sweep-line algorithm that processes close events before open events at identical timestamps. The report retains pairwise overlap diagnostics separately and reports maximum total concurrency, maximum same-symbol concurrency, and the timestamp(s) where sweep-line maxima occurred.
+
+Readiness remains advisory and paper-only. Legacy temporal incompleteness is reported transparently and does not automatically become a PASS; blocking-invalid rows still block data quality, and execution plus automatic promotion remain disabled.

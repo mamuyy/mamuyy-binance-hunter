@@ -234,3 +234,58 @@ def test_zero_total_absolute_return_does_not_pass_outlier_dependence(tmp_path):
     assert rep['outlier_analysis']['outlier_contribution_pct'] is None
     assert rep['readiness']['economic_readiness']['outlier_dependence']=='REVIEW'
     assert rep['readiness']['economic_readiness']['outlier_dependence'] != 'PASS'
+
+def test_phase9d1ba1_legacy_temporal_incomplete_classification_and_cohorts(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-02T00:00:00','ETH','LONG',100,105,105,5,80,'R','CLOSED','TP',None),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    tr={t['trade_id']:t for t in rep['reconciliation_summary']['trades']}
+    assert tr[2]['quality_classification']=='LEGACY_TEMPORAL_INCOMPLETE'
+    assert rep['reconciliation_summary']['core_economic_valid_count']==2
+    assert rep['reconciliation_summary']['temporal_valid_count']==1
+    assert rep['reconciliation_summary']['legacy_temporal_incomplete_count']==1
+    assert rep['closed_trade_statistics']['trades']==2
+    assert rep['temporal_closed_trade_statistics']['trades']==1
+    assert rep['robustness_capital_scenarios']['original_temporal_valid_scenario']['accepted_trades']==1
+    assert rep['readiness']['temporal_simulation_readiness']=='REVIEW'
+
+
+def test_phase9d1ba1_sweep_line_close_before_open_and_maximums(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,102,102,2,80,'R','CLOSED','TP','2026-01-01T02:00:00'),
+        (3,'2026-01-01T01:30:00','ETH','LONG',100,103,103,3,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    sweep=rep['overlap_audit']['sweep_line_concurrency']
+    assert sweep['maximum_total_concurrency']==2
+    assert sweep['maximum_same_symbol_concurrency']==1
+    assert '2026-01-01T01:00:00' not in sweep['maximum_total_concurrency_timestamps']
+
+
+def test_phase9d1ba1_robustness_capital_scenarios(tmp_path):
+    rows=[
+        (1,'2026-01-01T00:00:00','BTC','LONG',100,200,200,100,80,'R','CLOSED','TP','2026-01-01T03:00:00'),
+        (2,'2026-01-01T01:00:00','BTC','LONG',100,110,110,10,80,'R','CLOSED','TP','2026-01-01T02:00:00'),
+        (3,'2026-01-02T00:00:00','ETH','LONG',100,90,90,-10,80,'R','CLOSED','SL','2026-01-02T01:00:00'),
+    ]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    sc=rep['robustness_capital_scenarios']
+    assert sc['one_active_trade_per_symbol_scenario']['rejected_trades']==1
+    assert sc['no_outlier_scenario']['rejected_trades']==1
+    assert sc['one_symbol_no_outlier_scenario']['rejected_trades']==1
+    for name in ('original_temporal_valid_scenario','one_active_trade_per_symbol_scenario','no_outlier_scenario','one_symbol_no_outlier_scenario'):
+        for key in ('accepted_trades','rejected_trades','initial_capital','ending_capital','gross_return','cost_adjusted_net_return','maximum_drawdown','profit_factor','winrate','fees','slippage','maximum_gross_exposure'):
+            assert key in sc[name]
+
+
+def test_phase9d1ba1_paper_only_no_execution_no_promotion(tmp_path):
+    rows=[(1,'2026-01-01T00:00:00','BTC','LONG',100,101,101,1,80,'R','CLOSED','TP','2026-01-01T01:00:00')]
+    rep,_=run(tmp_path,rows,EconomicAuditConfig(min_valid_closed_trades=1, max_top_symbol_concentration_pct=999, max_outlier_contribution_pct=999))
+    assert rep['governance']['paper_only'] is True
+    assert rep['governance']['execution_allowed'] is False
+    assert rep['governance']['automatic_promotion_allowed'] is False
+    assert rep['readiness']['execution_allowed'] is False
+    assert rep['readiness']['automatic_promotion_allowed'] is False
