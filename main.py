@@ -14,6 +14,9 @@ CLI_SUBCOMMAND_FLAGS = {
     "shadow-analysis": "--shadow-analysis",
     "label-outcomes": "--label-outcomes",
     "backfill": "--backfill",
+    "data-sync": "--data-sync",
+    "data-freshness": "--data-freshness",
+    "capacity-check": "--capacity-check",
     "optimize-filters": "--optimize-filters",
     "fix-regime-labels": "--fix-regime-labels",
     "shadow-lifecycle-audit": "--shadow-lifecycle-audit",
@@ -217,6 +220,18 @@ if "--label-outcomes" in sys.argv:
         days=_days,
     )
     sys.exit(0)
+
+if "--data-sync" in sys.argv:
+    from market_data_sync import main as _data_sync_main
+    sys.exit(_data_sync_main())
+
+if "--data-freshness" in sys.argv:
+    from data_freshness_guard import main as _freshness_main
+    sys.exit(_freshness_main())
+
+if "--capacity-check" in sys.argv:
+    from infrastructure_capacity import main as _capacity_main
+    sys.exit(_capacity_main())
 
 if "--backfill" in sys.argv:
     from backfill import run_historical_backfill as _run_historical_backfill
@@ -1043,6 +1058,24 @@ def run_shadow_analysis() -> Dict[str, Any]:
     return result
 
 
+def run_data_sync() -> Dict[str, Any]:
+    from market_data_sync import sync_market_data
+    return sync_market_data(database_url())
+
+def run_data_freshness() -> Dict[str, Any]:
+    from data_freshness_guard import check_freshness
+    from json_utils import atomic_write_json
+    report = check_freshness(database_url())
+    atomic_write_json("reports/data_freshness_report.json", report)
+    return report
+
+def run_capacity_check() -> Dict[str, Any]:
+    from infrastructure_capacity import build_capacity_report
+    from json_utils import atomic_write_json
+    report = build_capacity_report(db_path=database_url())
+    atomic_write_json("reports/infrastructure_capacity.json", report)
+    return report
+
 def run_backfill(days: int) -> Dict[str, Any]:
     from backfill import run_historical_backfill
 
@@ -1447,6 +1480,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Isi SQLite dengan historical Binance Futures data.",
     )
+    parser.add_argument("--data-sync", action="store_true", help="Run lightweight kline-only data sync.")
+    parser.add_argument("--data-freshness", action="store_true", help="Run data freshness guard.")
+    parser.add_argument("--capacity-check", action="store_true", help="Write infrastructure capacity report.")
     parser.add_argument(
         "--label-outcomes",
         action="store_true",
@@ -1479,6 +1515,12 @@ if __name__ == "__main__":
         run_fix_regime_labels()
     elif args.optimize_filters or args.command == "optimize-filters":
         run_optimize_filters()
+    elif args.data_sync or args.command == "data-sync":
+        run_data_sync()
+    elif args.data_freshness or args.command == "data-freshness":
+        run_data_freshness()
+    elif args.capacity_check or args.command == "capacity-check":
+        run_capacity_check()
     elif args.backfill or args.command == "backfill":
         run_backfill(days=args.days)
     elif args.health or args.command == "health":

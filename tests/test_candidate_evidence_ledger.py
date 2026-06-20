@@ -192,16 +192,17 @@ def make_phase9b_conn() -> sqlite3.Connection:
         CREATE TABLE historical_klines (
             symbol TEXT,
             timestamp TEXT,
+            interval TEXT,
             close REAL
         )
         """
     )
     conn.executemany(
-        "INSERT INTO historical_klines (symbol, timestamp, close) VALUES (?, ?, ?)",
+        "INSERT INTO historical_klines (symbol, timestamp, interval, close) VALUES (?, ?, ?, ?)",
         [
-            ("BTCUSDT", "2026-01-02T00:00:00+00:00", 101.0),
-            ("BTCUSDT", "2026-01-03T00:00:00+00:00", 102.0),
-            ("BTCUSDT", "2026-01-04T00:00:00+00:00", 103.0),
+            ("BTCUSDT", "2026-01-02T00:00:00+00:00", "15m", 101.0),
+            ("BTCUSDT", "2026-01-03T00:00:00+00:00", "15m", 102.0),
+            ("BTCUSDT", "2026-01-04T00:00:00+00:00", "15m", 103.0),
         ],
     )
     return conn
@@ -220,6 +221,7 @@ def test_ledger_records_phase9b_regime_name_and_whale_activity_contract(tmp_path
             "score": 96.5,
             "regime_name": "BULL_EXPANSION",
             "whale_activity": "HIGH",
+            "symbol_validation": {"symbol": "BTCUSDT", "valid": True, "reason": None},
         },
     )
     conn.close()

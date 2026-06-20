@@ -310,6 +310,7 @@ def _insert_signal_if_missing(connection: Any, signal: Dict[str, Any]) -> bool:
         "taker_buy_ratio",
         "funding",
         "open_interest",
+        "data_source",
     ]
     row = {
         "timestamp": signal.get("timestamp"),
@@ -323,6 +324,7 @@ def _insert_signal_if_missing(connection: Any, signal: Dict[str, Any]) -> bool:
         "taker_buy_ratio": signal.get("taker_buy_ratio"),
         "funding": signal.get("funding"),
         "open_interest": signal.get("open_interest"),
+        "data_source": "HISTORICAL_BACKFILL",
     }
     connection.execute(
         f"INSERT INTO signals ({', '.join(columns)}) VALUES ({', '.join(['?'] * len(columns))})",
@@ -338,6 +340,7 @@ def _insert_flow_if_missing(connection: Any, flow: Dict[str, Any]) -> bool:
     ).fetchone()
     if exists:
         return False
+    flow = {**flow, "data_source": "HISTORICAL_BACKFILL"}
     columns = list(flow.keys())
     connection.execute(
         f"INSERT INTO flow_logs ({', '.join(columns)}) VALUES ({', '.join(['?'] * len(columns))})",
@@ -356,6 +359,8 @@ def run_historical_backfill(
     timeout: int = 15,
     rate_limit_seconds: float = 0.2,
 ) -> Dict[str, Any]:
+    from infrastructure_capacity import assert_heavy_job_allowed
+    assert_heavy_job_allowed(db_path=database_url or "mamuyy_hunter.db")
     init_db(database_url)
     scanner = BinanceFuturesScanner(base_url=base_url, timeout=timeout)
     end = datetime.now(timezone.utc)
