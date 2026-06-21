@@ -692,3 +692,91 @@ def test_baseline_and_walkforward_blockers_remain_unchanged(tmp_path):
     components = report["model_readiness"]["components"]
     assert components["Baseline Superiority"].startswith("BLOCKED")
     assert components["Walk-Forward Stability"].startswith("BLOCKED")
+
+
+def _baseline_audit_fixture():
+    from ml_metric_reconciliation import baseline_root_cause_audit, row_level_walkforward_audit
+
+    labels = ["LOSS"] * 9 + ["WIN"] * 3 + ["LOSS"] * 3
+    preds = ["LOSS"] * 6 + ["WIN"] * 6 + ["LOSS"] * 3
+    cohort = pd.DataFrame([
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-01-{idx + 1:02d}T00:00:00Z",
+            "y_true": labels[idx],
+            "y_pred": preds[idx],
+        }
+        for idx in range(len(labels))
+    ])
+    row_level = row_level_walkforward_audit(
+        cohort,
+        {"status": "PASS"},
+        {"train_only_preprocessing_status": "PASS"},
+        min_test_rows=1,
+    )
+    return baseline_root_cause_audit(row_level), row_level
+
+
+def test_baseline_root_cause_audit_reports_micro_fold_evidence():
+    audit, _row_level = _baseline_audit_fixture()
+    assert audit["baseline_micro_fold_status"] == "REVIEW_MICRO_FOLD_EVIDENCE"
+    assert audit["baseline_fold_size_distribution"] == {"3": 3}
+
+
+def test_baseline_root_cause_audit_reports_loss_majority_baseline_dominance():
+    audit, _row_level = _baseline_audit_fixture()
+    assert audit["baseline_evidence_quality_status"] == "REVIEW_MAJOR_CLASS_BASELINE_DOMINANCE"
+    assert audit["baseline_prediction_distribution"] == {"LOSS": 3}
+
+
+def test_baseline_root_cause_audit_reports_exact_fold_outcome_counts():
+    audit, _row_level = _baseline_audit_fixture()
+    assert audit["baseline_model_worse_folds"] == 1
+    assert audit["baseline_model_better_folds"] == 1
+    assert audit["baseline_model_tie_folds"] == 1
+    assert audit["baseline_worse_fold_prediction_distribution"] == {"LOSS": 1}
+    assert audit["baseline_better_fold_prediction_distribution"] == {"LOSS": 1}
+
+
+def test_baseline_superiority_remains_blocked_below_baseline():
+    from ml_metric_reconciliation import row_level_walkforward_audit
+
+    cohort = pd.DataFrame([
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-02-{idx + 1:02d}T00:00:00Z",
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+        }
+        for idx in range(12)
+    ])
+    row_level = row_level_walkforward_audit(
+        cohort,
+        {"status": "PASS"},
+        {"train_only_preprocessing_status": "PASS"},
+        min_test_rows=1,
+    )
+    assert row_level["model_accuracy"] < row_level["baseline_accuracy"]
+    assert row_level["baseline_superiority_status"] == "BLOCKED_BELOW_BASELINE"
+
+
+def test_walkforward_stability_remains_blocked_when_row_level_below_baseline():
+    from ml_metric_reconciliation import row_level_walkforward_audit
+
+    cohort = pd.DataFrame([
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-03-{idx + 1:02d}T00:00:00Z",
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+        }
+        for idx in range(18)
+    ])
+    row_level = row_level_walkforward_audit(
+        cohort,
+        {"status": "PASS"},
+        {"train_only_preprocessing_status": "PASS"},
+    )
+    walk_forward_stability = row_level["row_level_walkforward_status"] if row_level["row_level_walkforward_status"].startswith("BLOCKED") else "REVIEW"
+    assert row_level["row_level_walkforward_status"] == "BLOCKED_BELOW_BASELINE"
+    assert walk_forward_stability == "BLOCKED_BELOW_BASELINE"
