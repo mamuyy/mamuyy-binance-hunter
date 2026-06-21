@@ -19,6 +19,7 @@ from ml_metric_reconciliation import (
     ml_class_imbalance_diagnostic,
     ml_high_confidence_threshold_candidate_diagnostic,
     threshold_candidate_stability_audit,
+    threshold_sample_sufficiency_audit,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -1092,5 +1093,75 @@ def test_threshold_stability_audit_does_not_alter_readiness_components(tmp_path)
     assert report["threshold_stability_audit_status"] == "AVAILABLE"
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+
+
+
+def _threshold_sufficiency_rows(total=120, pred_wins=40, false_win_count=0):
+    rows = []
+    for idx in range(total):
+        predicts_win = idx < pred_wins
+        is_false_win = predicts_win and idx < false_win_count
+        rows.append({
+            "y_true": "LOSS" if is_false_win else ("WIN" if predicts_win or idx % 4 == 0 else "LOSS"),
+            "y_pred": "WIN" if predicts_win else "LOSS",
+            "predicted_probability": 0.85,
+            "fold_id": idx // 40,
+            "symbol": "BTCUSDT" if idx % 2 == 0 else "ETHUSDT",
+            "market_regime": "trend" if idx % 3 else "range",
+        })
+    return rows
+
+
+def test_threshold_sample_sufficiency_available_with_enough_kept_and_predicted_wins():
+    audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows()), selected_threshold=0.80)
+    assert "AVAILABLE_SAMPLE_SUFFICIENT" in audit["threshold_sample_sufficiency_status"]
+    assert audit["threshold_sample_sufficiency_rows_kept"] == 120
+    assert audit["threshold_sample_sufficiency_pred_win_count"] == 40
+
+
+def test_threshold_sample_sufficiency_reviews_insufficient_kept_rows():
+    audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows(total=80, pred_wins=40)), selected_threshold=0.80)
+    assert "REVIEW_INSUFFICIENT_KEPT_ROWS" in audit["threshold_sample_sufficiency_status"]
+
+
+def test_threshold_sample_sufficiency_reviews_insufficient_pred_win_sample():
+    audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows(total=120, pred_wins=2)), selected_threshold=0.80)
+    assert "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE" in audit["threshold_sample_sufficiency_status"]
+
+
+def test_threshold_sample_sufficiency_warns_zero_false_win_is_promising_but_weak_when_pred_win_small():
+    audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)), selected_threshold=0.80)
+    assert "Zero false WIN is promising but not yet statistically strong because predicted WIN sample is insufficient." in audit["threshold_sample_sufficiency_findings"]
+
+
+def test_threshold_sample_sufficiency_unavailable_without_selected_threshold():
+    audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows(total=120, pred_wins=40)))
+    assert audit["threshold_sample_sufficiency_status"] == "UNAVAILABLE_NO_SELECTED_THRESHOLD"
+
+
+def test_threshold_sample_sufficiency_does_not_change_readiness_or_governance(tmp_path):
+    rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
+    for idx, row in enumerate(rows):
+        row["y_true"] = "WIN" if idx < 80 else "LOSS"
+        row["y_pred"] = "WIN" if idx < 2 else "LOSS"
+        row.update({
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-06-{(idx % 28) + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+        })
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE" in report["threshold_sample_sufficiency_status"]
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
     assert report["model_readiness"]["execution_allowed"] is False
     assert report["model_readiness"]["paper_only"] is True

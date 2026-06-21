@@ -756,12 +756,19 @@ def _threshold_metrics_for_frame(frame: pd.DataFrame, sample_count: Optional[int
     rows_kept = len(frame)
     sample_count = rows_kept if sample_count is None else sample_count
     predicted_win_count = sum(pred == "WIN" for pred in preds)
+    predicted_loss_count = sum(pred == "LOSS" for pred in preds)
+    true_win_label_count = sum(actual == "WIN" for actual in actuals)
+    true_loss_label_count = sum(actual == "LOSS" for actual in actuals)
     true_win_count = sum(actual == "WIN" and pred == "WIN" for actual, pred in zip(actuals, preds))
     false_win_count = sum(actual == "LOSS" and pred == "WIN" for actual, pred in zip(actuals, preds))
     return {
         "rows_kept": rows_kept,
         "kept_ratio": _safe_ratio(rows_kept, sample_count),
         "accuracy": _safe_ratio(sum(actual == pred for actual, pred in zip(actuals, preds)), rows_kept),
+        "predicted_win_count": predicted_win_count,
+        "predicted_loss_count": predicted_loss_count,
+        "true_win_count": true_win_label_count,
+        "true_loss_count": true_loss_label_count,
         "false_win_count": false_win_count,
         "win_precision": _safe_ratio(true_win_count, predicted_win_count),
         "true_label_distribution": _counter_dict(actuals),
@@ -863,6 +870,117 @@ def threshold_candidate_stability_audit(cohort: pd.DataFrame, selected_threshold
         "threshold_stability_accuracy": metrics["accuracy"],
         "threshold_stability_win_precision": metrics["win_precision"],
         "threshold_stability_findings": findings,
+    }
+
+
+def threshold_sample_sufficiency_audit(
+    report_or_cohort: Any,
+    selected_threshold: Optional[float] = None,
+    min_rows_required: int = 100,
+    min_pred_win_required: int = 30,
+    min_segment_rows_required: int = 10,
+) -> Dict[str, Any]:
+    """Diagnostic-only audit of selected threshold sample sufficiency.
+
+    This evaluates whether selected-threshold evidence is strong enough to inform
+    future paper-only trade-filter review. It does not apply thresholds to
+    signals, training, readiness gates, baseline/walk-forward gates, or execution.
+    """
+    base: Dict[str, Any] = {
+        "threshold_sample_sufficiency_status": "UNAVAILABLE_NO_SELECTED_THRESHOLD",
+        "threshold_sample_sufficiency_selected_threshold": None,
+        "threshold_sample_sufficiency_rows_kept": 0,
+        "threshold_sample_sufficiency_pred_win_count": 0,
+        "threshold_sample_sufficiency_pred_loss_count": 0,
+        "threshold_sample_sufficiency_true_win_count": 0,
+        "threshold_sample_sufficiency_true_loss_count": 0,
+        "threshold_sample_sufficiency_false_win_count": None,
+        "threshold_sample_sufficiency_win_precision": None,
+        "threshold_sample_sufficiency_accuracy": None,
+        "threshold_sample_sufficiency_min_rows_required": min_rows_required,
+        "threshold_sample_sufficiency_min_pred_win_required": min_pred_win_required,
+        "threshold_sample_sufficiency_min_segment_rows_required": min_segment_rows_required,
+        "threshold_sample_sufficiency_findings": [],
+        "threshold_sample_sufficiency_recommendation": (
+            "Diagnostic only: do not apply the selected threshold or unlock readiness/execution; use this only to judge whether future paper-only filter review has enough sample support."
+        ),
+    }
+
+    selected_threshold = safe_float(selected_threshold)
+    if selected_threshold is None and isinstance(report_or_cohort, dict):
+        selected_threshold = safe_float(
+            report_or_cohort.get("threshold_stability_selected_threshold")
+            or report_or_cohort.get("threshold_candidate_selected")
+        )
+    if selected_threshold is None:
+        return {**base, "threshold_sample_sufficiency_findings": ["No selected threshold is available for sample sufficiency audit."]}
+
+    metrics: Optional[Dict[str, Any]] = None
+    min_segment_rows = None
+    if isinstance(report_or_cohort, dict):
+        if "threshold_stability_rows_kept" not in report_or_cohort:
+            result = {**base, "threshold_sample_sufficiency_selected_threshold": selected_threshold}
+            result["threshold_sample_sufficiency_status"] = "UNAVAILABLE_NO_PROBABILITY_EVIDENCE"
+            result["threshold_sample_sufficiency_findings"] = ["Selected threshold exists but probability evidence is missing."]
+            return result
+        pred_dist = report_or_cohort.get("threshold_stability_pred_distribution") or {}
+        true_dist = report_or_cohort.get("threshold_stability_label_distribution") or {}
+        metrics = {
+            "rows_kept": int(report_or_cohort.get("threshold_stability_rows_kept") or 0),
+            "predicted_win_count": int(pred_dist.get("WIN") or 0),
+            "predicted_loss_count": int(pred_dist.get("LOSS") or 0),
+            "true_win_count": int(true_dist.get("WIN") or 0),
+            "true_loss_count": int(true_dist.get("LOSS") or 0),
+            "false_win_count": report_or_cohort.get("threshold_stability_false_win_count"),
+            "win_precision": report_or_cohort.get("threshold_stability_win_precision"),
+            "accuracy": report_or_cohort.get("threshold_stability_accuracy"),
+        }
+        min_segment_rows = report_or_cohort.get("threshold_stability_min_segment_rows")
+    else:
+        frame, reason = _canonical_probability_frame(report_or_cohort)
+        if frame.empty:
+            result = {**base, "threshold_sample_sufficiency_selected_threshold": selected_threshold}
+            result["threshold_sample_sufficiency_status"] = "UNAVAILABLE_NO_PROBABILITY_EVIDENCE"
+            result["threshold_sample_sufficiency_findings"] = [reason]
+            return result
+        kept = frame[frame["__predicted_probability"] >= selected_threshold].copy()
+        metrics = _threshold_metrics_for_frame(kept, sample_count=len(frame))
+        segment_sizes = []
+        for column in ("fold_id", "symbol", "market_regime", "regime", "regime_label"):
+            if column in kept.columns:
+                segment_sizes.extend(int(len(segment)) for _, segment in kept.groupby(column, dropna=False))
+        min_segment_rows = min(segment_sizes) if segment_sizes else None
+
+    findings = ["This threshold sample sufficiency audit is diagnostic-only and does not alter readiness gates, training, threshold selection, or execution behavior."]
+    statuses: List[str] = []
+    if metrics["rows_kept"] < min_rows_required:
+        statuses.append("REVIEW_INSUFFICIENT_KEPT_ROWS")
+        findings.append(f"Rows kept {metrics['rows_kept']} is below required minimum {min_rows_required}.")
+    if metrics["predicted_win_count"] < min_pred_win_required:
+        statuses.append("REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE")
+        findings.append(f"Predicted WIN sample {metrics['predicted_win_count']} is below required minimum {min_pred_win_required}.")
+    if min_segment_rows is not None and min_segment_rows < min_segment_rows_required:
+        statuses.append("REVIEW_INSUFFICIENT_SEGMENT_ROWS")
+        findings.append(f"Smallest available segment has {min_segment_rows} rows, below required minimum {min_segment_rows_required}.")
+    if metrics.get("false_win_count") == 0 and metrics["predicted_win_count"] < min_pred_win_required:
+        findings.append("Zero false WIN is promising but not yet statistically strong because predicted WIN sample is insufficient.")
+    if not statuses:
+        statuses.append("AVAILABLE_SAMPLE_SUFFICIENT")
+        findings.append("Selected threshold sample support meets diagnostic minimums for future paper-only filter review.")
+
+    return {
+        **base,
+        "threshold_sample_sufficiency_status": ";".join(statuses),
+        "threshold_sample_sufficiency_selected_threshold": selected_threshold,
+        "threshold_sample_sufficiency_rows_kept": metrics["rows_kept"],
+        "threshold_sample_sufficiency_pred_win_count": metrics["predicted_win_count"],
+        "threshold_sample_sufficiency_pred_loss_count": metrics["predicted_loss_count"],
+        "threshold_sample_sufficiency_true_win_count": metrics["true_win_count"],
+        "threshold_sample_sufficiency_true_loss_count": metrics["true_loss_count"],
+        "threshold_sample_sufficiency_false_win_count": metrics.get("false_win_count"),
+        "threshold_sample_sufficiency_win_precision": metrics.get("win_precision"),
+        "threshold_sample_sufficiency_accuracy": metrics.get("accuracy"),
+        "threshold_sample_sufficiency_findings": findings,
     }
 
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
@@ -2164,6 +2282,10 @@ def run_ml_metric_reconciliation(
         cohort,
         selected_threshold=threshold_candidate_diagnostic.get("threshold_candidate_selected"),
     )
+    threshold_sample_sufficiency = threshold_sample_sufficiency_audit(
+        cohort,
+        selected_threshold=threshold_candidate_diagnostic.get("threshold_candidate_selected"),
+    )
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -2226,6 +2348,7 @@ def run_ml_metric_reconciliation(
         **class_imbalance_diagnostic,
         **threshold_candidate_diagnostic,
         **threshold_stability_audit,
+        **threshold_sample_sufficiency,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
