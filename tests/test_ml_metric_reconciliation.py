@@ -15,6 +15,7 @@ from ml_metric_reconciliation import (
     discover_artifacts,
     label_contract_audit,
     label_integrity_component_status,
+    larger_fold_baseline_diagnostic,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -758,6 +759,76 @@ def test_baseline_superiority_remains_blocked_below_baseline():
     )
     assert row_level["model_accuracy"] < row_level["baseline_accuracy"]
     assert row_level["baseline_superiority_status"] == "BLOCKED_BELOW_BASELINE"
+
+
+def _larger_fold_rows(labels, preds):
+    return pd.DataFrame([
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-03-{idx + 1:02d}T00:00:00Z",
+            "y_true": labels[idx],
+            "y_pred": preds[idx],
+        }
+        for idx in range(len(labels))
+    ])
+
+
+def test_larger_fold_baseline_diagnostic_available_with_enough_rows():
+    labels = ["LOSS"] * 20 + ["LOSS"] * 6 + ["WIN"] * 4
+    preds = ["LOSS"] * 20 + ["WIN"] * 10
+    diagnostic = larger_fold_baseline_diagnostic(_larger_fold_rows(labels, preds), min_train_rows=20, min_test_rows=10)
+    assert diagnostic["larger_fold_baseline_diagnostic_status"] == "AVAILABLE"
+    assert diagnostic["larger_fold_rows"] == 10
+    assert diagnostic["larger_fold_count"] == 1
+
+
+def test_larger_fold_baseline_diagnostic_unavailable_with_insufficient_rows():
+    labels = ["LOSS"] * 10
+    preds = ["LOSS"] * 10
+    diagnostic = larger_fold_baseline_diagnostic(_larger_fold_rows(labels, preds), min_train_rows=20, min_test_rows=10)
+    assert diagnostic["larger_fold_baseline_diagnostic_status"] == "UNAVAILABLE_INSUFFICIENT_ROWS"
+    assert diagnostic["larger_fold_rows"] == 0
+    assert diagnostic["larger_fold_count"] == 0
+
+
+def test_larger_fold_baseline_diagnostic_computes_accuracy_and_delta():
+    labels = ["LOSS"] * 20 + ["LOSS"] * 6 + ["WIN"] * 4
+    preds = ["LOSS"] * 20 + ["LOSS"] * 5 + ["WIN"] * 5
+    diagnostic = larger_fold_baseline_diagnostic(_larger_fold_rows(labels, preds), min_train_rows=20, min_test_rows=10)
+    assert diagnostic["larger_fold_model_accuracy"] == pytest.approx(0.9)
+    assert diagnostic["larger_fold_baseline_accuracy"] == pytest.approx(0.6)
+    assert diagnostic["larger_fold_model_vs_baseline_delta"] == pytest.approx(0.3)
+
+
+def test_larger_fold_baseline_diagnostic_reports_baseline_prediction_distribution():
+    labels = ["LOSS"] * 20 + ["LOSS"] * 6 + ["WIN"] * 4
+    preds = ["LOSS"] * 20 + ["LOSS"] * 10
+    diagnostic = larger_fold_baseline_diagnostic(_larger_fold_rows(labels, preds), min_train_rows=20, min_test_rows=10)
+    assert diagnostic["larger_fold_baseline_prediction_distribution"] == {"LOSS": 1}
+
+
+def test_larger_fold_diagnostic_does_not_change_existing_readiness_components(tmp_path):
+    rows = [
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-04-{idx + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-03-{idx + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-05-{idx + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-05-{idx + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+            "fold_id": idx // 3,
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+            "predicted_probability": 0.9,
+        }
+        for idx in range(30)
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["larger_fold_baseline_diagnostic_status"] == "AVAILABLE"
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
 
 
 def test_walkforward_stability_remains_blocked_when_row_level_below_baseline():
