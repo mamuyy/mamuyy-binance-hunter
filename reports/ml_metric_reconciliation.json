@@ -431,7 +431,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T15:28:36.887330+00:00",
+  "generated_at": "2026-06-21T15:41:27.142294+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -737,6 +737,32 @@
     "status": "BLOCKED_UNREPRODUCIBLE"
   },
   "missing_feature_timestamp_count": 0,
+  "ml_model_upgrade_blockers": [],
+  "ml_model_upgrade_candidate_paths": [
+    "CLASS_IMBALANCE_REPAIR",
+    "COST_SENSITIVE_TRAINING",
+    "PROBABILITY_CALIBRATION",
+    "REGIME_AWARE_MODELING",
+    "FEATURE_RELIABILITY_REVIEW"
+  ],
+  "ml_model_upgrade_diagnostic_status": "AVAILABLE",
+  "ml_model_upgrade_do_not_change": [
+    "NO_LIVE_OR_TESTNET_EXECUTION",
+    "NO_RUNTIME_THRESHOLD_APPLICATION",
+    "NO_READINESS_UNLOCK",
+    "NO_TRAINING_CHANGE_IN_THIS_PR",
+    "NO_PREDICTION_CHANGE_IN_THIS_PR"
+  ],
+  "ml_model_upgrade_findings": [
+    "Diagnostic/planning-only: no model training, inference, prediction, threshold, readiness, or execution behavior is changed."
+  ],
+  "ml_model_upgrade_primary_problem": [
+    "NO_PRIMARY_PROBLEM_IDENTIFIED_FROM_AVAILABLE_FIELDS"
+  ],
+  "ml_model_upgrade_readiness_state": "REPAIR_PLAN_ONLY_EVIDENCE_REVIEW",
+  "ml_model_upgrade_recommendation": "Keep execution disabled and paper-only. Use this plan to investigate class imbalance, cost-sensitive/threshold-aware training, probability calibration, regime-aware modeling, and feature reliability before any future model upgrade PR.",
+  "ml_model_upgrade_recommended_first_path": "CLASS_IMBALANCE_AND_THRESHOLD_CALIBRATION_DIAGNOSTIC",
+  "ml_model_upgrade_required_evidence": [],
   "model_accuracy": null,
   "model_prediction_bias": null,
   "model_readiness": {

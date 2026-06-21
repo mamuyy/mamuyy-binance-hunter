@@ -18,6 +18,7 @@ from ml_metric_reconciliation import (
     larger_fold_baseline_diagnostic,
     ml_class_imbalance_diagnostic,
     ml_high_confidence_threshold_candidate_diagnostic,
+    ml_model_repair_upgrade_diagnostic_plan,
     paper_filter_candidate_registry,
     paper_filter_shadow_review_scorecard,
     threshold_candidate_stability_audit,
@@ -1430,3 +1431,129 @@ def test_paper_filter_shadow_review_does_not_change_readiness_or_governance(tmp_
     assert report["governance"]["paper_only"] is True
     assert report["model_readiness"]["execution_allowed"] is False
     assert report["model_readiness"]["paper_only"] is True
+
+
+def _upgrade_plan_base_report():
+    return {
+        "model_readiness": {
+            "overall_status": "BLOCKED_BELOW_BASELINE",
+            "primary_blocker": "BLOCKED_BELOW_BASELINE",
+            "components": {
+                "Baseline Superiority": "BLOCKED_BELOW_BASELINE",
+                "Walk-Forward Stability": "BLOCKED_INSTABILITY",
+            },
+        },
+        "baseline_superiority_status": "BLOCKED_BELOW_BASELINE",
+        "model_vs_baseline_delta": -0.12,
+        "threshold_candidate_diagnostic_status": "AVAILABLE",
+        "threshold_candidate_selected": 0.80,
+        "threshold_stability_audit_status": "REVIEW_INSUFFICIENT_THRESHOLD_SAMPLE",
+        "threshold_stability_pred_distribution": {"LOSS": 12, "WIN": 2},
+        "threshold_sample_sufficiency_status": "REVIEW_INSUFFICIENT_KEPT_ROWS;REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE",
+        "threshold_sample_sufficiency_rows_kept": 14,
+        "threshold_sample_sufficiency_pred_win_count": 2,
+        "filtered_cohort_comparison_status": "AVAILABLE",
+        "filtered_cohort_selected_threshold": 0.80,
+        "filtered_cohort_filtered_vs_full_accuracy_delta": 0.20,
+        "filtered_cohort_filtered_model_vs_baseline_delta": 0.10,
+        "filtered_cohort_false_win_delta": -5,
+        "filtered_cohort_filtered_false_win_count": 0,
+        "filtered_cohort_filtered_prediction_distribution": {"LOSS": 12, "WIN": 2},
+        "filtered_cohort_findings": ["REVIEW_INSUFFICIENT_FILTERED_SAMPLE", "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE"],
+        "filtered_cohort_regime_summary": [],
+        "paper_filter_candidate_status": "REVIEW_CANDIDATE_NOT_ENABLED",
+        "paper_filter_candidate_enabled": False,
+        "paper_filter_candidate_blockers": ["INSUFFICIENT_FILTERED_ROWS", "INSUFFICIENT_PREDICTED_WIN_SAMPLE", "OVERALL_READINESS_BLOCKED_BELOW_BASELINE"],
+        "paper_filter_shadow_review_status": "REVIEW_SHADOW_CANDIDATE_BLOCKED",
+        "paper_filter_shadow_review_blockers": ["INSUFFICIENT_FILTERED_ROWS", "INSUFFICIENT_PREDICTED_WIN_SAMPLE"],
+    }
+
+
+def test_ml_model_upgrade_diagnostic_status_available_with_prior_fields():
+    from ml_metric_reconciliation import ml_model_repair_upgrade_diagnostic_plan
+
+    plan = ml_model_repair_upgrade_diagnostic_plan(_upgrade_plan_base_report())
+
+    assert plan["ml_model_upgrade_diagnostic_status"] == "AVAILABLE"
+    assert plan["ml_model_upgrade_candidate_paths"] == [
+        "CLASS_IMBALANCE_REPAIR",
+        "COST_SENSITIVE_TRAINING",
+        "PROBABILITY_CALIBRATION",
+        "REGIME_AWARE_MODELING",
+        "FEATURE_RELIABILITY_REVIEW",
+    ]
+
+
+def test_ml_model_upgrade_detects_broad_model_below_baseline():
+    from ml_metric_reconciliation import ml_model_repair_upgrade_diagnostic_plan
+
+    plan = ml_model_repair_upgrade_diagnostic_plan(_upgrade_plan_base_report())
+
+    assert "BROAD_MODEL_BELOW_BASELINE" in plan["ml_model_upgrade_primary_problem"]
+    assert "BASELINE_SUPERIORITY_NOT_PROVEN" in plan["ml_model_upgrade_blockers"]
+
+
+def test_ml_model_upgrade_detects_promising_threshold_filter_but_undersampled():
+    from ml_metric_reconciliation import ml_model_repair_upgrade_diagnostic_plan
+
+    plan = ml_model_repair_upgrade_diagnostic_plan(_upgrade_plan_base_report())
+
+    assert "THRESHOLD_FILTER_PROMISING_BUT_UNDERSAMPLED" in plan["ml_model_upgrade_primary_problem"]
+    assert "THRESHOLD_FILTER_SAMPLE_SUPPORT_INSUFFICIENT" in plan["ml_model_upgrade_blockers"]
+
+
+def test_ml_model_upgrade_recommends_first_path_for_weak_broad_model_and_promising_filter():
+    from ml_metric_reconciliation import ml_model_repair_upgrade_diagnostic_plan
+
+    plan = ml_model_repair_upgrade_diagnostic_plan(_upgrade_plan_base_report())
+
+    assert plan["ml_model_upgrade_recommended_first_path"] == "CLASS_IMBALANCE_AND_THRESHOLD_CALIBRATION_DIAGNOSTIC"
+
+
+def test_ml_model_upgrade_includes_regime_evidence_gap_when_regime_blocker_exists():
+    from ml_metric_reconciliation import ml_model_repair_upgrade_diagnostic_plan
+    report = _upgrade_plan_base_report()
+    report["paper_filter_candidate_blockers"].append("REGIME_SEGMENT_UNAVAILABLE")
+    report["filtered_cohort_regime_summary"] = {"status": "UNAVAILABLE"}
+
+    plan = ml_model_repair_upgrade_diagnostic_plan(report)
+
+    assert "REGIME_EVIDENCE_GAP" in plan["ml_model_upgrade_primary_problem"]
+    assert "REGIME_EVIDENCE_UNAVAILABLE" in plan["ml_model_upgrade_blockers"]
+
+
+def test_ml_model_upgrade_does_not_alter_readiness_governance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cohort = tmp_path / "prediction_cohort.csv"
+    rows = []
+    for idx in range(20):
+        actual = "WIN" if idx < 8 else "LOSS"
+        predicted = "LOSS" if idx < 14 else "WIN"
+        rows.append({
+            "prediction_timestamp": f"2024-02-{idx + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-02-{idx + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-02-{idx + 2:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "contract-v1",
+            "fold_id": idx // 5,
+            "y_true": actual,
+            "y_pred": predicted,
+            "predicted_probability": 0.85 if idx < 14 else 0.55,
+        })
+    pd.DataFrame(rows).to_csv(cohort, index=False)
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path="missing_model.json",
+        walkforward_path="missing_walk.csv",
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path="missing_ledger.jsonl",
+    )
+
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Baseline Superiority"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Walk-Forward Stability"].startswith("BLOCKED")
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["ml_model_upgrade_diagnostic_status"] == "AVAILABLE"
