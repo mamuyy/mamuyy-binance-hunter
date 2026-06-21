@@ -1359,7 +1359,9 @@ def run_ml_metric_reconciliation(
     historical_66 = parse_historical_ml_artifact(hist_artifact.get("discovered_path") or "ml_quality_audit.json", stale_ttl_days=stale_ttl_days)
     identities = metric_identity(artifacts, walkforward, model, wf_display, historical_66)
 
-    cohort_result = load_prediction_cohort(prediction_artifact_path or model_artifact.get("discovered_path"))
+    default_prediction_cohort = Path("reports/ml_prediction_cohort.csv")
+    discovered_prediction_artifact = prediction_artifact_path or (str(default_prediction_cohort) if default_prediction_cohort.exists() else model_artifact.get("discovered_path"))
+    cohort_result = load_prediction_cohort(discovered_prediction_artifact)
     if cohort_result["status"] == "AVAILABLE":
         cohort = cohort_result["frame"]
         metrics = classification_metrics(cohort["__y_true"].astype(str).tolist(), cohort["__y_pred"].astype(str).tolist(), TARGET_LABELS)
@@ -1377,7 +1379,7 @@ def run_ml_metric_reconciliation(
     temporal_feature_guard = validate_temporal_feature_rows(
         cohort if not cohort.empty else [],
         feature_columns=[column for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if not cohort.empty and column in cohort.columns],
-        source_artifact=prediction_artifact_path or model_artifact.get("discovered_path"),
+        source_artifact=discovered_prediction_artifact,
     )
     preprocessing_guard = audit_train_only_preprocessing()
 
