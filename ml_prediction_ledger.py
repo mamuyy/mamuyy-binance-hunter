@@ -18,14 +18,15 @@ import pandas as pd
 
 LEDGER_FIELDS = [
     "prediction_id", "candidate_id", "symbol", "side", "prediction_timestamp",
-    "feature_timestamp_max", "target_horizon", "target_timestamp", "y_pred",
-    "y_true", "predicted_probability", "model_version", "feature_schema_version",
+    "feature_timestamp_max", "target_horizon", "target_timestamp", "target_label",
+    "y_pred", "y_true", "predicted_probability", "model_version", "feature_schema_version",
     "fold_id", "train_window_start", "train_window_end", "test_window_start",
     "test_window_end", "label_source", "label_status", "evaluation_status",
-    "created_at", "updated_at",
+    "temporal_guard_status", "created_at", "updated_at",
 ]
 
-CANONICAL_LABELS = {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL", "UNKNOWN", "PENDING"}
+FINAL_TARGET_LABELS = {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}
+CANONICAL_LABELS = FINAL_TARGET_LABELS | {"UNKNOWN", "PENDING"}
 MATURED_LABEL_STATUSES = {"MATURED"}
 PENDING_LABEL_STATUSES = {"PENDING"}
 INVALID_LABEL_STATUSES = {"MISSING", "INVALID"}
@@ -88,19 +89,47 @@ def _prediction_id(row: Dict[str, Any]) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:32]
 
 
+def _canonical_final_label(value: Any) -> Optional[str]:
+    label = canonical_ml_label(value)
+    return label if label in FINAL_TARGET_LABELS else None
+
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def create_ledger_row(**kwargs: Any) -> Dict[str, Any]:
     now = kwargs.get("created_at") or utc_now()
     row = {field: kwargs.get(field) for field in LEDGER_FIELDS}
     row["created_at"] = row.get("created_at") or now
     row["updated_at"] = row.get("updated_at") or now
-    row["prediction_id"] = row.get("prediction_id") or _prediction_id(row)
-    raw_label = kwargs.get("raw_label_status", kwargs.get("paper_status", row.get("y_true")))
-    if row.get("y_true") is None and raw_label is not None:
+    raw_label = _first_present(row.get("target_label"), row.get("y_true"), kwargs.get("raw_label_status"), kwargs.get("paper_status"))
+    if row.get("target_label") is None and raw_label is not None:
         mapped = normalize_label(raw_label, row.get("target_timestamp"), kwargs.get("as_of"))
-        row["y_true"] = None if mapped["canonical_label"] == "PENDING" else mapped["canonical_label"]
-        row["label_status"] = mapped["label_status"]
-    row["label_status"] = row.get("label_status") or ("PENDING" if row.get("y_true") is None else "MATURED")
+        row["target_label"] = _canonical_final_label(mapped["canonical_label"])
+        if row.get("y_true") is None and mapped["canonical_label"] != "PENDING":
+            row["y_true"] = mapped["canonical_label"]
+        row["label_status"] = row.get("label_status") or mapped["label_status"]
+    else:
+        row["target_label"] = _canonical_final_label(row.get("target_label"))
+    if row.get("y_true") is None:
+        row["y_true"] = row.get("target_label")
+    elif row.get("target_label") is not None and _canonical_final_label(row.get("y_true")) != row.get("target_label"):
+        row["label_status"] = "INVALID"
+    else:
+        row["y_true"] = _canonical_final_label(row.get("y_true")) or row.get("y_true")
+        row["target_label"] = row.get("target_label") or _canonical_final_label(row.get("y_true"))
+    row["label_status"] = row.get("label_status") or ("PENDING" if row.get("target_label") is None else "MATURED")
+    if row.get("label_status") == "MATURED" and row.get("target_label") is None:
+        row["label_status"] = "MISSING"
     row["evaluation_status"] = row.get("evaluation_status") or ("READY" if row["label_status"] == "MATURED" else "PENDING")
+    if row.get("evaluation_status") == "READY" and row.get("label_status") != "MATURED":
+        row["evaluation_status"] = "BLOCKED_MISSING_LABEL"
+    row["prediction_id"] = row.get("prediction_id") or _prediction_id(row)
+    row["temporal_guard_status"] = row.get("temporal_guard_status") or ("BLOCKED" if validate_temporal_row(row, kwargs.get("as_of")) else "PASS")
     return {field: row.get(field) for field in LEDGER_FIELDS}
 
 
@@ -145,6 +174,8 @@ def validate_temporal_row(row: Dict[str, Any], as_of: Any = None) -> List[str]:
         reasons.append("feature_timestamp_after_prediction_timestamp")
     if train_end is not None and pred is not None and train_end >= pred:
         reasons.append("train_window_end_not_before_prediction_timestamp")
+    if row.get("label_status") == "MATURED" and row.get("target_label") not in FINAL_TARGET_LABELS:
+        reasons.append("matured_prediction_missing_target_label")
     if row.get("label_status") == "MATURED" and target is not None and as_ts < target:
         reasons.append("matured_label_before_target_timestamp")
     if row.get("label_status") == "PENDING" and target is not None and as_ts < target and row.get("y_true") in {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}:
@@ -152,29 +183,87 @@ def validate_temporal_row(row: Dict[str, Any], as_of: Any = None) -> List[str]:
     return reasons
 
 
+
+
+def hydrate_ledger_row_for_audit(row: Dict[str, Any], as_of: Any = None) -> Dict[str, Any]:
+    """Return an audit-only hydrated copy of a ledger row without mutating JSONL.
+
+    Legacy ledgers written before ``target_label`` and ``temporal_guard_status``
+    existed remain append-only on disk. Audit can still evaluate them when those
+    fields are derivable from the historical row contents.
+    """
+    hydrated = dict(row)
+    if hydrated.get("target_label") is None:
+        label_source = _first_present(hydrated.get("y_true"), hydrated.get("raw_label_status"), hydrated.get("paper_status"))
+        hydrated["target_label"] = _canonical_final_label(label_source)
+    else:
+        hydrated["target_label"] = _canonical_final_label(hydrated.get("target_label"))
+    if hydrated.get("y_true") is None and hydrated.get("target_label") is not None:
+        hydrated["y_true"] = hydrated.get("target_label")
+    if hydrated.get("label_status") == "MATURED" and hydrated.get("target_label") is None:
+        hydrated["label_status"] = "MISSING"
+    if hydrated.get("temporal_guard_status") is None:
+        hydrated["temporal_guard_status"] = "BLOCKED" if validate_temporal_row(hydrated, as_of) else "PASS"
+    return hydrated
+
+
+def _missing_schema_fields_for_audit(rows: List[Dict[str, Any]], hydrated_rows: List[Dict[str, Any]]) -> List[str]:
+    missing_fields: List[str] = []
+    for field in LEDGER_FIELDS:
+        for original, hydrated in zip(rows, hydrated_rows):
+            if field in original:
+                continue
+            if field == "target_label" and hydrated.get("target_label") in FINAL_TARGET_LABELS:
+                continue
+            if field == "temporal_guard_status" and hydrated.get("temporal_guard_status") in {"PASS", "BLOCKED"}:
+                continue
+            missing_fields.append(field)
+            break
+    return missing_fields
+
 def audit_prediction_ledger(path: str | Path = "reports/ml_prediction_ledger.jsonl", as_of: Any = None) -> Dict[str, Any]:
     path = Path(path)
     if not path.exists():
         return {"prediction_ledger_available": False, "prediction_ledger_path": str(path), "prediction_ledger_rows": 0, "matured_prediction_rows": 0, "pending_prediction_rows": 0, "invalid_prediction_rows": 0, "temporal_guard_status": "BLOCKED", "label_contract_status": "BLOCKED", "evaluation_reproducibility_status": "BLOCKED", "model_readiness_blocker": "BLOCKED_INSUFFICIENT_PREDICTION_COHORT", "findings": ["prediction ledger missing"]}
     rows = load_prediction_ledger(path)
-    missing_fields = [field for field in LEDGER_FIELDS if any(field not in row for row in rows)] if rows else []
-    temporal_findings = [{"prediction_id": row.get("prediction_id"), "reasons": validate_temporal_row(row, as_of)} for row in rows]
+    hydrated_rows = [hydrate_ledger_row_for_audit(row, as_of) for row in rows]
+    missing_fields = _missing_schema_fields_for_audit(rows, hydrated_rows) if rows else []
+    temporal_findings = [{"prediction_id": row.get("prediction_id"), "reasons": validate_temporal_row(row, as_of)} for row in hydrated_rows]
     temporal_findings = [f for f in temporal_findings if f["reasons"]]
-    label_values = {row.get("y_true") for row in rows if row.get("y_true") is not None}
+    label_values = {_first_present(row.get("target_label"), row.get("y_true")) for row in hydrated_rows if _first_present(row.get("target_label"), row.get("y_true")) is not None}
     invalid_labels = sorted(str(v) for v in label_values if v not in CANONICAL_LABELS)
     prediction_ids = [str(row.get("prediction_id")) for row in rows if row.get("prediction_id")]
     duplicate_prediction_id_count = len(prediction_ids) - len(set(prediction_ids))
     duplicate_prediction_ids = sorted([pid for pid in set(prediction_ids) if prediction_ids.count(pid) > 1])
-    matured = sum(1 for row in rows if row.get("label_status") == "MATURED")
-    pending = sum(1 for row in rows if row.get("label_status") == "PENDING")
-    invalid = sum(1 for row in rows if row.get("label_status") in INVALID_LABEL_STATUSES) + len(temporal_findings)
+    matured = sum(1 for row in hydrated_rows if row.get("label_status") == "MATURED" and row.get("target_label") in FINAL_TARGET_LABELS)
+    pending = sum(1 for row in hydrated_rows if row.get("label_status") == "PENDING")
+    missing_matured_labels = sum(1 for row in hydrated_rows if row.get("label_status") == "MATURED" and row.get("target_label") not in FINAL_TARGET_LABELS)
+    invalid = sum(1 for row in hydrated_rows if row.get("label_status") in INVALID_LABEL_STATUSES) + missing_matured_labels + len(temporal_findings)
     findings = []
     if duplicate_prediction_id_count > 0:
         findings.append(f"duplicate prediction_id values detected: {duplicate_prediction_id_count}")
     temporal_status = "BLOCKED" if temporal_findings else ("PASS" if rows else "REVIEW")
-    label_status = "BLOCKED" if missing_fields or invalid_labels else ("PASS" if rows else "REVIEW")
-    eval_status = "PASS" if rows and matured > 0 and not temporal_findings and not invalid_labels and duplicate_prediction_id_count == 0 else ("REVIEW" if rows and duplicate_prediction_id_count == 0 else ("BLOCKED" if rows else "BLOCKED"))
-    return {"prediction_ledger_available": True, "prediction_ledger_path": str(path), "prediction_ledger_rows": len(rows), "matured_prediction_rows": matured, "pending_prediction_rows": pending, "invalid_prediction_rows": invalid, "temporal_guard_status": temporal_status, "label_contract_status": label_status, "evaluation_reproducibility_status": eval_status, "model_readiness_blocker": "BLOCKED_TEMPORAL_INTEGRITY" if temporal_findings else (None if eval_status == "PASS" else "BLOCKED_INSUFFICIENT_PREDICTION_COHORT"), "missing_schema_fields": missing_fields, "invalid_labels": invalid_labels, "temporal_findings": temporal_findings, "duplicate_prediction_id_count": duplicate_prediction_id_count, "duplicate_prediction_ids": duplicate_prediction_ids, "findings": findings}
+    label_status = "BLOCKED" if missing_fields or invalid_labels or invalid > 0 else ("PASS" if rows else "REVIEW")
+    eval_pass = (
+        bool(rows)
+        and matured > 0
+        and not temporal_findings
+        and not invalid_labels
+        and duplicate_prediction_id_count == 0
+        and not missing_fields
+        and invalid == 0
+        and label_status == "PASS"
+    )
+    eval_status = "PASS" if eval_pass else ("REVIEW" if rows and duplicate_prediction_id_count == 0 and label_status != "BLOCKED" else "BLOCKED")
+    if temporal_findings:
+        model_readiness_blocker = "BLOCKED_TEMPORAL_INTEGRITY"
+    elif missing_fields or invalid_labels or invalid > 0 or label_status == "BLOCKED":
+        model_readiness_blocker = "BLOCKED_LABEL_CONTRACT"
+    elif not rows or matured == 0:
+        model_readiness_blocker = "BLOCKED_INSUFFICIENT_PREDICTION_COHORT"
+    else:
+        model_readiness_blocker = None if eval_status == "PASS" else "BLOCKED_INSUFFICIENT_PREDICTION_COHORT"
+    return {"prediction_ledger_available": True, "prediction_ledger_path": str(path), "prediction_ledger_rows": len(rows), "matured_prediction_rows": matured, "pending_prediction_rows": pending, "invalid_prediction_rows": invalid, "temporal_guard_status": temporal_status, "label_contract_status": label_status, "evaluation_reproducibility_status": eval_status, "model_readiness_blocker": model_readiness_blocker, "missing_schema_fields": missing_fields, "invalid_labels": invalid_labels, "temporal_findings": temporal_findings, "duplicate_prediction_id_count": duplicate_prediction_id_count, "duplicate_prediction_ids": duplicate_prediction_ids, "findings": findings}
 
 
 def write_prediction_ledger_audit(report: Dict[str, Any], output_path: str | Path = "reports/ml_prediction_ledger_audit.json") -> None:

@@ -6,7 +6,7 @@ import pytest
 
 from database import init_db
 from ml_prediction_cohort import COHORT_FIELDS, materialize_prediction_cohort, run_prediction_cohort_export
-from ml_prediction_ledger import load_prediction_ledger
+from ml_prediction_ledger import audit_prediction_ledger, load_prediction_ledger
 from ml_metric_reconciliation import run_ml_metric_reconciliation
 
 
@@ -90,6 +90,9 @@ def test_ledger_writer_appends_real_rows_using_canonical_label_contract(tmp_path
     assert {row["label_status"] for row in rows} == {"MATURED"}
     assert {row["evaluation_status"] for row in rows} == {"READY"}
     assert {row["y_true"] for row in rows} <= {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}
+    assert {row["target_label"] for row in rows} <= {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}
+    assert all(row["target_label"] == row["y_true"] for row in rows)
+    assert {row["temporal_guard_status"] for row in rows} == {"PASS"}
 
 
 def test_pending_unmatured_rows_do_not_pretend_evaluated(tmp_path):
@@ -103,6 +106,7 @@ def test_pending_unmatured_rows_do_not_pretend_evaluated(tmp_path):
     assert all(row["label_status"] == "PENDING" for row in rows)
     assert all(row["evaluation_status"] == "PENDING" for row in rows)
     assert all(row["y_true"] is None for row in rows)
+    assert all(row["target_label"] is None for row in rows)
 
 
 def test_matured_rows_with_valid_y_true_become_ready_matured(tmp_path):
@@ -127,6 +131,46 @@ def test_reconciliation_discovers_default_cohort_artifact(tmp_path, monkeypatch)
     assert report["row_level_walkforward_status"] != "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
     assert report["row_level_walkforward_rows"] > 0
     assert Path("reports/ml_prediction_ledger_audit.json").exists()
+
+
+def test_materialize_prediction_cohort_writes_non_null_target_label_for_matured_rows(tmp_path):
+    cohort = tmp_path / "cohort.csv"
+    ledger = tmp_path / "ledger.jsonl"
+    materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    frame = pd.read_csv(cohort)
+    rows = load_prediction_ledger(ledger)
+    assert frame["target_label"].notna().all()
+    assert all(row["target_label"] in {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"} for row in rows)
+
+
+def test_target_label_is_canonicalized_from_selected_dataset_target(tmp_path):
+    data = _dataset()
+    data.loc[6:, "target"] = ["TP1 HIT", "SL", "expired", "flat", "TP2_HIT", "STOP LOSS"]
+    materialize_prediction_cohort(data, tmp_path / "cohort.csv", tmp_path / "ledger.jsonl", train_window=6, test_window=3, max_folds=1)
+    labels = {row["target_label"] for row in load_prediction_ledger(tmp_path / "ledger.jsonl")}
+    assert labels <= {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}
+    assert labels == {"WIN", "LOSS", "NEUTRAL"}
+
+
+def test_idempotent_rerun_preserves_audit_compatibility_for_legacy_rows(tmp_path):
+    cohort = tmp_path / "reports" / "ml_prediction_cohort.csv"
+    ledger = tmp_path / "reports" / "ml_prediction_ledger.jsonl"
+    first = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    legacy_rows = load_prediction_ledger(ledger)
+    for row in legacy_rows:
+        row.pop("target_label", None)
+        row.pop("temporal_guard_status", None)
+    ledger.write_text("".join(json.dumps(row) + "\n" for row in legacy_rows), encoding="utf-8")
+
+    second = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    audit = audit_prediction_ledger(ledger)
+
+    assert first["ledger_rows_appended"] == 6
+    assert second["ledger_rows_appended"] == 0
+    assert second["ledger_duplicates_skipped"] == 6
+    assert audit["temporal_guard_status"] == "PASS"
+    assert audit["matured_prediction_rows"] == 6
+    assert audit["missing_schema_fields"] == []
 
 
 def test_ledger_write_is_idempotent_by_prediction_id(tmp_path):

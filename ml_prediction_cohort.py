@@ -22,8 +22,8 @@ from ml_prediction_ledger import LEDGER_FIELDS, append_prediction, canonical_ml_
 
 COHORT_FIELDS = [
     "prediction_id", "candidate_id", "symbol", "side", "prediction_timestamp",
-    "feature_timestamp_max", "target_horizon", "target_timestamp", "y_pred",
-    "y_true", "predicted_probability", "model_version", "feature_schema_version",
+    "feature_timestamp_max", "target_horizon", "target_timestamp", "target_label",
+    "y_pred", "y_true", "predicted_probability", "model_version", "feature_schema_version",
     "fold_id", "train_window_start", "train_window_end", "test_window_start",
     "test_window_end", "label_source", "label_status", "evaluation_status",
     "evaluation_contract",
@@ -152,6 +152,7 @@ def materialize_prediction_cohort(
                 "feature_timestamp_max": _iso(row.get("feature_timestamp_max")),
                 "target_horizon": _value(row, ["target_horizon", "horizon"]),
                 "target_timestamp": target_ts,
+                "target_label": y_true_value,
                 "y_pred": canonical_ml_label(preds[offset]),
                 "y_true": y_true_value,
                 "predicted_probability": _probability(model, X_test, preds[offset], offset),
