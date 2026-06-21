@@ -3,7 +3,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Mapping
 
 
 REPORT_PATH = "reports/paper_outcome_audit.json"
@@ -35,6 +35,99 @@ def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
         return False
 
 
+def _context_value(context: Any, *keys: str) -> Any:
+    """Return the first non-empty value from a dict-like or sqlite row context."""
+
+    if context is None:
+        return None
+    available_keys = None
+    if isinstance(context, sqlite3.Row):
+        available_keys = set(context.keys())
+    for key in keys:
+        value = None
+        if isinstance(context, sqlite3.Row):
+            if key not in available_keys:
+                continue
+            value = context[key]
+        elif isinstance(context, Mapping):
+            value = context.get(key)
+        else:
+            value = getattr(context, key, None)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def build_prediction_outcome_linkage_fields(
+    prediction: Any = None,
+    trade: Any = None,
+    outcome: Any = None,
+) -> Dict[str, Any]:
+    """Build forward-only prediction/outcome linkage fields from available context.
+
+    The helper intentionally does not synthesize fallback IDs. Missing upstream
+    identifiers remain null so downstream validation/audits can flag them.
+    """
+
+    return {
+        "prediction_id": _context_value(
+            prediction,
+            "prediction_id",
+            "ml_prediction_id",
+        ),
+        "trade_id": _context_value(trade, "trade_id", "paper_trade_id", "id"),
+        "signal_id": _context_value(trade, "signal_id", "source_signal_id"),
+        "symbol": (
+            _context_value(outcome, "symbol")
+            or _context_value(trade, "symbol")
+            or _context_value(prediction, "symbol")
+        ),
+        "source_signal_timestamp": _context_value(
+            prediction,
+            "source_signal_timestamp",
+            "signal_timestamp",
+        ) or _context_value(trade, "source_signal_timestamp", "signal_timestamp"),
+        "target_timestamp": _context_value(
+            prediction,
+            "target_timestamp",
+            "evaluation_target_timestamp",
+            "label_target_timestamp",
+        ),
+        "closed_at": _context_value(outcome, "closed_at", "updated_at")
+        or _context_value(trade, "closed_at", "updated_at"),
+        "outcome": _context_value(outcome, "outcome", "label", "status"),
+        "label": _context_value(outcome, "label", "outcome", "status"),
+        "predicted_probability": _context_value(
+            prediction,
+            "predicted_probability",
+            "prediction_probability",
+            "probability",
+            "win_probability",
+        ),
+        "model_version": _context_value(prediction, "model_version", "model_id"),
+        "evaluation_contract": _context_value(prediction, "evaluation_contract", "label_contract"),
+    }
+
+
+def validate_prediction_outcome_linkage_fields(row: Mapping[str, Any]) -> List[str]:
+    """Return non-fatal diagnostic flags for missing linkage observability fields."""
+
+    flags: List[str] = []
+    if not row.get("prediction_id"):
+        flags.append("MISSING_PREDICTION_ID")
+    if not (row.get("trade_id") or row.get("signal_id")):
+        flags.append("MISSING_TRADE_OR_SIGNAL_ID")
+    if row.get("predicted_probability") in (None, ""):
+        flags.append("MISSING_PREDICTED_PROBABILITY")
+    if not row.get("target_timestamp"):
+        flags.append("MISSING_TARGET_TIMESTAMP")
+    if not row.get("model_version"):
+        flags.append("MISSING_MODEL_VERSION")
+    if not row.get("evaluation_contract"):
+        flags.append("MISSING_EVALUATION_CONTRACT")
+    return flags
+
+
 def _num(value: Any) -> float | None:
     try:
         if value in (None, ""):
@@ -64,7 +157,7 @@ def _pnl_percent(row: sqlite3.Row) -> float:
 
 def _closed_trade_payload(row: sqlite3.Row) -> Dict[str, Any]:
     pnl = _pnl_percent(row)
-    return {
+    payload = {
         "id": _row_value(row, "id"),
         "symbol": _row_value(row, "symbol", ""),
         "side": _row_value(row, "side", ""),
@@ -77,6 +170,17 @@ def _closed_trade_payload(row: sqlite3.Row) -> Dict[str, Any]:
         "opened_at": _row_value(row, "timestamp"),
         "closed_at": _row_value(row, "updated_at"),
     }
+    outcome_context = {
+        "symbol": payload["symbol"],
+        "closed_at": payload["closed_at"],
+        "outcome": "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "BREAKEVEN",
+        "label": "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "BREAKEVEN",
+        "status": payload["status"],
+    }
+    linkage = build_prediction_outcome_linkage_fields(prediction=row, trade=row, outcome=outcome_context)
+    payload.update(linkage)
+    payload["prediction_outcome_linkage_flags"] = validate_prediction_outcome_linkage_fields(payload)
+    return payload
 
 
 def _trade_label(trade: Dict[str, Any] | None) -> str:
