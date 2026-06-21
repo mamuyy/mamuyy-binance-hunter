@@ -1125,6 +1125,92 @@ def filtered_cohort_walkforward_comparison(
         "filtered_cohort_findings": sorted(set(findings), key=findings.index),
     }
 
+
+def paper_filter_candidate_registry(
+    report: Dict[str, Any],
+    min_filtered_rows: int = 100,
+    min_pred_win_rows: int = 30,
+    min_segment_rows: int = 10,
+) -> Dict[str, Any]:
+    """Build a paper-only, OFF-by-default registry entry for filter candidates.
+
+    The registry is governance evidence only. It records diagnostic support and
+    blockers for a future shadow review, but it never enables a runtime filter,
+    changes threshold selection, alters training or predictions, changes
+    readiness gates, or unlocks execution.
+    """
+    threshold = safe_float(report.get("filtered_cohort_selected_threshold"))
+    status = str(report.get("filtered_cohort_comparison_status"))
+    evidence_available = status == "AVAILABLE" and threshold is not None
+    positive_evidence: List[str] = []
+    blockers: List[str] = []
+
+    if evidence_available:
+        accuracy_delta = safe_float(report.get("filtered_cohort_filtered_vs_full_accuracy_delta"))
+        baseline_delta = safe_float(report.get("filtered_cohort_filtered_model_vs_baseline_delta"))
+        filtered_false_wins = report.get("filtered_cohort_filtered_false_win_count")
+        false_win_delta = safe_float(report.get("filtered_cohort_false_win_delta"))
+        if accuracy_delta is not None and accuracy_delta > 0:
+            positive_evidence.append("FILTERED_MODEL_ACCURACY_IMPROVED_OVER_FULL_MODEL")
+        if baseline_delta is not None and baseline_delta > 0:
+            positive_evidence.append("FILTERED_MODEL_BEAT_FILTERED_BASELINE")
+        if filtered_false_wins == 0:
+            positive_evidence.append("FILTERED_FALSE_WIN_COUNT_ZERO")
+        if false_win_delta is not None and false_win_delta < 0:
+            positive_evidence.append("FALSE_WIN_COUNT_IMPROVED_VERSUS_FULL_COHORT")
+
+        findings = set(report.get("filtered_cohort_findings") or [])
+        if "REVIEW_INSUFFICIENT_FILTERED_SAMPLE" in findings or int(report.get("filtered_cohort_rows_kept") or 0) < min_filtered_rows:
+            blockers.append("INSUFFICIENT_FILTERED_ROWS")
+        pred_win_count = int((report.get("filtered_cohort_filtered_prediction_distribution") or {}).get("WIN", 0))
+        if "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE" in findings or pred_win_count < min_pred_win_rows:
+            blockers.append("INSUFFICIENT_PREDICTED_WIN_SAMPLE")
+        segment_rows = [
+            row for key in ("filtered_cohort_fold_summary", "filtered_cohort_symbol_summary")
+            for row in (report.get(key) or [])
+            if isinstance(row, dict)
+        ]
+        if any(row.get("insufficient_kept_rows") for row in segment_rows):
+            blockers.append("INSUFFICIENT_SEGMENT_ROWS")
+        regime = report.get("filtered_cohort_regime_summary")
+        if "REGIME_SEGMENT_UNAVAILABLE" in findings or (isinstance(regime, dict) and regime.get("status") == "UNAVAILABLE"):
+            blockers.append("REGIME_SEGMENT_UNAVAILABLE")
+
+    else:
+        blockers.append("UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE")
+
+    readiness = report.get("model_readiness") or {}
+    if readiness.get("overall_status") == "BLOCKED_BELOW_BASELINE" or readiness.get("primary_blocker") == "BLOCKED_BELOW_BASELINE":
+        blockers.append("OVERALL_READINESS_BLOCKED_BELOW_BASELINE")
+
+    blockers = sorted(set(blockers), key=blockers.index)
+    positive_evidence = sorted(set(positive_evidence), key=positive_evidence.index)
+    status_value = "REVIEW_CANDIDATE_NOT_ENABLED" if evidence_available else "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE"
+    return {
+        "paper_filter_candidate_status": status_value,
+        "paper_filter_candidate_name": "ML_HIGH_CONFIDENCE_THRESHOLD_0_80_FILTER_CANDIDATE" if threshold == 0.8 else "ML_HIGH_CONFIDENCE_THRESHOLD_FILTER_CANDIDATE",
+        "paper_filter_candidate_enabled": False,
+        "paper_filter_candidate_threshold": threshold,
+        "paper_filter_candidate_mode": "paper_only_shadow_review",
+        "paper_filter_candidate_basis": "Diagnostic filtered-cohort comparison only; does not drive trading logic, runtime configuration, signal generation, training, prediction, threshold selection, readiness gates, or execution.",
+        "paper_filter_candidate_positive_evidence": positive_evidence,
+        "paper_filter_candidate_blockers": blockers,
+        "paper_filter_candidate_min_rows_required": min_filtered_rows,
+        "paper_filter_candidate_min_pred_win_required": min_pred_win_rows,
+        "paper_filter_candidate_min_segment_rows_required": min_segment_rows,
+        "paper_filter_candidate_regime_required": True,
+        "paper_filter_candidate_next_review_requirements": [
+            "MIN_FILTERED_ROWS_GTE_100",
+            "MIN_PREDICTED_WIN_ROWS_GTE_30",
+            "MIN_PER_SEGMENT_ROWS_GTE_10",
+            "REGIME_EVIDENCE_AVAILABLE",
+            "FILTERED_MODEL_REMAINS_ABOVE_FILTERED_BASELINE",
+            "FALSE_WIN_REMAINS_LOW_OR_ZERO",
+            "READINESS_GATES_REMAIN_INDEPENDENTLY_EVALUATED",
+        ],
+        "paper_filter_candidate_recommendation": "Keep candidate OFF by default. Continue paper-only shadow evidence collection; do not apply threshold 0.80 to runtime signals or unlock execution until future governance review explicitly approves it.",
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -2453,6 +2539,7 @@ def run_ml_metric_reconciliation(
         "Candidate-Evidence Support": candidate_bridge["status"],
     }
     ready = readiness(components)
+    paper_filter_candidate = paper_filter_candidate_registry({**filtered_cohort_comparison, "model_readiness": ready})
     default_sources = db_path == "mamuyy_hunter.db" and model_output_path == "model_output.json" and walkforward_path == "walkforward_results.csv"
     production_artifacts_exist = any(item.get("exists") for item in artifacts if item.get("artifact_name") in {"model_output", "walkforward_results", "database_table:historical_outcomes", "database_table:ml_results", "database_table:walkforward_results"})
     context = artifact_context or ("RUNTIME_AUDIT" if metrics else ("RUNTIME_AUDIT_NO_PREDICTION_COHORT" if (default_sources and production_artifacts_exist) else "NON_PRODUCTION_EMPTY_FIXTURE"))
@@ -2496,6 +2583,7 @@ def run_ml_metric_reconciliation(
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
+        **paper_filter_candidate,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
