@@ -253,6 +253,22 @@
     },
     "status": "UNAVAILABLE"
   },
+  "class_imbalance_diagnostic_status": "UNAVAILABLE_NO_EVALUATED_ROWS",
+  "class_imbalance_findings": [
+    "No prediction cohort rows are available for class-imbalance diagnostics."
+  ],
+  "class_imbalance_recommendation": "Diagnostic only: do not alter model training, thresholds, readiness gates, or execution behavior from this audit alone.",
+  "class_imbalance_sample_count": 0,
+  "confusion_matrix": {
+    "actual_LOSS": {
+      "predicted_LOSS": 0,
+      "predicted_WIN": 0
+    },
+    "actual_WIN": {
+      "predicted_LOSS": 0,
+      "predicted_WIN": 0
+    }
+  },
   "current_accuracy_reconciliation": {
     "contract_match_walkforward": false,
     "correct_predictions": null,
@@ -383,10 +399,12 @@
     "status": "BLOCKED_UNREPRODUCIBLE"
   },
   "evaluation_reproducibility_status": "BLOCKED",
+  "false_loss_count": 0,
+  "false_win_count": 0,
   "feature_timestamp_coverage": 0.0,
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T12:23:17.785754+00:00",
+  "generated_at": "2026-06-21T13:27:16.833123+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -457,6 +475,23 @@
     }
   ],
   "label_integrity_component_status": "BLOCKED_LABEL_CONTRACT",
+  "larger_fold_baseline_accuracy": null,
+  "larger_fold_baseline_diagnostic_status": "UNAVAILABLE_INSUFFICIENT_ROWS",
+  "larger_fold_baseline_prediction_distribution": {},
+  "larger_fold_count": 0,
+  "larger_fold_details": [],
+  "larger_fold_findings": [
+    "Insufficient rows for larger-fold diagnostic: need at least 30, found 0."
+  ],
+  "larger_fold_min_test_rows": 10,
+  "larger_fold_min_train_rows": 20,
+  "larger_fold_model_accuracy": null,
+  "larger_fold_model_better_folds": 0,
+  "larger_fold_model_tie_folds": 0,
+  "larger_fold_model_vs_baseline_delta": null,
+  "larger_fold_model_worse_folds": 0,
+  "larger_fold_recommendation": "Diagnostic only: keep existing readiness gates unchanged and use this evidence to decide whether next work should target fold-size governance, class-imbalance-aware baseline review, or model/threshold repair.",
+  "larger_fold_rows": 0,
   "legacy_label_contract_status": "REVIEW",
   "limitations": [
     "No predictions are fabricated from labels.",
@@ -464,6 +499,11 @@
     "Missing or stale artifacts are not invented.",
     "Report is advisory and PAPER_ONLY."
   ],
+  "loss_f1": null,
+  "loss_precision": null,
+  "loss_recall": null,
+  "majority_class": null,
+  "majority_class_ratio": null,
   "mandatory_current_readiness_metrics": [
     "AI Confidence",
     "Current Model Accuracy",
@@ -670,6 +710,7 @@
   },
   "missing_feature_timestamp_count": 0,
   "model_accuracy": null,
+  "model_prediction_bias": null,
   "model_readiness": {
     "all_blockers": {
       "Baseline Superiority": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
@@ -723,6 +764,7 @@
   "model_vs_baseline_delta": null,
   "pending_prediction_rows": 0,
   "phase": "9D.1C-C Train-Only Preprocessing Guard",
+  "predicted_label_distribution": {},
   "prediction_ledger_available": false,
   "prediction_ledger_label_contract_status": "BLOCKED",
   "prediction_ledger_rows": 0,
@@ -754,6 +796,7 @@
       "status": "PASS"
     }
   ],
+  "probability_threshold_diagnostic": [],
   "reproduced_metrics": {
     "confusion_matrix": [
       {
@@ -1071,6 +1114,9 @@
     "Model Readiness"
   ],
   "train_only_preprocessing_status": "PASS",
+  "true_label_distribution": {},
+  "true_loss_count": 0,
+  "true_win_count": 0,
   "walkforward_display_reproduction": {
     "average_accuracy": null,
     "average_winrate": null,
@@ -1087,5 +1133,8 @@
     "unweighted_aggregate": null,
     "weighted_aggregate": null,
     "weighted_aggregate_reason": "walk-forward artifact missing"
-  }
+  },
+  "win_f1": null,
+  "win_precision": null,
+  "win_recall": null
 }
