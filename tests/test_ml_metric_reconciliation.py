@@ -1218,6 +1218,40 @@ def test_raw_closed_source_discovery_multiple_sources_need_review(tmp_path, monk
     assert audit["raw_closed_source_selected_path"] is None
 
 
+def test_raw_closed_source_discovery_selects_paper_outcome_audit_canonical_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "paper_outcome_audit.json", {
+        "closed_trades": [
+            {"closed_at": f"2024-01-{(idx % 28) + 1:02d}", "status": "CLOSED", "symbol": "BTCUSDT"}
+            for idx in range(403)
+        ]
+    })
+    ledger_path = tmp_path / "reports" / "ml_prediction_ledger.jsonl"
+    ledger_path.write_text(
+        json.dumps({"closed_at": "2024-01-01", "status": "CLOSED", "symbol": "BTCUSDT"}) + "\n",
+        encoding="utf-8",
+    )
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_discovery_status"] == "AVAILABLE_SELECTED_SOURCE"
+    assert audit["raw_closed_source_selected_path"] == str((tmp_path / "reports" / "paper_outcome_audit.json").resolve())
+    assert audit["raw_closed_source_selected_type"] == "json"
+    assert audit["raw_closed_source_selected_row_count"] == 403
+    assert audit["raw_closed_source_candidate_count"] >= 2
+
+
+def test_raw_closed_source_discovery_selected_status_for_canonical_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "paper_outcome_audit.json", {
+        "closed_trades": [{"closed_at": "t1", "status": "CLOSED", "symbol": "ETHUSDT"}]
+    })
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_discovery_status"] == "AVAILABLE_SELECTED_SOURCE"
+
+
 def test_closed_to_ml_coverage_uses_selected_raw_closed_source_count():
     audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=500))
 
@@ -1225,6 +1259,37 @@ def test_closed_to_ml_coverage_uses_selected_raw_closed_source_count():
     assert audit["closed_to_ml_coverage_raw_closed_count"] == 500
     assert audit["closed_to_ml_coverage_closed_to_ml_retention_ratio"] == 0.5
     assert "CLOSED_OUTCOME_COUNT_EXCEEDS_ML_COHORT_COUNT" in audit["closed_to_ml_coverage_findings"]
+    assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" not in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_propagates_canonical_selected_row_count():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=403))
+
+    assert audit["closed_to_ml_coverage_raw_closed_count"] == 403
+
+
+def test_closed_to_ml_coverage_computes_canonical_retention_ratio():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=403))
+
+    assert audit["closed_to_ml_coverage_closed_to_ml_retention_ratio"] == round(250 / 403, 6)
+
+
+def test_closed_to_ml_coverage_computes_raw_to_ml_gap_count():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=403))
+
+    assert audit["closed_to_ml_coverage_raw_to_ml_gap_count"] == 153
+    assert audit["closed_to_ml_coverage_known_stage_counts"]["raw_to_ml_gap_rows"] == 153
+
+
+def test_closed_to_ml_coverage_flags_canonical_raw_count_exceeds_ml_cohort():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=403))
+
+    assert "CLOSED_OUTCOME_COUNT_EXCEEDS_ML_COHORT_COUNT" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_canonical_source_removes_unavailable_finding():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=403))
+
     assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" not in audit["closed_to_ml_coverage_findings"]
 
 
@@ -1255,6 +1320,7 @@ def test_closed_to_ml_coverage_maps_known_stage_counts():
     assert audit["closed_to_ml_coverage_known_stage_counts"] == {
         "raw_closed_outcomes": None,
         "ml_cohort_rows": 250,
+        "raw_to_ml_gap_rows": None,
         "threshold_kept_rows": 81,
         "threshold_skipped_rows": 169,
         "threshold_predicted_win_rows": 2,
