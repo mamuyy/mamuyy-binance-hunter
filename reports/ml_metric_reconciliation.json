@@ -431,7 +431,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T14:45:30.156033+00:00",
+  "generated_at": "2026-06-21T15:04:17.257739+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -790,6 +790,30 @@
     }
   },
   "model_vs_baseline_delta": null,
+  "paper_filter_candidate_basis": "Diagnostic filtered-cohort comparison only; does not drive trading logic, runtime configuration, signal generation, training, prediction, threshold selection, readiness gates, or execution.",
+  "paper_filter_candidate_blockers": [
+    "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE"
+  ],
+  "paper_filter_candidate_enabled": false,
+  "paper_filter_candidate_min_pred_win_required": 30,
+  "paper_filter_candidate_min_rows_required": 100,
+  "paper_filter_candidate_min_segment_rows_required": 10,
+  "paper_filter_candidate_mode": "paper_only_shadow_review",
+  "paper_filter_candidate_name": "ML_HIGH_CONFIDENCE_THRESHOLD_FILTER_CANDIDATE",
+  "paper_filter_candidate_next_review_requirements": [
+    "MIN_FILTERED_ROWS_GTE_100",
+    "MIN_PREDICTED_WIN_ROWS_GTE_30",
+    "MIN_PER_SEGMENT_ROWS_GTE_10",
+    "REGIME_EVIDENCE_AVAILABLE",
+    "FILTERED_MODEL_REMAINS_ABOVE_FILTERED_BASELINE",
+    "FALSE_WIN_REMAINS_LOW_OR_ZERO",
+    "READINESS_GATES_REMAIN_INDEPENDENTLY_EVALUATED"
+  ],
+  "paper_filter_candidate_positive_evidence": [],
+  "paper_filter_candidate_recommendation": "Keep candidate OFF by default. Continue paper-only shadow evidence collection; do not apply threshold 0.80 to runtime signals or unlock execution until future governance review explicitly approves it.",
+  "paper_filter_candidate_regime_required": true,
+  "paper_filter_candidate_status": "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE",
+  "paper_filter_candidate_threshold": null,
   "pending_prediction_rows": 0,
   "phase": "9D.1C-C Train-Only Preprocessing Guard",
   "predicted_label_distribution": {},

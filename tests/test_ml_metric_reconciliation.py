@@ -18,6 +18,7 @@ from ml_metric_reconciliation import (
     larger_fold_baseline_diagnostic,
     ml_class_imbalance_diagnostic,
     ml_high_confidence_threshold_candidate_diagnostic,
+    paper_filter_candidate_registry,
     threshold_candidate_stability_audit,
     threshold_sample_sufficiency_audit,
     filtered_cohort_walkforward_comparison,
@@ -1247,6 +1248,99 @@ def test_filtered_cohort_comparison_does_not_change_readiness_or_governance(tmp_
     report = _run_current_metric_report(tmp_path, rows)
     components = report["model_readiness"]["components"]
     assert report["filtered_cohort_comparison_status"] == "AVAILABLE"
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+
+
+def _paper_filter_candidate_base_report():
+    diagnostic = {
+        "filtered_cohort_comparison_status": "AVAILABLE",
+        "filtered_cohort_selected_threshold": 0.80,
+        "filtered_cohort_rows_full": 250,
+        "filtered_cohort_rows_kept": 81,
+        "filtered_cohort_filtered_prediction_distribution": {"WIN": 20, "LOSS": 61},
+        "filtered_cohort_full_model_accuracy": 0.644,
+        "filtered_cohort_filtered_model_accuracy": 0.7407407407407407,
+        "filtered_cohort_filtered_baseline_accuracy": 0.7160493827160493,
+        "filtered_cohort_filtered_model_vs_baseline_delta": 0.024691,
+        "filtered_cohort_filtered_vs_full_accuracy_delta": 0.096741,
+        "filtered_cohort_full_false_win_count": 31,
+        "filtered_cohort_filtered_false_win_count": 0,
+        "filtered_cohort_false_win_delta": -31,
+        "filtered_cohort_findings": [
+            "REVIEW_INSUFFICIENT_FILTERED_SAMPLE",
+            "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE",
+            "REGIME_SEGMENT_UNAVAILABLE",
+        ],
+        "filtered_cohort_fold_summary": [{"segment": "1", "rows_kept": 9, "insufficient_kept_rows": True}],
+        "filtered_cohort_symbol_summary": [],
+        "filtered_cohort_regime_summary": {"status": "UNAVAILABLE"},
+        "model_readiness": {"overall_status": "BLOCKED_BELOW_BASELINE", "primary_blocker": "BLOCKED_BELOW_BASELINE"},
+    }
+    return diagnostic
+
+
+def test_paper_filter_candidate_registry_emits_review_candidate_not_enabled_with_sample_blockers():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    assert registry["paper_filter_candidate_status"] == "REVIEW_CANDIDATE_NOT_ENABLED"
+    assert registry["paper_filter_candidate_name"] == "ML_HIGH_CONFIDENCE_THRESHOLD_0_80_FILTER_CANDIDATE"
+    assert registry["paper_filter_candidate_threshold"] == 0.80
+    assert registry["paper_filter_candidate_mode"] == "paper_only_shadow_review"
+
+
+def test_paper_filter_candidate_enabled_is_always_false():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    assert registry["paper_filter_candidate_enabled"] is False
+
+
+def test_paper_filter_candidate_positive_evidence_includes_accuracy_baseline_and_false_win_reduction():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    evidence = registry["paper_filter_candidate_positive_evidence"]
+    assert "FILTERED_MODEL_ACCURACY_IMPROVED_OVER_FULL_MODEL" in evidence
+    assert "FILTERED_MODEL_BEAT_FILTERED_BASELINE" in evidence
+    assert "FILTERED_FALSE_WIN_COUNT_ZERO" in evidence
+    assert "FALSE_WIN_COUNT_IMPROVED_VERSUS_FULL_COHORT" in evidence
+
+
+def test_paper_filter_candidate_blockers_include_sample_segment_and_regime_blockers():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    blockers = registry["paper_filter_candidate_blockers"]
+    assert "INSUFFICIENT_FILTERED_ROWS" in blockers
+    assert "INSUFFICIENT_PREDICTED_WIN_SAMPLE" in blockers
+    assert "INSUFFICIENT_SEGMENT_ROWS" in blockers
+    assert "REGIME_SEGMENT_UNAVAILABLE" in blockers
+    assert "OVERALL_READINESS_BLOCKED_BELOW_BASELINE" in blockers
+
+
+def test_paper_filter_candidate_missing_filtered_cohort_diagnostic_returns_unavailable():
+    registry = paper_filter_candidate_registry({"model_readiness": {"overall_status": "BLOCKED_BELOW_BASELINE"}})
+    assert registry["paper_filter_candidate_status"] == "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE"
+    assert "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE" in registry["paper_filter_candidate_blockers"]
+    assert registry["paper_filter_candidate_enabled"] is False
+
+
+def test_paper_filter_candidate_registry_does_not_alter_readiness_or_governance(tmp_path):
+    rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
+    for idx, row in enumerate(rows):
+        row["y_true"] = "WIN" if idx < 80 else "LOSS"
+        row["y_pred"] = "WIN" if idx < 2 else "LOSS"
+        row.update({
+            "prediction_id": f"p-paper-filter-{idx}",
+            "prediction_timestamp": f"2024-06-{(idx % 28) + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+        })
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["paper_filter_candidate_status"] == "REVIEW_CANDIDATE_NOT_ENABLED"
     assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
