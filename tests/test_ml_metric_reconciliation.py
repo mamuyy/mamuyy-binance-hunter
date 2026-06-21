@@ -14,6 +14,7 @@ from ml_metric_reconciliation import (
     connect_readonly,
     discover_artifacts,
     label_contract_audit,
+    label_integrity_component_status,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -180,6 +181,58 @@ def test_readiness_preserves_all_blockers():
     assert r["primary_blocker"] in {"BLOCKED_LABEL_CONTRACT", "BLOCKED_UNREPRODUCIBLE"}
     assert set(r["all_blockers"]) == {"Metric Integrity", "Label Integrity"}
     assert "Leakage Safety" in r["review_reasons"]
+
+
+def test_label_integrity_reviews_legacy_caveats_after_ledger_contract_pass():
+    status = label_integrity_component_status(
+        {"status": "REVIEW"},
+        {
+            "prediction_ledger_available": True,
+            "label_contract_status": "PASS",
+            "evaluation_reproducibility_status": "PASS",
+            "invalid_labels": [],
+        },
+    )
+    assert status == "REVIEW"
+
+
+def test_label_integrity_blocks_when_ledger_label_contract_blocked():
+    status = label_integrity_component_status(
+        {"status": "REVIEW"},
+        {
+            "prediction_ledger_available": True,
+            "label_contract_status": "BLOCKED",
+            "evaluation_reproducibility_status": "BLOCKED",
+            "invalid_labels": [],
+        },
+    )
+    assert status == "BLOCKED_LABEL_CONTRACT"
+
+
+def test_label_integrity_blocks_when_ledger_missing():
+    status = label_integrity_component_status(
+        {"status": "PASS"},
+        {
+            "prediction_ledger_available": False,
+            "label_contract_status": "BLOCKED",
+            "evaluation_reproducibility_status": "BLOCKED",
+            "invalid_labels": [],
+        },
+    )
+    assert status == "BLOCKED_LABEL_CONTRACT"
+
+
+def test_overall_readiness_remains_blocked_when_non_label_components_block():
+    r = readiness({
+        "Label Integrity": "REVIEW",
+        "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY",
+        "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
+        "Baseline Superiority": "BLOCKED_BELOW_BASELINE",
+        "Walk-Forward Stability": "BLOCKED_INSTABILITY",
+    })
+    assert r["overall_status"].startswith("BLOCKED")
+    assert r["primary_blocker"] != "BLOCKED_LABEL_CONTRACT"
+    assert "Label Integrity" not in r["all_blockers"]
 
 
 def test_full_audit_empty_data_governance_no_mutation_and_context(tmp_path, monkeypatch):

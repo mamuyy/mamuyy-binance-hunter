@@ -1308,6 +1308,32 @@ def data_lineage_status(lineage: Dict[str, Any]) -> str:
     return "PASS"
 
 
+def label_integrity_component_status(label_contract: Dict[str, Any], prediction_ledger: Dict[str, Any]) -> str:
+    """Aggregate legacy and prediction-ledger label contract checks fail-closed.
+
+    The row-level prediction ledger is the authoritative current label contract.
+    Legacy semantic caveats remain visible as REVIEW once the ledger label and
+    evaluation contracts both pass, but they should not become the primary
+    BLOCKED_LABEL_CONTRACT readiness blocker by themselves.
+    """
+    legacy_status = str(label_contract.get("status", "BLOCKED"))
+    ledger_label_status = str(prediction_ledger.get("label_contract_status", "BLOCKED"))
+    ledger_eval_status = str(prediction_ledger.get("evaluation_reproducibility_status", "BLOCKED"))
+    invalid_labels = prediction_ledger.get("invalid_labels") or []
+
+    if not prediction_ledger.get("prediction_ledger_available", False):
+        return "BLOCKED_LABEL_CONTRACT"
+    if legacy_status == "BLOCKED" or invalid_labels:
+        return "BLOCKED_LABEL_CONTRACT"
+    if ledger_label_status == "BLOCKED":
+        return "BLOCKED_LABEL_CONTRACT"
+    if ledger_label_status == "PASS" and ledger_eval_status == "PASS":
+        return "PASS" if legacy_status == "PASS" else "REVIEW"
+    if ledger_label_status == "REVIEW" or ledger_eval_status == "REVIEW":
+        return "REVIEW"
+    return "BLOCKED_LABEL_CONTRACT"
+
+
 def readiness(components: Dict[str, str]) -> Dict[str, Any]:
     blockers = {name: status for name, status in components.items() if str(status).startswith("BLOCKED") or str(status) in {"SOURCE_MISSING", "UNREPRODUCIBLE"}}
     review_reasons = {name: status for name, status in components.items() if str(status).startswith("REVIEW") or str(status) in {"UNVERIFIABLE", "UNAVAILABLE"}}
@@ -1389,12 +1415,13 @@ def run_ml_metric_reconciliation(
     display_metric_integrity = metric_integrity["display_metric_integrity"]
     evaluation_metric_integrity = metric_integrity["evaluation_metric_integrity"]
     label_contract = label_contract_audit()
+    label_integrity_status = label_integrity_component_status(label_contract, prediction_ledger)
     components = {
         "Metric Integrity": metric_integrity["status"],
         "Display Metric Integrity": display_metric_integrity["status"],
         "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE" if prediction_ledger["evaluation_reproducibility_status"] == "BLOCKED" else ("REVIEW" if prediction_ledger["evaluation_reproducibility_status"] == "REVIEW" else evaluation_metric_integrity["status"]),
         "Data Lineage": data_lineage_status(lineage),
-        "Label Integrity": "BLOCKED_LABEL_CONTRACT" if (label_contract["status"] != "PASS" or prediction_ledger["label_contract_status"] == "BLOCKED") else ("REVIEW" if prediction_ledger["label_contract_status"] == "REVIEW" else "PASS"),
+        "Label Integrity": label_integrity_status,
         "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY" if prediction_ledger["temporal_guard_status"] == "BLOCKED" or temporal_feature_guard["status"] == "BLOCKED" else ("BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW")),
         "Baseline Superiority": row_level_walkforward["baseline_superiority_status"],
         "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
@@ -1463,6 +1490,9 @@ def run_ml_metric_reconciliation(
         "invalid_prediction_rows": prediction_ledger["invalid_prediction_rows"],
         "temporal_guard_status": prediction_ledger["temporal_guard_status"],
         "label_contract_status": prediction_ledger["label_contract_status"],
+        "legacy_label_contract_status": label_contract["status"],
+        "prediction_ledger_label_contract_status": prediction_ledger["label_contract_status"],
+        "label_integrity_component_status": label_integrity_status,
         "evaluation_reproducibility_status": prediction_ledger["evaluation_reproducibility_status"],
         "metric_integrity_summary": metric_integrity,
         "display_metric_integrity_summary": display_metric_integrity,
