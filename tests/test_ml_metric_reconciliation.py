@@ -10,6 +10,7 @@ from ml_metric_reconciliation import (
     atomic_write_json,
     baseline_status,
     candidate_evidence_bridge,
+    closed_outcome_to_ml_cohort_coverage_audit,
     classification_metrics,
     connect_readonly,
     discover_artifacts,
@@ -1117,6 +1118,91 @@ def _threshold_sufficiency_rows(total=120, pred_wins=40, false_win_count=0):
         })
     return rows
 
+
+
+def _coverage_base_report(**overrides):
+    report = {
+        "filtered_cohort_rows_full": 250,
+        "filtered_cohort_rows_kept": 81,
+        "filtered_cohort_rows_skipped": 169,
+        "threshold_sample_sufficiency_pred_win_count": 2,
+        "threshold_sample_sufficiency_pred_loss_count": 79,
+    }
+    report.update(overrides)
+    return report
+
+
+def test_closed_to_ml_coverage_available_from_report_fields_without_raw_source():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report())
+    assert audit["closed_to_ml_coverage_status"] == "AVAILABLE_FROM_REPORT_FIELDS"
+    assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_maps_known_stage_counts():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report())
+    assert audit["closed_to_ml_coverage_ml_cohort_count"] == 250
+    assert audit["closed_to_ml_coverage_threshold_kept_count"] == 81
+    assert audit["closed_to_ml_coverage_threshold_skipped_count"] == 169
+    assert audit["closed_to_ml_coverage_threshold_pred_win_count"] == 2
+    assert audit["closed_to_ml_coverage_threshold_pred_loss_count"] == 79
+    assert audit["closed_to_ml_coverage_known_stage_counts"] == {
+        "raw_closed_outcomes": None,
+        "ml_cohort_rows": 250,
+        "threshold_kept_rows": 81,
+        "threshold_skipped_rows": 169,
+        "threshold_predicted_win_rows": 2,
+        "threshold_predicted_loss_rows": 79,
+    }
+
+
+def test_closed_to_ml_coverage_flags_predicted_win_sample_below_minimum():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(threshold_sample_sufficiency_pred_win_count=29))
+    assert "PREDICTED_WIN_SAMPLE_BELOW_MINIMUM" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_flags_threshold_filtered_sample_below_minimum():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(filtered_cohort_rows_kept=99))
+    assert "THRESHOLD_FILTERED_SAMPLE_BELOW_MINIMUM" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_raw_closed_exceeds_ml_cohort_and_retention_ratio():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_outcome_count=500))
+    assert audit["closed_to_ml_coverage_raw_closed_count"] == 500
+    assert audit["closed_to_ml_coverage_closed_to_ml_retention_ratio"] == 0.5
+    assert "CLOSED_OUTCOME_COUNT_EXCEEDS_ML_COHORT_COUNT" in audit["closed_to_ml_coverage_findings"]
+    assert "LOW_COVERAGE_RETENTION_REQUIRES_DROP_REASON_AUDIT" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_missing_raw_source_does_not_fail():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report())
+    assert audit["closed_to_ml_coverage_raw_closed_count"] is None
+    assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" in audit["closed_to_ml_coverage_findings"]
+
+
+def test_closed_to_ml_coverage_does_not_change_readiness_or_governance(tmp_path):
+    rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
+    for idx, row in enumerate(rows):
+        row["y_true"] = "WIN" if idx < 80 else "LOSS"
+        row["y_pred"] = "WIN" if idx < 2 else "LOSS"
+        row.update({
+            "prediction_id": f"p-coverage-{idx}",
+            "prediction_timestamp": f"2024-06-{(idx % 28) + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+        })
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["closed_to_ml_coverage_status"] in {"AVAILABLE_FROM_REPORT_FIELDS", "AVAILABLE_FROM_ARTIFACT:closed_outcomes"}
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
 
 def test_threshold_sample_sufficiency_available_with_enough_kept_and_predicted_wins():
     audit = threshold_sample_sufficiency_audit(pd.DataFrame(_threshold_sufficiency_rows()), selected_threshold=0.80)

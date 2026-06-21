@@ -259,6 +259,41 @@
   ],
   "class_imbalance_recommendation": "Diagnostic only: do not alter model training, thresholds, readiness gates, or execution behavior from this audit alone.",
   "class_imbalance_sample_count": 0,
+  "closed_to_ml_coverage_closed_to_ml_retention_ratio": null,
+  "closed_to_ml_coverage_drop_reasons": {
+    "immature_or_unclosed_outcome": 0,
+    "missing_label": null,
+    "missing_prediction": null,
+    "missing_prediction_link": null,
+    "missing_probability": null,
+    "non_evaluable_row": 0,
+    "predicted_win_scarcity": null,
+    "temporal_guard_exclusion": 0,
+    "threshold_exclusion": 0
+  },
+  "closed_to_ml_coverage_findings": [
+    "DIAGNOSTIC_ONLY_DOES_NOT_ALTER_READINESS_OR_EXECUTION",
+    "Diagnostic-only coverage audit; does not upgrade the model, change training/inference/predictions, apply threshold 0.80 to runtime signals, change readiness gates, or unlock execution.",
+    "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION",
+    "THRESHOLD_FILTERED_SAMPLE_BELOW_MINIMUM"
+  ],
+  "closed_to_ml_coverage_known_stage_counts": {
+    "ml_cohort_rows": 0,
+    "raw_closed_outcomes": null,
+    "threshold_kept_rows": 0,
+    "threshold_predicted_loss_rows": null,
+    "threshold_predicted_win_rows": null,
+    "threshold_skipped_rows": 0
+  },
+  "closed_to_ml_coverage_ml_cohort_count": 0,
+  "closed_to_ml_coverage_ml_to_threshold_retention_ratio": null,
+  "closed_to_ml_coverage_raw_closed_count": null,
+  "closed_to_ml_coverage_recommendation": "Diagnostic only: use the coverage bridge to audit where closed outcomes are excluded before any model repair; keep readiness blocked and execution disabled.",
+  "closed_to_ml_coverage_status": "AVAILABLE_FROM_REPORT_FIELDS",
+  "closed_to_ml_coverage_threshold_kept_count": 0,
+  "closed_to_ml_coverage_threshold_pred_loss_count": null,
+  "closed_to_ml_coverage_threshold_pred_win_count": null,
+  "closed_to_ml_coverage_threshold_skipped_count": 0,
   "confusion_matrix": {
     "actual_LOSS": {
       "predicted_LOSS": 0,
@@ -431,7 +466,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T15:41:27.142294+00:00",
+  "generated_at": "2026-06-21T15:54:16.667466+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
