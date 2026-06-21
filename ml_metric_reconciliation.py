@@ -1285,6 +1285,131 @@ def _field_availability(rows: Sequence[Dict[str, Any]], fields: Sequence[str]) -
     return {field: {"present": sum(1 for row in rows if _present(row.get(field))), "missing": total - sum(1 for row in rows if _present(row.get(field)))} for field in fields}
 
 
+LINKAGE_REQUIRED_KEYS = [
+    "prediction_id",
+    "trade_id",
+    "signal_id",
+    "source_signal_timestamp",
+    "symbol",
+    "entry_time",
+    "closed_at",
+    "target_timestamp",
+]
+
+LINKAGE_MINIMUM_FUTURE_FIELDS = [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "source_signal_timestamp",
+    "target_timestamp",
+    "closed_at",
+    "outcome/label",
+    "predicted_probability",
+]
+
+
+def _payload_dict(row: Dict[str, Any]) -> Dict[str, Any]:
+    payload = row.get("payload_json")
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, str) and payload.strip() and len(payload) <= 100_000:
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _key_coverage(rows: Sequence[Dict[str, Any]], keys: Sequence[str], include_payload: bool = False) -> Dict[str, Dict[str, Any]]:
+    total = len(rows)
+    coverage: Dict[str, Dict[str, Any]] = {}
+    for key in keys:
+        present = 0
+        for row in rows:
+            if _present(row.get(key)) or (include_payload and _present(_payload_dict(row).get(key))):
+                present += 1
+        coverage[key] = {
+            "present": present,
+            "missing": total - present,
+            "coverage_ratio": round_or_none(_safe_ratio(present, total) if total else None),
+        }
+    return coverage
+
+
+def prediction_outcome_linkage_contract_audit(report_or_artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    """Audit the read-only prediction-to-outcome linkage contract.
+
+    This diagnostic only inspects bounded existing artifacts. It does not mutate
+    raw outcomes, prediction ledgers, databases, model state, thresholds,
+    readiness gates, or execution controls.
+    """
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
+    raw_path = Path(str(report.get("raw_closed_source_selected_path") or artifact_paths.get("raw_closed_source_selected_path") or CANONICAL_RAW_CLOSED_SOURCE_PATH))
+    ledger_path = Path(str(report.get("prediction_ledger_path") or artifact_paths.get("prediction_ledger") or artifact_paths.get("ml_prediction_ledger") or "reports/ml_prediction_ledger.jsonl"))
+    raw_rows, container = _read_json_records_from_container(raw_path, report.get("raw_closed_source_selected_container") or CANONICAL_RAW_CLOSED_CONTAINER)
+    ml_rows = _read_jsonl_records(ledger_path)
+
+    raw_coverage = _key_coverage(raw_rows, LINKAGE_REQUIRED_KEYS)
+    ml_coverage = _key_coverage(ml_rows, LINKAGE_REQUIRED_KEYS)
+    payload_coverage = {
+        "raw_closed": _key_coverage(raw_rows, LINKAGE_REQUIRED_KEYS, include_payload=True),
+        "ml_ledger": _key_coverage(ml_rows, LINKAGE_REQUIRED_KEYS, include_payload=True),
+    }
+
+    available_keys = [
+        key for key in LINKAGE_REQUIRED_KEYS
+        if raw_coverage[key]["present"] > 0 and ml_coverage[key]["present"] > 0
+    ]
+    missing_keys = {
+        "raw_closed": [key for key in LINKAGE_REQUIRED_KEYS if raw_coverage[key]["present"] == 0],
+        "ml_ledger": [key for key in LINKAGE_REQUIRED_KEYS if ml_coverage[key]["present"] == 0],
+    }
+    raw_has_stable = raw_coverage["prediction_id"]["present"] > 0 or raw_coverage["trade_id"]["present"] > 0 or raw_coverage["signal_id"]["present"] > 0
+    ml_has_prediction_id = ml_coverage["prediction_id"]["present"] > 0
+    high_confidence_keys = [
+        key for key in ("prediction_id", "trade_id", "signal_id")
+        if raw_coverage[key]["coverage_ratio"] == 1.0 and ml_coverage[key]["coverage_ratio"] == 1.0
+    ]
+    fallback_symbol_closed = raw_coverage["symbol"]["present"] > 0 and raw_coverage["closed_at"]["present"] > 0 and ml_coverage["symbol"]["present"] > 0 and ml_coverage["target_timestamp"]["present"] > 0
+
+    gaps: List[str] = []
+    findings = ["DIAGNOSTIC_ONLY_READ_ONLY_LINKAGE_CONTRACT_AUDIT"]
+    if not raw_has_stable:
+        gaps.append("RAW_CLOSED_MISSING_STABLE_LINKAGE_ID")
+    if ml_has_prediction_id and raw_coverage["prediction_id"]["present"] == 0:
+        gaps.append("PREDICTION_LEDGER_HAS_ID_BUT_OUTCOME_SOURCE_DOES_NOT")
+    if fallback_symbol_closed and not high_confidence_keys:
+        gaps.append("FALLBACK_JOIN_KEY_WEAK_FOR_MODEL_REPAIR")
+    if not high_confidence_keys:
+        gaps.append("NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY")
+
+    preferred_key = high_confidence_keys[0] if high_confidence_keys else ("symbol+closed_at" if fallback_symbol_closed else None)
+    status = "AVAILABLE_LINKAGE_CONTRACT_READY" if high_confidence_keys else "BLOCKED_LINKAGE_CONTRACT_INCOMPLETE"
+    recommendation = (
+        "Future producer should write at least prediction_id, trade_id or signal_id, symbol, "
+        "source_signal_timestamp, target_timestamp, closed_at, outcome/label, and "
+        "predicted_probability into the raw closed outcome source or a dedicated "
+        "prediction_outcome_linkage ledger. Do not repair model until "
+        "prediction/outcome linkage is auditable."
+    )
+    return {
+        "prediction_outcome_linkage_contract_status": status,
+        "prediction_outcome_linkage_required_keys": LINKAGE_REQUIRED_KEYS,
+        "prediction_outcome_linkage_preferred_key": preferred_key,
+        "prediction_outcome_linkage_available_keys": available_keys,
+        "prediction_outcome_linkage_missing_keys": missing_keys,
+        "prediction_outcome_linkage_raw_closed_key_coverage": raw_coverage,
+        "prediction_outcome_linkage_ml_ledger_key_coverage": ml_coverage,
+        "prediction_outcome_linkage_payload_key_coverage": payload_coverage,
+        "prediction_outcome_linkage_contract_gaps": sorted(set(gaps)),
+        "prediction_outcome_linkage_minimum_required_future_fields": LINKAGE_MINIMUM_FUTURE_FIELDS,
+        "prediction_outcome_linkage_findings": findings + [f"raw_closed_container={container}", f"raw_rows={len(raw_rows)}", f"ml_ledger_rows={len(ml_rows)}"],
+        "prediction_outcome_linkage_recommendation": recommendation,
+    }
+
+
 def _row_join_value(row: Dict[str, Any], join_key: str) -> Optional[str]:
     if join_key == "symbol_entry_time":
         symbol = row.get("symbol")
@@ -3345,6 +3470,7 @@ def run_ml_metric_reconciliation(
     coverage_audit_input.update(raw_closed_source_discovery)
     closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
     gap_reason_audit = raw_closed_to_ml_cohort_gap_reason_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, "prediction_ledger_path": prediction_ledger_path})
+    linkage_contract_audit = prediction_outcome_linkage_contract_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, **gap_reason_audit, "prediction_ledger_path": prediction_ledger_path})
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
@@ -3357,6 +3483,7 @@ def run_ml_metric_reconciliation(
         **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
+        **linkage_contract_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
     })
@@ -3406,6 +3533,7 @@ def run_ml_metric_reconciliation(
         **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
+        **linkage_contract_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
         **model_upgrade_diagnostic_plan,

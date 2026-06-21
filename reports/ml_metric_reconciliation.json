@@ -280,6 +280,7 @@
   "closed_to_ml_coverage_known_stage_counts": {
     "ml_cohort_rows": 0,
     "raw_closed_outcomes": null,
+    "raw_to_ml_gap_rows": null,
     "threshold_kept_rows": 0,
     "threshold_predicted_loss_rows": null,
     "threshold_predicted_win_rows": null,
@@ -288,6 +289,7 @@
   "closed_to_ml_coverage_ml_cohort_count": 0,
   "closed_to_ml_coverage_ml_to_threshold_retention_ratio": null,
   "closed_to_ml_coverage_raw_closed_count": null,
+  "closed_to_ml_coverage_raw_to_ml_gap_count": null,
   "closed_to_ml_coverage_recommendation": "Diagnostic only: use the coverage bridge to audit where closed outcomes are excluded before any model repair; keep readiness blocked and execution disabled.",
   "closed_to_ml_coverage_status": "AVAILABLE_FROM_REPORT_FIELDS",
   "closed_to_ml_coverage_threshold_kept_count": 0,
@@ -466,7 +468,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T16:05:40.055100+00:00",
+  "generated_at": "2026-06-21T17:10:02.816353+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -927,6 +929,232 @@
     "prediction_ledger_rows": 0,
     "temporal_guard_status": "BLOCKED"
   },
+  "prediction_outcome_linkage_available_keys": [],
+  "prediction_outcome_linkage_contract_gaps": [
+    "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY",
+    "RAW_CLOSED_MISSING_STABLE_LINKAGE_ID"
+  ],
+  "prediction_outcome_linkage_contract_status": "BLOCKED_LINKAGE_CONTRACT_INCOMPLETE",
+  "prediction_outcome_linkage_findings": [
+    "DIAGNOSTIC_ONLY_READ_ONLY_LINKAGE_CONTRACT_AUDIT",
+    "raw_closed_container=None",
+    "raw_rows=0",
+    "ml_ledger_rows=0"
+  ],
+  "prediction_outcome_linkage_minimum_required_future_fields": [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "source_signal_timestamp",
+    "target_timestamp",
+    "closed_at",
+    "outcome/label",
+    "predicted_probability"
+  ],
+  "prediction_outcome_linkage_missing_keys": {
+    "ml_ledger": [
+      "prediction_id",
+      "trade_id",
+      "signal_id",
+      "source_signal_timestamp",
+      "symbol",
+      "entry_time",
+      "closed_at",
+      "target_timestamp"
+    ],
+    "raw_closed": [
+      "prediction_id",
+      "trade_id",
+      "signal_id",
+      "source_signal_timestamp",
+      "symbol",
+      "entry_time",
+      "closed_at",
+      "target_timestamp"
+    ]
+  },
+  "prediction_outcome_linkage_ml_ledger_key_coverage": {
+    "closed_at": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "entry_time": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "prediction_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "signal_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "source_signal_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "symbol": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "target_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "trade_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    }
+  },
+  "prediction_outcome_linkage_payload_key_coverage": {
+    "ml_ledger": {
+      "closed_at": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "entry_time": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "prediction_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "signal_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "source_signal_timestamp": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "symbol": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "target_timestamp": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "trade_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      }
+    },
+    "raw_closed": {
+      "closed_at": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "entry_time": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "prediction_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "signal_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "source_signal_timestamp": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "symbol": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "target_timestamp": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      },
+      "trade_id": {
+        "coverage_ratio": null,
+        "missing": 0,
+        "present": 0
+      }
+    }
+  },
+  "prediction_outcome_linkage_preferred_key": null,
+  "prediction_outcome_linkage_raw_closed_key_coverage": {
+    "closed_at": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "entry_time": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "prediction_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "signal_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "source_signal_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "symbol": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "target_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "trade_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    }
+  },
+  "prediction_outcome_linkage_recommendation": "Future producer should write at least prediction_id, trade_id or signal_id, symbol, source_signal_timestamp, target_timestamp, closed_at, outcome/label, and predicted_probability into the raw closed outcome source or a dedicated prediction_outcome_linkage ledger. Do not repair model until prediction/outcome linkage is auditable.",
+  "prediction_outcome_linkage_required_keys": [
+    "prediction_id",
+    "trade_id",
+    "signal_id",
+    "source_signal_timestamp",
+    "symbol",
+    "entry_time",
+    "closed_at",
+    "target_timestamp"
+  ],
   "preprocessing_fit_scope": "TRAIN_ONLY_VERIFIED",
   "preprocessing_guard_findings": [
     {
@@ -951,6 +1179,99 @@
   "raw_closed_source_selected_path": null,
   "raw_closed_source_selected_row_count": null,
   "raw_closed_source_selected_type": null,
+  "raw_to_ml_gap_count": 0,
+  "raw_to_ml_gap_field_availability": {
+    "ml_cohort": {
+      "predicted_probability": {
+        "missing": 0,
+        "present": 0
+      },
+      "prediction_id": {
+        "missing": 0,
+        "present": 0
+      },
+      "prediction_timestamp": {
+        "missing": 0,
+        "present": 0
+      },
+      "symbol": {
+        "missing": 0,
+        "present": 0
+      },
+      "target_label": {
+        "missing": 0,
+        "present": 0
+      },
+      "target_timestamp": {
+        "missing": 0,
+        "present": 0
+      },
+      "trade_id": {
+        "missing": 0,
+        "present": 0
+      },
+      "y_pred": {
+        "missing": 0,
+        "present": 0
+      },
+      "y_true": {
+        "missing": 0,
+        "present": 0
+      }
+    },
+    "raw_closed": {
+      "closed_at": {
+        "missing": 0,
+        "present": 0
+      },
+      "entry_time": {
+        "missing": 0,
+        "present": 0
+      },
+      "label": {
+        "missing": 0,
+        "present": 0
+      },
+      "outcome": {
+        "missing": 0,
+        "present": 0
+      },
+      "prediction_id": {
+        "missing": 0,
+        "present": 0
+      },
+      "status": {
+        "missing": 0,
+        "present": 0
+      },
+      "symbol": {
+        "missing": 0,
+        "present": 0
+      },
+      "trade_id": {
+        "missing": 0,
+        "present": 0
+      }
+    },
+    "raw_closed_container": null
+  },
+  "raw_to_ml_gap_findings": [
+    "DIAGNOSTIC_ONLY_READ_ONLY_GAP_REASON_AUDIT",
+    "JOIN_KEY_UNAVAILABLE_PRESERVED_COUNTS_ONLY"
+  ],
+  "raw_to_ml_gap_join_key_status": "JOIN_KEY_UNAVAILABLE",
+  "raw_to_ml_gap_join_key_used": null,
+  "raw_to_ml_gap_ml_cohort_count": 0,
+  "raw_to_ml_gap_raw_closed_count": 0,
+  "raw_to_ml_gap_reason_audit_status": "UNAVAILABLE",
+  "raw_to_ml_gap_reason_counts": {
+    "JOIN_KEY_UNAVAILABLE": 0,
+    "UNKNOWN_REQUIRES_MANUAL_REVIEW": 0
+  },
+  "raw_to_ml_gap_recommendation": "Diagnostic only: use these gap reasons to plan source/label repair; do not mutate source files, training, inference, predictions, thresholds, readiness gates, or execution.",
+  "raw_to_ml_gap_sample_unmatched_raw_metadata": [],
+  "raw_to_ml_gap_unmatched_ml_count": 0,
+  "raw_to_ml_gap_unmatched_raw_count": 0,
   "reproduced_metrics": {
     "confusion_matrix": [
       {
