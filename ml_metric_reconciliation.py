@@ -21,8 +21,9 @@ import pandas as pd
 
 from database import sqlite_path
 from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, PROFITABLE_LABELS, TARGET_LABELS, build_ml_dataset
+from ml_prediction_ledger import audit_prediction_ledger, write_prediction_ledger_audit
 
-PHASE = "9D.1B-B ML Metric Reconciliation"
+PHASE = "9D.1C-A ML Evidence Contract + Prediction Ledger Foundation"
 REPRO_STATUSES = {
     "REPRODUCED_EXACT",
     "REPRODUCED_WITH_ROUNDING",
@@ -1120,6 +1121,7 @@ def run_ml_metric_reconciliation(
     model_output_path: str = "model_output.json",
     walkforward_path: str = "walkforward_results.csv",
     prediction_artifact_path: Optional[str] = None,
+    prediction_ledger_path: str = "reports/ml_prediction_ledger.jsonl",
     artifact_context: Optional[str] = None,
     stale_ttl_days: float = DEFAULT_STALE_TTL_DAYS,
 ) -> Dict[str, Any]:
@@ -1151,6 +1153,7 @@ def run_ml_metric_reconciliation(
     baseline = baseline_status(metrics)
     segments = segment_performance(cohort)
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
+    prediction_ledger = audit_prediction_ledger(prediction_ledger_path)
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1159,10 +1162,10 @@ def run_ml_metric_reconciliation(
     components = {
         "Metric Integrity": metric_integrity["status"],
         "Display Metric Integrity": display_metric_integrity["status"],
-        "Evaluation Metric Integrity": evaluation_metric_integrity["status"],
+        "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE" if prediction_ledger["evaluation_reproducibility_status"] == "BLOCKED" else ("REVIEW" if prediction_ledger["evaluation_reproducibility_status"] == "REVIEW" else evaluation_metric_integrity["status"]),
         "Data Lineage": data_lineage_status(lineage),
-        "Label Integrity": "BLOCKED_LABEL_CONTRACT" if label_contract["status"] != "PASS" else "PASS",
-        "Leakage Safety": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"),
+        "Label Integrity": "BLOCKED_LABEL_CONTRACT" if (label_contract["status"] != "PASS" or prediction_ledger["label_contract_status"] == "BLOCKED") else ("REVIEW" if prediction_ledger["label_contract_status"] == "REVIEW" else "PASS"),
+        "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY" if prediction_ledger["temporal_guard_status"] == "BLOCKED" else ("BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW")),
         "Baseline Superiority": baseline["status"],
         "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
         "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS" if walkforward.get("status") in {"SOURCE_MISSING", "UNREPRODUCIBLE"} else ("UNVERIFIABLE" if any(f.get("leakage_status") == "UNVERIFIABLE" for f in walkforward.get("folds", [])) else "REVIEW"),
@@ -1202,6 +1205,15 @@ def run_ml_metric_reconciliation(
         "historical_snapshot_reconciliation": identities[2:4],
         "segment_performance": segments,
         "candidate_evidence_bridge": candidate_bridge,
+        "prediction_ledger_summary": prediction_ledger,
+        "prediction_ledger_available": prediction_ledger["prediction_ledger_available"],
+        "prediction_ledger_rows": prediction_ledger["prediction_ledger_rows"],
+        "matured_prediction_rows": prediction_ledger["matured_prediction_rows"],
+        "pending_prediction_rows": prediction_ledger["pending_prediction_rows"],
+        "invalid_prediction_rows": prediction_ledger["invalid_prediction_rows"],
+        "temporal_guard_status": prediction_ledger["temporal_guard_status"],
+        "label_contract_status": prediction_ledger["label_contract_status"],
+        "evaluation_reproducibility_status": prediction_ledger["evaluation_reproducibility_status"],
         "metric_integrity_summary": metric_integrity,
         "display_metric_integrity_summary": display_metric_integrity,
         "evaluation_metric_integrity_summary": evaluation_metric_integrity,
@@ -1213,10 +1225,12 @@ def run_ml_metric_reconciliation(
             "walkforward_folds_csv": str(output / "ml_walkforward_folds.csv"),
             "confusion_matrix_csv": str(output / "ml_confusion_matrix.csv"),
             "segment_performance_csv": str(output / "ml_segment_performance.csv"),
+            "prediction_ledger_audit_json": str(output / "ml_prediction_ledger_audit.json"),
         },
         "limitations": ["No predictions are fabricated from labels.", "Display-value reproduction is separated from full evaluation reproduction.", "Missing or stale artifacts are not invented.", "Report is advisory and PAPER_ONLY."],
     }
     atomic_write_json(output / "ml_metric_reconciliation.json", report)
+    write_prediction_ledger_audit(prediction_ledger, output / "ml_prediction_ledger_audit.json")
     write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "display_reproduction_status", "evaluation_reproduction_status", "reproducibility_status"])
     write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "index_gap", "temporal_embargo", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
     write_csv(output / "ml_confusion_matrix.csv", reproduced_metrics.get("confusion_matrix", []), ["actual_class", *TARGET_LABELS])

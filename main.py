@@ -28,6 +28,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "paper-outcome-audit": "--paper-outcome-audit",
     "paper-economic-audit": "--paper-economic-audit",
     "ml-metric-audit": "--ml-metric-audit",
+    "ml-prediction-ledger-audit": "--ml-prediction-ledger-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -47,6 +48,19 @@ if "--ml-metric-audit" in sys.argv:
     print("ML METRIC RECONCILIATION")
     print(f"Overall Model Readiness: {_report.get('model_readiness', {}).get('overall_status')}")
     print(f"Report: {_report.get('artifact_paths', {}).get('json')}")
+    sys.exit(0)
+
+if "--ml-prediction-ledger-audit" in sys.argv:
+    from ml_prediction_ledger import audit_prediction_ledger as _audit_prediction_ledger
+    from ml_prediction_ledger import write_prediction_ledger_audit as _write_prediction_ledger_audit
+
+    _report = _audit_prediction_ledger("reports/ml_prediction_ledger.jsonl")
+    _write_prediction_ledger_audit(_report, "reports/ml_prediction_ledger_audit.json")
+    print("ML PREDICTION LEDGER AUDIT")
+    print(f"Ledger Available: {_report.get('prediction_ledger_available')}")
+    print(f"Rows: {_report.get('prediction_ledger_rows')}")
+    print(f"Temporal Guard: {_report.get('temporal_guard_status')}")
+    print("Report: reports/ml_prediction_ledger_audit.json")
     sys.exit(0)
 
 if "--health" in sys.argv:
