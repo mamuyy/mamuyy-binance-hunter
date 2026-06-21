@@ -75,8 +75,31 @@ def test_matured_label_can_be_attached_after_target_timestamp(tmp_path):
     assert row["y_true"] == "WIN"
     assert row["label_status"] == "MATURED"
     audit = audit_prediction_ledger(path, as_of="2026-01-03T00:00:00Z")
+    assert row["target_label"] == "WIN"
+    assert row["temporal_guard_status"] == "PASS"
     assert audit["temporal_guard_status"] == "PASS"
     assert audit["evaluation_reproducibility_status"] == "PASS"
+
+
+def test_ledger_audit_passes_valid_timestamps_and_labels_without_persisted_guard_status(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    row = create_ledger_row(**base_row(raw_label_status="TP1", as_of="2026-01-03T00:00:00Z"))
+    row.pop("temporal_guard_status")
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    audit = audit_prediction_ledger(path, as_of="2026-01-03T00:00:00Z")
+    assert audit["temporal_guard_status"] == "PASS"
+    assert audit["model_readiness_blocker"] is None
+
+
+def test_malformed_matured_row_without_target_label_fails_closed(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    row = create_ledger_row(**base_row(raw_label_status="TP1", as_of="2026-01-03T00:00:00Z"))
+    row["target_label"] = None
+    row["label_status"] = "MATURED"
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    audit = audit_prediction_ledger(path, as_of="2026-01-03T00:00:00Z")
+    assert audit["temporal_guard_status"] == "BLOCKED"
+    assert audit["invalid_prediction_rows"] >= 1
 
 
 def test_future_feature_timestamp_blocks_readiness(tmp_path):
