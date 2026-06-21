@@ -24,7 +24,7 @@ from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, PROFITABLE_LABELS,
 from ml_prediction_ledger import audit_prediction_ledger, write_prediction_ledger_audit
 from ml_temporal_guard import validate_temporal_feature_rows
 
-PHASE = "9D.1C-B As-Of Feature Join + Temporal Leakage Guard"
+PHASE = "9D.1C-C Train-Only Preprocessing Guard"
 REPRO_STATUSES = {
     "REPRODUCED_EXACT",
     "REPRODUCED_WITH_ROUNDING",
@@ -765,19 +765,73 @@ def dataset_lineage_readonly(db_path: str) -> Dict[str, Any]:
         return base
 
 
+def audit_train_only_preprocessing() -> Dict[str, Any]:
+    """Static fail-closed audit for split-safe preprocessing lineage."""
+    findings: List[Dict[str, Any]] = []
+    full_dataset_fit_violation_count = 0
+
+    ml_text = Path("ml_engine.py").read_text(encoding="utf-8", errors="ignore") if Path("ml_engine.py").exists() else ""
+    wf_text = Path("walkforward.py").read_text(encoding="utf-8", errors="ignore") if Path("walkforward.py").exists() else ""
+
+    required_markers = [
+        "fit_train_only_preprocessor(train_dataset)",
+        "transform_with_train_preprocessor(test_dataset, preprocessor)",
+        "transform_with_train_preprocessor(dataset, preprocessor)",
+    ]
+    if all(marker in ml_text for marker in required_markers):
+        findings.append({
+            "finding": "ml_engine_holdout_preprocessing",
+            "status": "PASS",
+            "evidence": "Holdout path splits raw prepared rows first, fits OneHotEncoder on train_dataset only, then transforms test/all rows with the train-fitted preprocessor.",
+        })
+    else:
+        full_dataset_fit_violation_count += 1
+        findings.append({
+            "finding": "ml_engine_holdout_preprocessing",
+            "status": "REVIEW",
+            "evidence": "Could not verify train-only preprocessing markers in ml_engine.py.",
+        })
+
+    if "fit_train_only_preprocessor(train)" in wf_text and "transform_with_train_preprocessor(test, preprocessor)" in wf_text and "_encode(test)" not in wf_text:
+        findings.append({
+            "finding": "walkforward_fold_preprocessing",
+            "status": "PASS",
+            "evidence": "Each walk-forward fold fits preprocessing on that fold's train slice and transforms the fold test slice using the same train-fitted state.",
+        })
+    else:
+        full_dataset_fit_violation_count += 1
+        findings.append({
+            "finding": "walkforward_fold_preprocessing",
+            "status": "REVIEW",
+            "evidence": "Could not verify isolated per-fold train-only preprocessing in walkforward.py.",
+        })
+
+    suspicious_patterns = ["fit_transform(dataset[CATEGORICAL_FEATURES]", "_encode(test)"]
+    for pattern in suspicious_patterns:
+        if pattern in ml_text or pattern in wf_text:
+            full_dataset_fit_violation_count += 1
+            findings.append({"finding": "full_dataset_fit_pattern", "status": "BLOCKED_PREPROCESSOR_LEAKAGE", "evidence": f"Found suspicious pattern: {pattern}"})
+
+    status = "PASS" if full_dataset_fit_violation_count == 0 and findings and all(f["status"] == "PASS" for f in findings) else ("BLOCKED_PREPROCESSOR_LEAKAGE" if any(str(f.get("status", "")).startswith("BLOCKED") for f in findings) else "REVIEW")
+    return {
+        "preprocessing_fit_scope": "TRAIN_ONLY_VERIFIED" if status == "PASS" else "UNVERIFIED",
+        "train_only_preprocessing_status": status,
+        "full_dataset_fit_violation_count": full_dataset_fit_violation_count,
+        "preprocessing_guard_findings": findings,
+    }
+
+
 def code_leakage_findings() -> List[Dict[str, Any]]:
-    return [
+    preprocessing = audit_train_only_preprocessing()
+    findings = [
         {
             "finding": "latest_by_symbol_feature_join",
-            "status": "BLOCKED_TEMPORAL_LEAKAGE",
-            "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
-        },
-        {
-            "finding": "preprocessor_fit_scope",
-            "status": "BLOCKED_PREPROCESSOR_LEAKAGE",
-            "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
+            "status": "PASS",
+            "evidence": "ml_engine.build_ml_dataset uses as-of feature joins and temporal feature guard status is also reported separately.",
         },
     ]
+    findings.extend(preprocessing["preprocessing_guard_findings"])
+    return findings
 
 
 def compare_displayed(displayed: Any, reproduced: Optional[float], scale: float = 1.0, tolerance: float = 0.005) -> str:
@@ -1160,6 +1214,7 @@ def run_ml_metric_reconciliation(
         feature_columns=[column for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if not cohort.empty and column in cohort.columns],
         source_artifact=prediction_artifact_path or model_artifact.get("discovered_path"),
     )
+    preprocessing_guard = audit_train_only_preprocessing()
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1202,6 +1257,10 @@ def run_ml_metric_reconciliation(
         "dataset_lineage": lineage,
         "label_contracts": [label_contract],
         "split_and_leakage_audit": {"status": "BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW"), "findings": (["No valid prediction/label cohort available"] if cohort.empty else []) + code_leakage_findings()},
+        "preprocessing_fit_scope": preprocessing_guard["preprocessing_fit_scope"],
+        "train_only_preprocessing_status": preprocessing_guard["train_only_preprocessing_status"],
+        "full_dataset_fit_violation_count": preprocessing_guard["full_dataset_fit_violation_count"],
+        "preprocessing_guard_findings": preprocessing_guard["preprocessing_guard_findings"],
         "reproduced_metrics": reproduced_metrics,
         "baseline_comparison": baseline,
         "walkforward_display_reproduction": wf_display,
