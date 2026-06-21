@@ -22,7 +22,7 @@ import pandas as pd
 
 from database import sqlite_path
 from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, PROFITABLE_LABELS, TARGET_LABELS, build_ml_dataset
-from ml_prediction_ledger import audit_prediction_ledger, write_prediction_ledger_audit
+from ml_prediction_ledger import audit_prediction_ledger, canonical_ml_label, write_prediction_ledger_audit
 from ml_temporal_guard import validate_temporal_feature_rows
 
 PHASE = "9D.1C-C Train-Only Preprocessing Guard"
@@ -622,14 +622,16 @@ def row_level_walkforward_audit(
         train = frame.iloc[start:start+train_window]
         test = frame.iloc[start+train_window:start+train_window+test_window]
         start += test_window
-        baseline_prediction = _majority_label(train["__y_true"].tolist())
+        baseline_prediction = _majority_label([canonical_ml_label(value) for value in train["__y_true"].tolist()])
         if baseline_prediction is None:
             findings.append(f"Fold {fold_id} has no train labels for baseline.")
             continue
         fold_rows = []
         for idx, row in test.iterrows():
-            y_true = str(row.get("__y_true"))
-            y_pred = str(row.get("__y_pred"))
+            raw_y_true = row.get("__y_true")
+            raw_y_pred = row.get("__y_pred")
+            y_true = canonical_ml_label(raw_y_true)
+            y_pred = canonical_ml_label(raw_y_pred)
             out = {
                 "prediction_id": _stable_prediction_id(row, int(idx)),
                 "fold_id": fold_id,

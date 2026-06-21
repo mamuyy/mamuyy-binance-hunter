@@ -70,6 +70,18 @@ def test_majority_baseline_computed_from_train_fold():
     assert {row["baseline_prediction"] for row in audit["rows"]} == {"WIN"}
     assert audit["baseline_accuracy"] == 0.333333
 
+def test_equivalent_raw_labels_are_canonicalized_for_baseline_and_correctness():
+    labels = ["TP1 HIT", "TAKE_PROFIT", "TP1_HIT", "CLOSED_WIN", "WIN", "TP"] + ["STOP LOSS", "CLOSED_LOSS", "TAKE_PROFIT"]
+    preds = ["WIN", "WIN", "WIN", "WIN", "WIN", "WIN"] + ["STOP_LOSS", "LOSS", "TP1 HIT"]
+    audit = row_level_walkforward_audit(pd.DataFrame(_rows(labels, preds)), *_guards(), min_folds=1, min_test_rows=3)
+    assert audit["baseline_accuracy"] == 0.333333
+    assert audit["model_accuracy"] == 1.0
+    assert {row["canonical_label"] for row in audit["rows"]} == {"LOSS", "WIN"}
+    assert [row["y_true"] for row in audit["rows"]] == ["LOSS", "LOSS", "WIN"]
+    assert [row["y_pred"] for row in audit["rows"]] == ["LOSS", "LOSS", "WIN"]
+    assert all(row["model_correct"] for row in audit["rows"])
+    assert {row["baseline_prediction"] for row in audit["rows"]} == {"WIN"}
+
 
 def test_model_superiority_pass_only_when_beats_baseline_with_enough_rows_and_folds():
     labels = ["WIN"] * 6 + ["LOSS", "LOSS", "WIN"] + ["LOSS", "WIN", "LOSS"]
