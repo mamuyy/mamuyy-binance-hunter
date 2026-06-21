@@ -17,6 +17,7 @@ from ml_metric_reconciliation import (
     label_integrity_component_status,
     larger_fold_baseline_diagnostic,
     ml_class_imbalance_diagnostic,
+    ml_high_confidence_threshold_candidate_diagnostic,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -942,3 +943,68 @@ def test_class_imbalance_diagnostic_does_not_alter_readiness_gates(tmp_path):
     assert report["model_readiness"]["paper_only"] is True
     assert report["governance"]["execution_allowed"] is False
     assert report["governance"]["paper_only"] is True
+
+
+def test_threshold_candidate_diagnostic_available_with_predicted_probability():
+    diagnostic = ml_high_confidence_threshold_candidate_diagnostic(_class_imbalance_fixture())
+    assert diagnostic["threshold_candidate_diagnostic_status"] == "AVAILABLE"
+    assert [row["threshold"] for row in diagnostic["high_confidence_threshold_diagnostic"]] == [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+    assert diagnostic["threshold_candidate_selected"] is not None
+
+
+def test_threshold_candidate_diagnostic_unavailable_without_predicted_probability():
+    cohort = _class_imbalance_fixture().drop(columns=["predicted_probability"])
+    diagnostic = ml_high_confidence_threshold_candidate_diagnostic(cohort)
+    assert diagnostic["threshold_candidate_diagnostic_status"] == "UNAVAILABLE"
+    assert diagnostic["threshold_candidate_selected"] is None
+    assert "predicted_probability" in diagnostic["threshold_candidate_findings"][0]
+
+
+def test_threshold_candidate_selector_prefers_lower_false_win_when_rows_sufficient():
+    rows = []
+    # 0.80 keeps 30 rows and has no false WINs, while lower thresholds include false WINs.
+    rows.extend({"y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.90} for _ in range(30))
+    rows.extend({"y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.75} for _ in range(10))
+    diagnostic = ml_high_confidence_threshold_candidate_diagnostic(pd.DataFrame(rows))
+    assert diagnostic["threshold_candidate_selected"] == 0.80
+    assert diagnostic["threshold_candidate_rows_kept"] == 30
+    assert diagnostic["threshold_candidate_false_win_count"] == 0
+
+
+def test_threshold_candidate_selector_uses_accuracy_as_tie_breaker():
+    rows = []
+    # 0.70 and 0.80 both have zero false WINs and sufficient rows; 0.80 has higher accuracy.
+    rows.extend({"y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.90} for _ in range(30))
+    rows.extend({"y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.70} for _ in range(10))
+    rows.extend({"y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.60} for _ in range(10))
+    diagnostic = ml_high_confidence_threshold_candidate_diagnostic(pd.DataFrame(rows))
+    assert diagnostic["threshold_candidate_selected"] == 0.80
+    assert diagnostic["threshold_candidate_accuracy"] == pytest.approx(1.0)
+
+
+def test_threshold_candidate_diagnostic_does_not_alter_readiness_gates(tmp_path):
+    rows = [
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-06-{idx + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{idx + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+            "fold_id": idx // 3,
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+            "predicted_probability": 0.9,
+        }
+        for idx in range(30)
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["threshold_candidate_diagnostic_status"] == "AVAILABLE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
