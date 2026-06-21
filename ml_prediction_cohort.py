@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import os
+import sqlite3
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
-from ml_engine import build_ml_dataset, fit_train_only_preprocessor, transform_with_train_preprocessor
+from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, _historical_dataset, build_ml_dataset, fit_train_only_preprocessor, transform_with_train_preprocessor
 from ml_prediction_ledger import LEDGER_FIELDS, append_prediction, canonical_ml_label, create_ledger_row, write_prediction_ledger_audit, audit_prediction_ledger, load_prediction_ledger
 
 COHORT_FIELDS = [
@@ -175,6 +177,135 @@ def materialize_prediction_cohort(
     return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": len(rows), "folds": fold_id - 1, "ledger_rows_appended": ledger_rows_appended, "ledger_duplicates_skipped": ledger_duplicates_skipped}
 
 
+def _canonical_target_counts(dataset: pd.DataFrame) -> Dict[str, int]:
+    if dataset.empty or "target" not in dataset.columns:
+        return {}
+    labels = dataset["target"].apply(canonical_ml_label)
+    labels = labels[labels.isin({"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"})]
+    return {str(label): int(count) for label, count in labels.value_counts().sort_index().items()}
+
+
+def _raw_candidate_rows(path_or_table: str, database_path: str = "mamuyy_hunter.db") -> int:
+    if path_or_table.endswith(".csv"):
+        path = Path(path_or_table)
+        if not path.exists():
+            return 0
+        try:
+            return int(len(pd.read_csv(path)))
+        except (pd.errors.EmptyDataError, OSError):
+            return 0
+    if not os.path.exists(database_path):
+        return 0
+    try:
+        with sqlite3.connect(database_path) as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (path_or_table,),
+            ).fetchone()
+            if not exists:
+                return 0
+            return int(connection.execute(f"SELECT COUNT(*) FROM {path_or_table}").fetchone()[0])
+    except sqlite3.Error:
+        return 0
+
+
+def _reject_reasons(dataset: pd.DataFrame, train_window: int, test_window: int) -> List[str]:
+    reasons: List[str] = []
+    if len(dataset) < train_window + test_window:
+        reasons.append(f"prepared_rows_below_required_window:{len(dataset)}<{train_window + test_window}")
+    if "target" not in dataset.columns:
+        reasons.append("missing_target_column")
+    elif len(_canonical_target_counts(dataset)) < 2:
+        reasons.append("target_has_fewer_than_2_canonical_classes")
+    if "prediction_timestamp" in dataset.columns:
+        timestamps = pd.to_datetime(dataset["prediction_timestamp"], errors="coerce", utc=True)
+    elif "timestamp" in dataset.columns:
+        timestamps = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
+    else:
+        timestamps = pd.Series(pd.NaT, index=dataset.index)
+        reasons.append("missing_prediction_timestamp")
+    if len(dataset) and timestamps.isna().any():
+        reasons.append("unresolved_prediction_timestamps")
+    if "feature_timestamp_max" in dataset.columns and len(dataset):
+        features = pd.to_datetime(dataset["feature_timestamp_max"], errors="coerce", utc=True)
+        if features.isna().any():
+            reasons.append("unresolved_feature_timestamps")
+        if (~features.isna() & ~timestamps.isna() & (features > timestamps)).any():
+            reasons.append("feature_timestamp_after_prediction_timestamp")
+    return reasons
+
+
+def _internal_paper_dataset(database_path: str) -> pd.DataFrame:
+    if not os.path.exists(database_path):
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    try:
+        with sqlite3.connect(database_path) as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='internal_paper_trades'"
+            ).fetchone()
+            if not exists:
+                return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+            frame = pd.read_sql_query("SELECT * FROM internal_paper_trades ORDER BY timestamp ASC", connection)
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    if frame.empty:
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
+    frame = frame.rename(columns={"confidence": "score", "regime": "regime_name", "pnl": "pnl_percent"})
+    frame["prediction_timestamp"] = frame.get("source_signal_timestamp", frame.get("timestamp"))
+    frame["feature_timestamp_max"] = frame["prediction_timestamp"]
+    frame["target_timestamp"] = frame.get("updated_at", frame.get("timestamp"))
+    frame["target"] = frame.get("status", "")
+    for column in NUMERIC_FEATURES:
+        if column not in frame.columns:
+            frame[column] = 0.0
+    for column in CATEGORICAL_FEATURES:
+        if column not in frame.columns:
+            frame[column] = "UNKNOWN"
+    frame["target"] = frame["target"].apply(canonical_ml_label)
+    return frame[frame["target"].isin({"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"})][
+        ["timestamp", "prediction_timestamp", "feature_timestamp_max", "target_timestamp", "symbol", "side", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]
+    ].copy()
+
+
+def _select_prediction_cohort_source(
+    paper_trades_path: str,
+    signals_log_path: str,
+    database_path: str,
+    train_window: int,
+    test_window: int,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    candidates: List[Tuple[str, str, pd.DataFrame, int]] = []
+    paper_dataset = build_ml_dataset(paper_trades_path, signals_log_path, "__missing_flow_log.csv", database_path="__missing_ml_cohort_source.db")
+    candidates.append(("paper_trades", paper_trades_path, paper_dataset, _raw_candidate_rows(paper_trades_path)))
+
+    historical_dataset = _historical_dataset(database_path)
+    candidates.append(("historical_outcomes", database_path, historical_dataset, _raw_candidate_rows("historical_outcomes", database_path)))
+
+    internal_dataset = _internal_paper_dataset(database_path)
+    candidates.append(("internal_paper_trades", database_path, internal_dataset, _raw_candidate_rows("internal_paper_trades", database_path)))
+
+    diagnostics: Dict[str, Any] = {
+        "selected_source": None,
+        "selected_source_path": None,
+        "source_candidates": [name for name, _, _, _ in candidates],
+        "source_candidate_rows": {name: rows for name, _, _, rows in candidates},
+        "prepared_rows": 0,
+        "target_counts": {},
+        "source_reject_reasons": {},
+    }
+    for name, path, dataset, _raw_rows in candidates:
+        reasons = _reject_reasons(dataset, train_window, test_window)
+        if reasons:
+            diagnostics["source_reject_reasons"][name] = reasons
+            continue
+        diagnostics["selected_source"] = name
+        diagnostics["selected_source_path"] = path
+        diagnostics["prepared_rows"] = int(len(dataset))
+        diagnostics["target_counts"] = _canonical_target_counts(dataset)
+        return dataset, diagnostics
+    return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]), diagnostics
+
+
 def run_prediction_cohort_export(
     paper_trades_path: str = "paper_trades.csv",
     signals_log_path: str = "signals_log.csv",
@@ -184,5 +315,13 @@ def run_prediction_cohort_export(
     train_window: int = 30,
     test_window: int = 10,
 ) -> Dict[str, Any]:
-    dataset = build_ml_dataset(paper_trades_path, signals_log_path, "__missing_flow_log.csv", database_path=database_path)
-    return materialize_prediction_cohort(dataset, cohort_path=cohort_path, ledger_path=ledger_path, train_window=train_window, test_window=test_window)
+    dataset, diagnostics = _select_prediction_cohort_source(
+        paper_trades_path,
+        signals_log_path,
+        database_path,
+        train_window,
+        test_window,
+    )
+    result = materialize_prediction_cohort(dataset, cohort_path=cohort_path, ledger_path=ledger_path, train_window=train_window, test_window=test_window)
+    result.update(diagnostics)
+    return result
