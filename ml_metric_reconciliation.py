@@ -22,8 +22,9 @@ import pandas as pd
 from database import sqlite_path
 from ml_engine import CATEGORICAL_FEATURES, NUMERIC_FEATURES, PROFITABLE_LABELS, TARGET_LABELS, build_ml_dataset
 from ml_prediction_ledger import audit_prediction_ledger, write_prediction_ledger_audit
+from ml_temporal_guard import validate_temporal_feature_rows
 
-PHASE = "9D.1C-A ML Evidence Contract + Prediction Ledger Foundation"
+PHASE = "9D.1C-B As-Of Feature Join + Temporal Leakage Guard"
 REPRO_STATUSES = {
     "REPRODUCED_EXACT",
     "REPRODUCED_WITH_ROUNDING",
@@ -1154,6 +1155,11 @@ def run_ml_metric_reconciliation(
     segments = segment_performance(cohort)
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
     prediction_ledger = audit_prediction_ledger(prediction_ledger_path)
+    temporal_feature_guard = validate_temporal_feature_rows(
+        cohort if not cohort.empty else [],
+        feature_columns=[column for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if not cohort.empty and column in cohort.columns],
+        source_artifact=prediction_artifact_path or model_artifact.get("discovered_path"),
+    )
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1165,7 +1171,7 @@ def run_ml_metric_reconciliation(
         "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE" if prediction_ledger["evaluation_reproducibility_status"] == "BLOCKED" else ("REVIEW" if prediction_ledger["evaluation_reproducibility_status"] == "REVIEW" else evaluation_metric_integrity["status"]),
         "Data Lineage": data_lineage_status(lineage),
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if (label_contract["status"] != "PASS" or prediction_ledger["label_contract_status"] == "BLOCKED") else ("REVIEW" if prediction_ledger["label_contract_status"] == "REVIEW" else "PASS"),
-        "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY" if prediction_ledger["temporal_guard_status"] == "BLOCKED" else ("BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW")),
+        "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY" if prediction_ledger["temporal_guard_status"] == "BLOCKED" or temporal_feature_guard["status"] == "BLOCKED" else ("BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW")),
         "Baseline Superiority": baseline["status"],
         "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
         "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS" if walkforward.get("status") in {"SOURCE_MISSING", "UNREPRODUCIBLE"} else ("UNVERIFIABLE" if any(f.get("leakage_status") == "UNVERIFIABLE" for f in walkforward.get("folds", [])) else "REVIEW"),
@@ -1206,6 +1212,13 @@ def run_ml_metric_reconciliation(
         "segment_performance": segments,
         "candidate_evidence_bridge": candidate_bridge,
         "prediction_ledger_summary": prediction_ledger,
+        "asof_feature_join_status": temporal_feature_guard["asof_feature_join_status"],
+        "temporal_feature_guard_status": temporal_feature_guard["status"],
+        "future_feature_violation_count": temporal_feature_guard["future_feature_violation_count"],
+        "missing_feature_timestamp_count": temporal_feature_guard["missing_feature_timestamp_count"],
+        "target_leakage_column_count": temporal_feature_guard["target_leakage_column_count"],
+        "feature_timestamp_coverage": temporal_feature_guard["feature_timestamp_coverage"],
+        "temporal_guard_findings": temporal_feature_guard["temporal_guard_findings"],
         "prediction_ledger_available": prediction_ledger["prediction_ledger_available"],
         "prediction_ledger_rows": prediction_ledger["prediction_ledger_rows"],
         "matured_prediction_rows": prediction_ledger["matured_prediction_rows"],
