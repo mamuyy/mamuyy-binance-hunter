@@ -98,3 +98,58 @@ def test_asof_join_multi_symbol_is_group_safe_and_ignores_future_rows():
         pd.isna(row.feature_timestamp_max) or row.feature_timestamp_max <= row.prediction_timestamp
         for row in joined.itertuples(index=False)
     )
+
+
+def test_metric_audit_ignores_metadata_label_columns_when_model_features_are_clean(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    prediction_path = tmp_path / "predictions.csv"
+    pd.DataFrame([
+        {
+            "timestamp": "2024-01-01T00:00:00Z",
+            "symbol": "BTC",
+            "prediction_timestamp": "2024-01-01T00:00:00Z",
+            "feature_timestamp_max": "2023-12-31T23:59:00Z",
+            "target_timestamp": "2024-01-02T00:00:00Z",
+            "target_maturity_timestamp": "2024-01-02T00:00:00Z",
+            "label_timestamp": "2024-01-02T00:00:00Z",
+            "outcome_timestamp": "2024-01-02T00:00:00Z",
+            "source_artifact": "fixture",
+            "target": "WIN",
+            "pnl_percent": 1.25,
+            "y_true": "WIN",
+            "y_pred": "WIN",
+            "model_version": "m1",
+            "evaluation_contract": "phase9d-test",
+            "score": 75,
+            "regime_name": "TREND",
+        }
+    ]).to_csv(prediction_path, index=False)
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path="missing.json",
+        walkforward_path="missing.csv",
+        prediction_artifact_path=str(prediction_path),
+    )
+
+    assert report["temporal_feature_guard_status"] == "PASS"
+    assert report["target_leakage_column_count"] == 0
+    assert report["future_feature_violation_count"] == 0
+
+
+def test_actual_leaky_feature_names_still_blocked():
+    result = validate_temporal_feature_rows(
+        [
+            {
+                "prediction_timestamp": "2024-01-01T00:00:00Z",
+                "feature_timestamp_max": "2023-12-31T23:59:00Z",
+                "future_return": 0.3,
+                "outcome_status": "WIN",
+            }
+        ],
+        feature_columns=["future_return", "outcome_status"],
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert result["target_leakage_column_count"] == 2

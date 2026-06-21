@@ -1157,7 +1157,7 @@ def run_ml_metric_reconciliation(
     prediction_ledger = audit_prediction_ledger(prediction_ledger_path)
     temporal_feature_guard = validate_temporal_feature_rows(
         cohort if not cohort.empty else [],
-        feature_columns=[column for column in cohort.columns if not str(column).startswith("__")] if not cohort.empty else [],
+        feature_columns=[column for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if not cohort.empty and column in cohort.columns],
         source_artifact=prediction_artifact_path or model_artifact.get("discovered_path"),
     )
 
