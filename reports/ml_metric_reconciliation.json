@@ -404,7 +404,7 @@
   "feature_timestamp_coverage": 0.0,
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T13:27:16.833123+00:00",
+  "generated_at": "2026-06-21T13:37:22.303928+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -413,6 +413,7 @@
     "read_only_audit": true,
     "readiness_advisory_only": true
   },
+  "high_confidence_threshold_diagnostic": [],
   "historical_ml_artifact_reproduction": {
     "global_accuracy": null,
     "reason": "historical ML artifact missing",
@@ -1113,6 +1114,18 @@
     "AI Confidence Heuristic",
     "Model Readiness"
   ],
+  "threshold_candidate_accuracy": null,
+  "threshold_candidate_diagnostic_status": "UNAVAILABLE",
+  "threshold_candidate_false_win_count": null,
+  "threshold_candidate_findings": [
+    "No prediction cohort rows are available."
+  ],
+  "threshold_candidate_kept_ratio": null,
+  "threshold_candidate_recommendation": "Diagnostic only: do not apply this threshold to production, training, readiness gates, or execution behavior.",
+  "threshold_candidate_rows_kept": 0,
+  "threshold_candidate_selected": null,
+  "threshold_candidate_selection_reason": null,
+  "threshold_candidate_win_precision": null,
   "train_only_preprocessing_status": "PASS",
   "true_label_distribution": {},
   "true_loss_count": 0,

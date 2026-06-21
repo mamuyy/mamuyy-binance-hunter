@@ -599,6 +599,123 @@ def _safe_ratio(numerator: int, denominator: int) -> Optional[float]:
     return None if denominator == 0 else numerator / denominator
 
 
+def _threshold_confusion_row(threshold: float, rows: Sequence[Tuple[str, str, Optional[float]]], sample_count: int) -> Dict[str, Any]:
+    kept = [(actual, predicted) for actual, predicted, probability in rows if probability is not None and probability >= threshold]
+    kept_true = [actual for actual, _ in kept]
+    kept_pred = [predicted for _, predicted in kept]
+    rows_kept = len(kept)
+    true_win_count = sum(actual == "WIN" and predicted == "WIN" for actual, predicted in kept)
+    true_loss_count = sum(actual == "LOSS" and predicted == "LOSS" for actual, predicted in kept)
+    false_win_count = sum(actual == "LOSS" and predicted == "WIN" for actual, predicted in kept)
+    false_loss_count = sum(actual == "WIN" and predicted == "LOSS" for actual, predicted in kept)
+    predicted_win_count = sum(predicted == "WIN" for predicted in kept_pred)
+    predicted_loss_count = sum(predicted == "LOSS" for predicted in kept_pred)
+    actual_win_count = sum(actual == "WIN" for actual in kept_true)
+    actual_loss_count = sum(actual == "LOSS" for actual in kept_true)
+    return {
+        "threshold": threshold,
+        "rows_kept": rows_kept,
+        "kept_ratio": _safe_ratio(rows_kept, sample_count),
+        "accuracy": _safe_ratio(sum(actual == predicted for actual, predicted in kept), rows_kept),
+        "win_precision": _safe_ratio(true_win_count, predicted_win_count),
+        "win_recall": _safe_ratio(true_win_count, actual_win_count),
+        "loss_precision": _safe_ratio(true_loss_count, predicted_loss_count),
+        "loss_recall": _safe_ratio(true_loss_count, actual_loss_count),
+        "false_win_count": false_win_count,
+        "false_loss_count": false_loss_count,
+        "true_win_count": true_win_count,
+        "true_loss_count": true_loss_count,
+        "predicted_label_distribution": _counter_dict(kept_pred),
+        "true_label_distribution": _counter_dict(kept_true),
+    }
+
+
+def _canonical_probability_rows(cohort: pd.DataFrame) -> Tuple[List[Tuple[str, str, Optional[float]]], str]:
+    if cohort.empty:
+        return [], "No prediction cohort rows are available."
+    frame = cohort.copy()
+    if "__y_true" not in frame.columns:
+        y_true_col = _first_existing_column(frame, TRUE_COLUMNS)
+        if y_true_col:
+            frame["__y_true"] = frame[y_true_col]
+    if "__y_pred" not in frame.columns:
+        y_pred_col = _first_existing_column(frame, PREDICTION_COLUMNS)
+        if y_pred_col:
+            frame["__y_pred"] = frame[y_pred_col]
+    if "__predicted_probability" not in frame.columns:
+        probability_col = _first_existing_column(frame, PREDICTED_PROBABILITY_COLUMNS)
+        if probability_col:
+            frame["__predicted_probability"] = pd.to_numeric(frame[probability_col], errors="coerce")
+    if "__y_true" not in frame.columns or "__y_pred" not in frame.columns:
+        return [], "y_true/y_pred columns are missing from row-level predictions."
+    if "__predicted_probability" not in frame.columns:
+        return [], "predicted_probability is missing from row-level predictions."
+    rows = []
+    for _, row in frame.dropna(subset=["__y_true", "__y_pred"]).iterrows():
+        actual = canonical_ml_label(row.get("__y_true"))
+        predicted = canonical_ml_label(row.get("__y_pred"))
+        probability = safe_float(row.get("__predicted_probability"))
+        if actual in {"WIN", "LOSS"} and predicted in {"WIN", "LOSS"} and probability is not None:
+            rows.append((actual, predicted, probability))
+    return rows, "No evaluated WIN/LOSS rows with predicted_probability are available." if not rows else ""
+
+
+def ml_high_confidence_threshold_candidate_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
+    """Diagnostic-only high-confidence threshold candidate audit.
+
+    The selected threshold is advisory evidence only. It is not applied to live
+    signals and does not feed training, readiness gates, baseline superiority,
+    walk-forward stability, or execution behavior.
+    """
+    base: Dict[str, Any] = {
+        "threshold_candidate_diagnostic_status": "UNAVAILABLE",
+        "high_confidence_threshold_diagnostic": [],
+        "threshold_candidate_selected": None,
+        "threshold_candidate_selection_reason": None,
+        "threshold_candidate_rows_kept": 0,
+        "threshold_candidate_kept_ratio": None,
+        "threshold_candidate_accuracy": None,
+        "threshold_candidate_false_win_count": None,
+        "threshold_candidate_win_precision": None,
+        "threshold_candidate_findings": [],
+        "threshold_candidate_recommendation": (
+            "Diagnostic only: do not apply this threshold to production, training, readiness gates, or execution behavior."
+        ),
+    }
+    rows, reason = _canonical_probability_rows(cohort)
+    if not rows:
+        return {**base, "threshold_candidate_findings": [reason]}
+
+    threshold_rows = [_threshold_confusion_row(threshold, rows, len(rows)) for threshold in (0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80)]
+    sufficient = [row for row in threshold_rows if row["rows_kept"] >= 30]
+    candidate_pool = sufficient or threshold_rows
+    selected = sorted(candidate_pool, key=lambda row: (row["false_win_count"], -(row["accuracy"] or -1), -row["threshold"], -row["rows_kept"]))[0]
+    reason_text = (
+        "Selected from thresholds retaining at least 30 rows by lowest false_win_count, then highest accuracy."
+        if sufficient
+        else "No threshold retained at least 30 rows; selected diagnostically by lowest false_win_count, then highest accuracy."
+    )
+    findings = [
+        f"Threshold {selected['threshold']:.2f} has {selected['false_win_count']} false WIN predictions across {selected['rows_kept']} kept rows.",
+        "This is diagnostic-only and does not alter production thresholds, readiness gates, or execution behavior.",
+    ]
+    return {
+        **base,
+        "threshold_candidate_diagnostic_status": "AVAILABLE",
+        "high_confidence_threshold_diagnostic": threshold_rows,
+        "threshold_candidate_selected": selected["threshold"],
+        "threshold_candidate_selection_reason": reason_text,
+        "threshold_candidate_rows_kept": selected["rows_kept"],
+        "threshold_candidate_kept_ratio": selected["kept_ratio"],
+        "threshold_candidate_accuracy": selected["accuracy"],
+        "threshold_candidate_false_win_count": selected["false_win_count"],
+        "threshold_candidate_win_precision": selected["win_precision"],
+        "threshold_candidate_findings": findings,
+        "threshold_candidate_recommendation": (
+            "Use this diagnostic to decide whether to repair the model as a broad WIN predictor or evaluate it as a high-confidence LOSS-avoidance/trade filter; do not unlock readiness."
+        ),
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -1893,6 +2010,7 @@ def run_ml_metric_reconciliation(
     baseline_audit = baseline_root_cause_audit(row_level_walkforward)
     larger_fold_diagnostic = larger_fold_baseline_diagnostic(cohort)
     class_imbalance_diagnostic = ml_class_imbalance_diagnostic(cohort)
+    threshold_candidate_diagnostic = ml_high_confidence_threshold_candidate_diagnostic(cohort)
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1953,6 +2071,7 @@ def run_ml_metric_reconciliation(
         **baseline_audit,
         **larger_fold_diagnostic,
         **class_imbalance_diagnostic,
+        **threshold_candidate_diagnostic,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
