@@ -22,6 +22,7 @@ from ml_metric_reconciliation import (
     ml_model_repair_upgrade_diagnostic_plan,
     paper_filter_candidate_registry,
     paper_filter_shadow_review_scorecard,
+    prediction_outcome_linkage_contract_audit,
     threshold_candidate_stability_audit,
     threshold_sample_sufficiency_audit,
     filtered_cohort_walkforward_comparison,
@@ -1855,6 +1856,126 @@ def _gap_audit(tmp_path, raw_rows, ml_rows, extra=None):
     if extra:
         report.update(extra)
     return raw_closed_to_ml_cohort_gap_reason_audit(report)
+
+
+def _linkage_audit(tmp_path, raw_rows, ml_rows, extra=None):
+    raw, ledger = _write_gap_fixture(tmp_path, raw_rows, ml_rows)
+    report = {
+        "raw_closed_source_selected_path": str(raw),
+        "raw_closed_source_selected_row_count": len(raw_rows),
+        "prediction_ledger_path": str(ledger),
+    }
+    if extra:
+        report.update(extra)
+    return prediction_outcome_linkage_contract_audit(report)
+
+
+def test_prediction_outcome_linkage_blocks_when_raw_lacks_ids_but_ledger_has_prediction_id(tmp_path):
+    audit = _linkage_audit(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02", "y_true": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["prediction_outcome_linkage_contract_status"] == "BLOCKED_LINKAGE_CONTRACT_INCOMPLETE"
+
+
+def test_prediction_outcome_linkage_emits_raw_closed_missing_stable_id(tmp_path):
+    audit = _linkage_audit(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02"}],
+    )
+
+    assert "RAW_CLOSED_MISSING_STABLE_LINKAGE_ID" in audit["prediction_outcome_linkage_contract_gaps"]
+
+
+def test_prediction_outcome_linkage_emits_ledger_has_id_but_outcome_does_not(tmp_path):
+    audit = _linkage_audit(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02"}],
+    )
+
+    assert "PREDICTION_LEDGER_HAS_ID_BUT_OUTCOME_SOURCE_DOES_NOT" in audit["prediction_outcome_linkage_contract_gaps"]
+
+
+def test_prediction_outcome_linkage_emits_weak_fallback_when_only_symbol_closed_available(tmp_path):
+    audit = _linkage_audit(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+        [{"symbol": "BTC", "target_timestamp": "2024-01-02", "y_true": "WIN"}],
+    )
+
+    assert audit["prediction_outcome_linkage_preferred_key"] == "symbol+closed_at"
+    assert "FALLBACK_JOIN_KEY_WEAK_FOR_MODEL_REPAIR" in audit["prediction_outcome_linkage_contract_gaps"]
+
+
+def test_prediction_outcome_linkage_reports_raw_and_ml_key_coverage(tmp_path):
+    audit = _linkage_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "symbol": "BTC", "closed_at": "2024-01-02"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02"}],
+    )
+
+    assert audit["prediction_outcome_linkage_raw_closed_key_coverage"]["prediction_id"]["present"] == 1
+    assert audit["prediction_outcome_linkage_ml_ledger_key_coverage"]["prediction_id"]["present"] == 1
+
+
+def test_prediction_outcome_linkage_reports_minimum_required_future_fields(tmp_path):
+    audit = _linkage_audit(tmp_path, [], [])
+
+    fields = audit["prediction_outcome_linkage_minimum_required_future_fields"]
+    assert "prediction_id" in fields
+    assert "trade_id or signal_id" in fields
+    assert "predicted_probability" in fields
+
+
+def test_prediction_outcome_linkage_does_not_mutate_sources_or_backfill(tmp_path):
+    raw, ledger = _write_gap_fixture(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02"}],
+    )
+    raw_before = raw.read_bytes()
+    ledger_before = ledger.read_bytes()
+
+    prediction_outcome_linkage_contract_audit({
+        "raw_closed_source_selected_path": str(raw),
+        "prediction_ledger_path": str(ledger),
+    })
+
+    assert raw.read_bytes() == raw_before
+    assert ledger.read_bytes() == ledger_before
+
+
+def test_prediction_outcome_linkage_does_not_alter_readiness_governance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cohort = tmp_path / "prediction_cohort.csv"
+    pd.DataFrame([
+        {"prediction_timestamp": "2024-01-01", "target_timestamp": "2024-01-02", "model_version": "m1", "evaluation_contract": "c", "y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.7},
+        {"prediction_timestamp": "2024-01-02", "target_timestamp": "2024-01-03", "model_version": "m1", "evaluation_contract": "c", "y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.6},
+    ]).to_csv(cohort, index=False)
+    reports = tmp_path / "reports"
+    reports.mkdir(exist_ok=True)
+    (reports / "paper_outcome_audit.json").write_text(json.dumps({"closed_trades": [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}]}), encoding="utf-8")
+    (reports / "ml_prediction_ledger.jsonl").write_text(json.dumps({"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02", "y_true": "WIN", "predicted_probability": 0.9}) + "\n", encoding="utf-8")
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path="missing_model.json",
+        walkforward_path="missing_walk.csv",
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path=str(reports / "ml_prediction_ledger.jsonl"),
+    )
+
+    assert report["prediction_outcome_linkage_contract_status"] == "BLOCKED_LINKAGE_CONTRACT_INCOMPLETE"
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Baseline Superiority"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Walk-Forward Stability"].startswith("BLOCKED")
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
 
 
 def test_raw_to_ml_gap_reason_audit_available_with_raw_source_and_ledger(tmp_path):
