@@ -161,6 +161,21 @@ def load_prediction_ledger(path: str | Path) -> List[Dict[str, Any]]:
     return rows
 
 
+def _is_same_timestamp_fold_boundary(row: Dict[str, Any]) -> bool:
+    pred = parse_ts(row.get("prediction_timestamp"))
+    feature = parse_ts(row.get("feature_timestamp_max"))
+    train_end = parse_ts(row.get("train_window_end"))
+    test_start = parse_ts(row.get("test_window_start"))
+    return (
+        pred is not None
+        and train_end is not None
+        and test_start is not None
+        and train_end == pred
+        and test_start == pred
+        and (feature is None or feature <= pred)
+    )
+
+
 def validate_temporal_row(row: Dict[str, Any], as_of: Any = None) -> List[str]:
     reasons: List[str] = []
     pred = parse_ts(row.get("prediction_timestamp"))
@@ -172,8 +187,9 @@ def validate_temporal_row(row: Dict[str, Any], as_of: Any = None) -> List[str]:
         reasons.append("prediction_timestamp_after_target_timestamp")
     if feature is not None and pred is not None and feature > pred:
         reasons.append("feature_timestamp_after_prediction_timestamp")
-    if train_end is not None and pred is not None and train_end >= pred:
-        reasons.append("train_window_end_not_before_prediction_timestamp")
+    if train_end is not None and pred is not None:
+        if train_end > pred or (train_end == pred and not _is_same_timestamp_fold_boundary(row)):
+            reasons.append("train_window_end_not_before_prediction_timestamp")
     if row.get("label_status") == "MATURED" and row.get("target_label") not in FINAL_TARGET_LABELS:
         reasons.append("matured_prediction_missing_target_label")
     if row.get("label_status") == "MATURED" and target is not None and as_ts < target:
