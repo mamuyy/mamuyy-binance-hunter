@@ -213,13 +213,28 @@
   },
   "asof_feature_join_status": "REVIEW",
   "baseline_accuracy": null,
+  "baseline_better_fold_prediction_distribution": {},
   "baseline_comparison": {
     "absolute_accuracy_improvement": null,
     "practically_meaningful": false,
     "sample_size": 0,
     "status": "BLOCKED_INSUFFICIENT_SAMPLE"
   },
+  "baseline_evidence_quality_status": "UNAVAILABLE",
+  "baseline_fold_size_distribution": {},
+  "baseline_micro_fold_status": "UNAVAILABLE",
+  "baseline_model_better_folds": 0,
+  "baseline_model_tie_folds": 0,
+  "baseline_model_worse_folds": 0,
+  "baseline_prediction_distribution": {},
+  "baseline_root_cause_audit": "UNAVAILABLE",
+  "baseline_root_cause_findings": [
+    "No fold-level baseline evidence is available for root-cause audit."
+  ],
+  "baseline_root_cause_recommendation": "Keep readiness fail-closed until row-level walk-forward baseline evidence is available.",
   "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
+  "baseline_train_size_distribution": {},
+  "baseline_worse_fold_prediction_distribution": {},
   "candidate_evidence_bridge": {
     "by_horizon": {
       "24h": null,
@@ -371,7 +386,7 @@
   "feature_timestamp_coverage": 0.0,
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T12:00:27.631673+00:00",
+  "generated_at": "2026-06-21T12:23:17.785754+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,

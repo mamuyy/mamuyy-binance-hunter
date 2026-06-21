@@ -771,6 +771,94 @@ def row_level_walkforward_audit(
         status = "PASS_BASELINE_SUPERIORITY"; findings.append("Model accuracy exceeds train-fold majority-class baseline with enough folds and rows.")
     return {"row_level_walkforward_status": status, "row_level_walkforward_rows": len(rows), "row_level_walkforward_folds": len(folds), "baseline_accuracy": baseline_accuracy, "model_accuracy": model_accuracy, "model_vs_baseline_delta": delta, "baseline_superiority_status": status, "row_level_walkforward_findings": findings, "rows": rows, "folds": folds}
 
+
+def _counter_dict(values: Sequence[Any]) -> Dict[str, int]:
+    return dict(sorted(Counter(str(value) for value in values if value is not None and pd.notna(value)).items()))
+
+
+def baseline_root_cause_audit(row_level_walkforward: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarize why baseline superiority is blocked without changing gates.
+
+    This is evidence-quality reporting only: it diagnoses micro-fold evaluation and
+    train-fold majority-class baseline dominance while leaving readiness statuses
+    and thresholds unchanged.
+    """
+    folds = row_level_walkforward.get("folds") or []
+    if not folds:
+        return {
+            "baseline_root_cause_audit": "UNAVAILABLE",
+            "baseline_evidence_quality_status": "UNAVAILABLE",
+            "baseline_micro_fold_status": "UNAVAILABLE",
+            "baseline_fold_size_distribution": {},
+            "baseline_train_size_distribution": {},
+            "baseline_prediction_distribution": {},
+            "baseline_model_worse_folds": 0,
+            "baseline_model_better_folds": 0,
+            "baseline_model_tie_folds": 0,
+            "baseline_worse_fold_prediction_distribution": {},
+            "baseline_better_fold_prediction_distribution": {},
+            "baseline_root_cause_findings": ["No fold-level baseline evidence is available for root-cause audit."],
+            "baseline_root_cause_recommendation": "Keep readiness fail-closed until row-level walk-forward baseline evidence is available.",
+        }
+
+    test_sizes = [int(fold.get("test_rows") or 0) for fold in folds]
+    train_sizes = [int(fold.get("train_rows") or 0) for fold in folds]
+    micro_folds = [size for size in test_sizes if size < 10]
+    micro_ratio = len(micro_folds) / len(test_sizes) if test_sizes else 0.0
+    micro_status = "REVIEW_MICRO_FOLD_EVIDENCE" if micro_ratio >= 0.5 else "PASS_FOLD_SIZE_REVIEW"
+
+    baseline_predictions = [fold.get("baseline_prediction") for fold in folds]
+    prediction_distribution = _counter_dict(baseline_predictions)
+    top_count = max(prediction_distribution.values()) if prediction_distribution else 0
+    top_ratio = top_count / len(folds) if folds else 0.0
+    evidence_status = "REVIEW_MAJOR_CLASS_BASELINE_DOMINANCE" if top_ratio >= 0.75 else "PASS_BASELINE_CLASS_BALANCE_REVIEW"
+
+    worse: List[Dict[str, Any]] = []
+    better: List[Dict[str, Any]] = []
+    tie: List[Dict[str, Any]] = []
+    for fold in folds:
+        model_acc = safe_float(fold.get("model_accuracy"))
+        baseline_acc = safe_float(fold.get("baseline_accuracy"))
+        if model_acc is None or baseline_acc is None:
+            tie.append(fold)
+        elif model_acc < baseline_acc:
+            worse.append(fold)
+        elif model_acc > baseline_acc:
+            better.append(fold)
+        else:
+            tie.append(fold)
+
+    findings = [
+        f"Model accuracy is {row_level_walkforward.get('model_accuracy')} versus baseline accuracy {row_level_walkforward.get('baseline_accuracy')} with delta {row_level_walkforward.get('model_vs_baseline_delta')}.",
+        f"Micro-fold evidence: {len(micro_folds)} of {len(folds)} folds have fewer than 10 test rows.",
+        f"Baseline prediction distribution is {prediction_distribution}.",
+        f"Fold outcomes: model worse={len(worse)}, model better={len(better)}, tie={len(tie)}.",
+    ]
+    if evidence_status == "REVIEW_MAJOR_CLASS_BASELINE_DOMINANCE":
+        findings.append("Baseline superiority evidence is dominated by a single train-fold majority-class prediction.")
+    if worse and _counter_dict([fold.get("baseline_prediction") for fold in worse]):
+        findings.append(f"Worse folds baseline prediction distribution is {_counter_dict([fold.get('baseline_prediction') for fold in worse])}.")
+
+    recommendation = (
+        "Do not unlock readiness or alter baseline/walk-forward thresholds; review larger or less granular walk-forward folds "
+        "and class-imbalance-aware model diagnostics while keeping paper-only execution controls."
+    )
+    return {
+        "baseline_root_cause_audit": "AVAILABLE",
+        "baseline_evidence_quality_status": evidence_status,
+        "baseline_micro_fold_status": micro_status,
+        "baseline_fold_size_distribution": _counter_dict(test_sizes),
+        "baseline_train_size_distribution": _counter_dict(train_sizes),
+        "baseline_prediction_distribution": prediction_distribution,
+        "baseline_model_worse_folds": len(worse),
+        "baseline_model_better_folds": len(better),
+        "baseline_model_tie_folds": len(tie),
+        "baseline_worse_fold_prediction_distribution": _counter_dict([fold.get("baseline_prediction") for fold in worse]),
+        "baseline_better_fold_prediction_distribution": _counter_dict([fold.get("baseline_prediction") for fold in better]),
+        "baseline_root_cause_findings": findings,
+        "baseline_root_cause_recommendation": recommendation,
+    }
+
 def baseline_status(metrics: Optional[Dict[str, Any]], min_samples: int = 30) -> Dict[str, Any]:
     if not metrics:
         return {"status": "BLOCKED_INSUFFICIENT_SAMPLE", "sample_size": 0, "absolute_accuracy_improvement": None, "practically_meaningful": False}
@@ -1514,6 +1602,7 @@ def run_ml_metric_reconciliation(
     preprocessing_guard = audit_train_only_preprocessing()
 
     row_level_walkforward = row_level_walkforward_audit(cohort, temporal_feature_guard, preprocessing_guard)
+    baseline_audit = baseline_root_cause_audit(row_level_walkforward)
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1571,6 +1660,7 @@ def run_ml_metric_reconciliation(
         "model_vs_baseline_delta": row_level_walkforward["model_vs_baseline_delta"],
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
         "row_level_walkforward_findings": row_level_walkforward["row_level_walkforward_findings"],
+        **baseline_audit,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
