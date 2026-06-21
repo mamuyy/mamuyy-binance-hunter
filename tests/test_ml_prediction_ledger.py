@@ -109,10 +109,32 @@ def test_label_mapping_is_deterministic():
     assert first == ["WIN", "WIN", "LOSS", "NEUTRAL", "PENDING", "BREAKEVEN", "UNKNOWN"]
 
 
-def test_unknown_status_maps_to_unknown_or_pending_not_win_loss():
+def test_unknown_status_maps_to_unknown_not_pending_or_win_loss():
+    assert canonical_ml_label("UNKNOWN") == "UNKNOWN"
+    assert normalize_label("UNKNOWN")["canonical_label"] == "UNKNOWN"
+    assert normalize_label("UNKNOWN")["label_status"] == "MISSING"
     assert canonical_ml_label("mystery-status") == "UNKNOWN"
-    assert normalize_label("OPEN")["canonical_label"] == "PENDING"
-    assert canonical_ml_label("mystery-status") not in {"WIN", "LOSS"}
+    assert canonical_ml_label("mystery-status") not in {"WIN", "LOSS", "PENDING"}
+
+
+def test_open_active_and_unmatured_statuses_stay_pending():
+    assert canonical_ml_label("OPEN") == "PENDING"
+    assert canonical_ml_label("ACTIVE") == "PENDING"
+    assert canonical_ml_label("PENDING") == "PENDING"
+    assert canonical_ml_label("UNMATURED") == "PENDING"
+    assert canonical_ml_label("NOT_MATURED") == "PENDING"
+    assert canonical_ml_label("") == "PENDING"
+
+
+def test_unknown_labels_do_not_count_as_matured_predictions(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    append_prediction(path, base_row(raw_label_status="UNKNOWN", as_of="2026-01-03T00:00:00Z"))
+    row = load_prediction_ledger(path)[0]
+    audit = audit_prediction_ledger(path, as_of="2026-01-03T00:00:00Z")
+    assert row["y_true"] == "UNKNOWN"
+    assert row["label_status"] == "MISSING"
+    assert audit["matured_prediction_rows"] == 0
+    assert audit["invalid_prediction_rows"] == 1
 
 
 def test_audit_report_detects_ledger_presence(tmp_path):
