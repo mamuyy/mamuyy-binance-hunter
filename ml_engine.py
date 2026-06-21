@@ -17,6 +17,8 @@ from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, r
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 
+from ml_temporal_guard import asof_feature_join, validate_temporal_feature_rows
+
 
 NUMERIC_FEATURES = [
     "score",
@@ -124,7 +126,7 @@ def _prepare_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
     dataset["target"] = dataset.get("status", "").apply(_status)
     keep_columns = [
         column
-        for column in ["timestamp", "symbol", "pnl_percent", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]
+        for column in ["timestamp", "prediction_timestamp", "feature_timestamp_max", "target_timestamp", "label_timestamp", "outcome_timestamp", "source_artifact", "symbol", "pnl_percent", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]
         if column in dataset.columns
     ]
     return dataset[dataset["target"].isin(TARGET_LABELS)][keep_columns].copy()
@@ -141,21 +143,30 @@ def build_ml_dataset(
         return _historical_dataset(database_path)
 
     dataset = trades.copy()
-    sources = [_latest_by_symbol(_read_csv(signals_log_path)), _latest_by_symbol(_read_csv(flow_log_path))]
-    for source in sources:
-        if source.empty:
+    if "prediction_timestamp" not in dataset.columns:
+        dataset["prediction_timestamp"] = dataset.get("timestamp", dataset.get("signal_timestamp"))
+    dataset["source_artifact"] = paper_trades_path
+    for source_path in (signals_log_path, flow_log_path):
+        source = _read_csv(source_path)
+        if source.empty or "timestamp" not in source.columns or "symbol" not in source.columns:
             continue
-        columns = [c for c in ["symbol", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if c in source.columns]
-        dataset = dataset.merge(source[columns], on="symbol", how="left", suffixes=("", "_src"))
+        columns = [c for c in ["symbol", "timestamp", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if c in source.columns]
+        joined = asof_feature_join(dataset[["symbol", "prediction_timestamp"]], source[columns])
         for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES]:
-            src_column = f"{column}_src"
-            if src_column not in dataset.columns:
+            if column not in joined.columns:
                 continue
             if column not in dataset.columns:
-                dataset[column] = dataset[src_column]
+                dataset[column] = joined[column]
             else:
-                dataset[column] = dataset[column].where(dataset[column].notna(), dataset[src_column])
-            dataset = dataset.drop(columns=[src_column])
+                dataset[column] = dataset[column].where(dataset[column].notna(), joined[column])
+        current_max = pd.to_datetime(dataset.get("feature_timestamp_max"), errors="coerce", utc=True) if "feature_timestamp_max" in dataset.columns else pd.Series(pd.NaT, index=dataset.index)
+        joined_ts = pd.to_datetime(joined.get("feature_timestamp_max"), errors="coerce", utc=True)
+        dataset["feature_timestamp_max"] = pd.concat([current_max, joined_ts], axis=1).max(axis=1)
+    if "feature_timestamp_max" not in dataset.columns:
+        dataset["feature_timestamp_max"] = pd.to_datetime(dataset["prediction_timestamp"], errors="coerce", utc=True)
+    guard = validate_temporal_feature_rows(dataset, feature_columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES], source_artifact=paper_trades_path)
+    if guard["status"] == "BLOCKED":
+        return pd.DataFrame(columns=[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"])
 
     return _prepare_dataset(dataset)
 
