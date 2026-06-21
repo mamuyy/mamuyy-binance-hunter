@@ -148,11 +148,47 @@ def test_feature_timestamp_after_prediction_timestamp_blocks_readiness(tmp_path)
     assert "feature_timestamp_after_prediction_timestamp" in audit["temporal_findings"][0]["reasons"]
 
 
-def test_training_window_overlapping_prediction_timestamp_blocks_readiness(tmp_path):
+def test_same_timestamp_fold_boundary_passes_readiness(tmp_path):
     path = tmp_path / "ledger.jsonl"
-    append_prediction(path, base_row(train_window_end="2026-01-01T00:00:00Z"))
+    append_prediction(
+        path,
+        base_row(
+            feature_timestamp_max="2026-01-01T00:00:00Z",
+            train_window_end="2026-01-01T00:00:00Z",
+            test_window_start="2026-01-01T00:00:00Z",
+        ),
+    )
+    audit = audit_prediction_ledger(path)
+    assert audit["temporal_guard_status"] == "PASS"
+
+
+def test_training_window_after_prediction_timestamp_blocks_readiness(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    append_prediction(path, base_row(train_window_end="2026-01-01T00:00:01Z"))
     audit = audit_prediction_ledger(path)
     assert "train_window_end_not_before_prediction_timestamp" in audit["temporal_findings"][0]["reasons"]
+
+
+def test_training_window_equal_prediction_timestamp_without_test_window_start_blocks_readiness(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    append_prediction(path, base_row(train_window_end="2026-01-01T00:00:00Z", test_window_start=None))
+    audit = audit_prediction_ledger(path)
+    assert "train_window_end_not_before_prediction_timestamp" in audit["temporal_findings"][0]["reasons"]
+
+
+def test_future_feature_timestamp_blocks_even_at_same_fold_boundary(tmp_path):
+    path = tmp_path / "ledger.jsonl"
+    append_prediction(
+        path,
+        base_row(
+            feature_timestamp_max="2026-01-01T00:00:01Z",
+            train_window_end="2026-01-01T00:00:00Z",
+            test_window_start="2026-01-01T00:00:00Z",
+        ),
+    )
+    audit = audit_prediction_ledger(path)
+    reasons = audit["temporal_findings"][0]["reasons"]
+    assert "feature_timestamp_after_prediction_timestamp" in reasons
 
 
 def test_label_mapping_is_deterministic():
