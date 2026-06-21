@@ -29,6 +29,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "paper-economic-audit": "--paper-economic-audit",
     "ml-metric-audit": "--ml-metric-audit",
     "ml-prediction-ledger-audit": "--ml-prediction-ledger-audit",
+    "ml-prediction-cohort-export": "--ml-prediction-cohort-export",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -48,6 +49,15 @@ if "--ml-metric-audit" in sys.argv:
     print("ML METRIC RECONCILIATION")
     print(f"Overall Model Readiness: {_report.get('model_readiness', {}).get('overall_status')}")
     print(f"Report: {_report.get('artifact_paths', {}).get('json')}")
+    sys.exit(0)
+
+
+if "--ml-prediction-cohort-export" in sys.argv:
+    from ml_prediction_cohort import run_prediction_cohort_export as _run_prediction_cohort_export
+
+    _result = _run_prediction_cohort_export()
+    print(f"Prediction cohort: {_result.get('cohort_path')} rows={_result.get('rows')} folds={_result.get('folds')}")
+    print(f"Prediction ledger: {_result.get('ledger_path')}")
     sys.exit(0)
 
 if "--ml-prediction-ledger-audit" in sys.argv:
@@ -1419,6 +1429,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Preview/kirim ringkasan event penting Hunter ke Telegram.",
     )
+    parser.add_argument("--ml-prediction-cohort-export", action="store_true", help="Export row-level ML prediction cohort and append prediction ledger rows.")
     parser.add_argument(
         "--walkforward",
         action="store_true",
@@ -1612,6 +1623,9 @@ if __name__ == "__main__":
         run_regime_models()
     elif args.db_check:
         run_db_check()
+    elif args.ml_prediction_cohort_export:
+        from ml_prediction_cohort import run_prediction_cohort_export
+        print(run_prediction_cohort_export())
     elif args.walkforward:
         run_walkforward()
     elif args.retrain_model:
