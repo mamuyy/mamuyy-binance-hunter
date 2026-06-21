@@ -594,6 +594,159 @@ def classification_metrics(y_true: Sequence[Any], y_pred: Sequence[Any], labels:
     }
 
 
+
+def _safe_ratio(numerator: int, denominator: int) -> Optional[float]:
+    return None if denominator == 0 else numerator / denominator
+
+
+def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
+    """Report class-imbalance, confusion-matrix, and threshold diagnostics.
+
+    This audit is diagnostic-only. It does not change model training, model
+    thresholds, readiness gates, baseline superiority, walk-forward stability, or
+    execution behavior.
+    """
+    base: Dict[str, Any] = {
+        "class_imbalance_diagnostic_status": "UNAVAILABLE_NO_EVALUATED_ROWS",
+        "class_imbalance_sample_count": 0,
+        "true_label_distribution": {},
+        "predicted_label_distribution": {},
+        "confusion_matrix": {
+            "actual_WIN": {"predicted_WIN": 0, "predicted_LOSS": 0},
+            "actual_LOSS": {"predicted_WIN": 0, "predicted_LOSS": 0},
+        },
+        "win_precision": None,
+        "win_recall": None,
+        "win_f1": None,
+        "loss_precision": None,
+        "loss_recall": None,
+        "loss_f1": None,
+        "false_win_count": 0,
+        "false_loss_count": 0,
+        "true_win_count": 0,
+        "true_loss_count": 0,
+        "model_prediction_bias": None,
+        "majority_class": None,
+        "majority_class_ratio": None,
+        "probability_threshold_diagnostic": [],
+        "class_imbalance_findings": [],
+        "class_imbalance_recommendation": (
+            "Diagnostic only: do not alter model training, thresholds, readiness gates, or execution behavior from this audit alone."
+        ),
+    }
+    if cohort.empty:
+        base["class_imbalance_findings"] = ["No prediction cohort rows are available for class-imbalance diagnostics."]
+        return base
+
+    frame = cohort.copy()
+    if "__y_true" not in frame.columns:
+        y_true_col = _first_existing_column(frame, TRUE_COLUMNS)
+        if y_true_col:
+            frame["__y_true"] = frame[y_true_col]
+    if "__y_pred" not in frame.columns:
+        y_pred_col = _first_existing_column(frame, PREDICTION_COLUMNS)
+        if y_pred_col:
+            frame["__y_pred"] = frame[y_pred_col]
+    if "__y_true" not in frame.columns or "__y_pred" not in frame.columns:
+        base["class_imbalance_diagnostic_status"] = "UNAVAILABLE_MISSING_LABELS"
+        base["class_imbalance_findings"] = ["y_true/y_pred columns are missing from row-level predictions."]
+        return base
+
+    rows = []
+    for _, row in frame.dropna(subset=["__y_true", "__y_pred"]).iterrows():
+        actual = canonical_ml_label(row.get("__y_true"))
+        predicted = canonical_ml_label(row.get("__y_pred"))
+        if actual in {"WIN", "LOSS"} and predicted in {"WIN", "LOSS"}:
+            rows.append((actual, predicted, safe_float(row.get("__predicted_probability", row.get("predicted_probability")))))
+    if not rows:
+        base["class_imbalance_findings"] = ["No evaluated WIN/LOSS rows are available for class-imbalance diagnostics."]
+        return base
+
+    y_true = [r[0] for r in rows]
+    y_pred = [r[1] for r in rows]
+    sample_count = len(rows)
+    true_dist = _counter_dict(y_true)
+    pred_dist = _counter_dict(y_pred)
+    true_win = sum(a == "WIN" and p == "WIN" for a, p in zip(y_true, y_pred))
+    true_loss = sum(a == "LOSS" and p == "LOSS" for a, p in zip(y_true, y_pred))
+    false_win = sum(a == "LOSS" and p == "WIN" for a, p in zip(y_true, y_pred))
+    false_loss = sum(a == "WIN" and p == "LOSS" for a, p in zip(y_true, y_pred))
+    actual_win = true_dist.get("WIN", 0)
+    actual_loss = true_dist.get("LOSS", 0)
+    predicted_win = pred_dist.get("WIN", 0)
+    predicted_loss = pred_dist.get("LOSS", 0)
+    win_precision = _safe_ratio(true_win, predicted_win)
+    win_recall = _safe_ratio(true_win, actual_win)
+    loss_precision = _safe_ratio(true_loss, predicted_loss)
+    loss_recall = _safe_ratio(true_loss, actual_loss)
+    win_f1 = 2 * win_precision * win_recall / (win_precision + win_recall) if win_precision is not None and win_recall is not None and win_precision + win_recall else None
+    loss_f1 = 2 * loss_precision * loss_recall / (loss_precision + loss_recall) if loss_precision is not None and loss_recall is not None and loss_precision + loss_recall else None
+    majority_class, majority_count = max(true_dist.items(), key=lambda item: (item[1], item[0]))
+    true_win_ratio = actual_win / sample_count
+    predicted_win_ratio = predicted_win / sample_count
+    findings: List[str] = []
+    status = "AVAILABLE"
+    majority_ratio = majority_count / sample_count
+    if majority_ratio >= 0.60:
+        status = "REVIEW_CLASS_IMBALANCE"
+        findings.append(f"True labels are dominated by {majority_class} at {round_or_none(majority_ratio)} of evaluated rows.")
+    if predicted_win_ratio - true_win_ratio >= 0.10:
+        findings.append("Model appears optimistic relative to true label distribution.")
+    if false_win >= max(2, int(0.10 * sample_count)):
+        findings.append("False WIN predictions are a likely contributor to below-baseline performance.")
+    if win_precision is not None and win_precision < 0.50:
+        recommendation = "Review model as LOSS avoidance filter before using it as WIN/entry predictor."
+    else:
+        recommendation = "Use this diagnostic to decide whether to repair WIN prediction or evaluate LOSS-avoidance/trade-filter behavior; do not unlock readiness."
+
+    probability_thresholds = []
+    probabilities = [r[2] for r in rows]
+    if any(prob is not None for prob in probabilities):
+        for threshold in (0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80):
+            kept = [(a, p) for a, p, prob in rows if prob is not None and prob >= threshold]
+            kept_pred_win = sum(p == "WIN" for _, p in kept)
+            kept_true_win = sum(a == "WIN" and p == "WIN" for a, p in kept)
+            probability_thresholds.append({
+                "threshold": threshold,
+                "rows_kept": len(kept),
+                "kept_ratio": _safe_ratio(len(kept), sample_count),
+                "accuracy_on_kept_rows": _safe_ratio(sum(a == p for a, p in kept), len(kept)),
+                "win_precision_on_kept_rows": _safe_ratio(kept_true_win, kept_pred_win),
+                "false_win_count_on_kept_rows": sum(a == "LOSS" and p == "WIN" for a, p in kept),
+            })
+
+    return {
+        **base,
+        "class_imbalance_diagnostic_status": status,
+        "class_imbalance_sample_count": sample_count,
+        "true_label_distribution": true_dist,
+        "predicted_label_distribution": pred_dist,
+        "confusion_matrix": {
+            "actual_WIN": {"predicted_WIN": true_win, "predicted_LOSS": false_loss},
+            "actual_LOSS": {"predicted_WIN": false_win, "predicted_LOSS": true_loss},
+        },
+        "win_precision": win_precision,
+        "win_recall": win_recall,
+        "win_f1": win_f1,
+        "loss_precision": loss_precision,
+        "loss_recall": loss_recall,
+        "loss_f1": loss_f1,
+        "false_win_count": false_win,
+        "false_loss_count": false_loss,
+        "true_win_count": true_win,
+        "true_loss_count": true_loss,
+        "model_prediction_bias": {
+            "true_win_ratio": true_win_ratio,
+            "predicted_win_ratio": predicted_win_ratio,
+            "predicted_minus_true_win_ratio": predicted_win_ratio - true_win_ratio,
+        },
+        "majority_class": majority_class,
+        "majority_class_ratio": majority_ratio,
+        "probability_threshold_diagnostic": probability_thresholds,
+        "class_imbalance_findings": findings or ["Class imbalance diagnostic is available; no dominant diagnostic finding crossed review thresholds."],
+        "class_imbalance_recommendation": recommendation,
+    }
+
 def mcc_binary(y_true: Sequence[Any], y_pred: Sequence[Any]) -> Optional[float]:
     labels = list(set(y_true) | set(y_pred))
     if len(labels) != 2:
@@ -1739,6 +1892,7 @@ def run_ml_metric_reconciliation(
     row_level_walkforward = row_level_walkforward_audit(cohort, temporal_feature_guard, preprocessing_guard)
     baseline_audit = baseline_root_cause_audit(row_level_walkforward)
     larger_fold_diagnostic = larger_fold_baseline_diagnostic(cohort)
+    class_imbalance_diagnostic = ml_class_imbalance_diagnostic(cohort)
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1798,6 +1952,7 @@ def run_ml_metric_reconciliation(
         "row_level_walkforward_findings": row_level_walkforward["row_level_walkforward_findings"],
         **baseline_audit,
         **larger_fold_diagnostic,
+        **class_imbalance_diagnostic,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,

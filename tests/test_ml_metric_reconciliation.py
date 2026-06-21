@@ -16,6 +16,7 @@ from ml_metric_reconciliation import (
     label_contract_audit,
     label_integrity_component_status,
     larger_fold_baseline_diagnostic,
+    ml_class_imbalance_diagnostic,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -851,3 +852,93 @@ def test_walkforward_stability_remains_blocked_when_row_level_below_baseline():
     walk_forward_stability = row_level["row_level_walkforward_status"] if row_level["row_level_walkforward_status"].startswith("BLOCKED") else "REVIEW"
     assert row_level["row_level_walkforward_status"] == "BLOCKED_BELOW_BASELINE"
     assert walk_forward_stability == "BLOCKED_BELOW_BASELINE"
+
+
+def _class_imbalance_fixture():
+    return pd.DataFrame([
+        {"y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.90},
+        {"y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.40},
+        {"y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.80},
+        {"y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.70},
+        {"y_true": "LOSS", "y_pred": "LOSS", "predicted_probability": 0.30},
+        {"y_true": "LOSS", "y_pred": "LOSS", "predicted_probability": 0.20},
+    ])
+
+
+def test_class_imbalance_diagnostic_reports_label_distributions():
+    diagnostic = ml_class_imbalance_diagnostic(_class_imbalance_fixture())
+    assert diagnostic["class_imbalance_diagnostic_status"] == "REVIEW_CLASS_IMBALANCE"
+    assert diagnostic["class_imbalance_sample_count"] == 6
+    assert diagnostic["true_label_distribution"] == {"LOSS": 4, "WIN": 2}
+    assert diagnostic["predicted_label_distribution"] == {"LOSS": 3, "WIN": 3}
+    assert diagnostic["majority_class"] == "LOSS"
+    assert diagnostic["majority_class_ratio"] == pytest.approx(4 / 6)
+
+
+def test_class_imbalance_diagnostic_computes_confusion_matrix():
+    diagnostic = ml_class_imbalance_diagnostic(_class_imbalance_fixture())
+    assert diagnostic["confusion_matrix"] == {
+        "actual_WIN": {"predicted_WIN": 1, "predicted_LOSS": 1},
+        "actual_LOSS": {"predicted_WIN": 2, "predicted_LOSS": 2},
+    }
+    assert diagnostic["true_win_count"] == 1
+    assert diagnostic["true_loss_count"] == 2
+    assert diagnostic["false_win_count"] == 2
+    assert diagnostic["false_loss_count"] == 1
+
+
+def test_class_imbalance_diagnostic_computes_precision_recall_f1():
+    diagnostic = ml_class_imbalance_diagnostic(_class_imbalance_fixture())
+    assert diagnostic["win_precision"] == pytest.approx(1 / 3)
+    assert diagnostic["win_recall"] == pytest.approx(1 / 2)
+    assert diagnostic["win_f1"] == pytest.approx(0.4)
+    assert diagnostic["loss_precision"] == pytest.approx(2 / 3)
+    assert diagnostic["loss_recall"] == pytest.approx(1 / 2)
+    assert diagnostic["loss_f1"] == pytest.approx(4 / 7)
+
+
+def test_class_imbalance_diagnostic_detects_false_win_predictions():
+    diagnostic = ml_class_imbalance_diagnostic(_class_imbalance_fixture())
+    assert diagnostic["false_win_count"] == 2
+    assert any("False WIN predictions" in finding for finding in diagnostic["class_imbalance_findings"])
+    assert diagnostic["class_imbalance_recommendation"] == "Review model as LOSS avoidance filter before using it as WIN/entry predictor."
+
+
+def test_class_imbalance_diagnostic_returns_probability_thresholds():
+    diagnostic = ml_class_imbalance_diagnostic(_class_imbalance_fixture())
+    thresholds = diagnostic["probability_threshold_diagnostic"]
+    assert [row["threshold"] for row in thresholds] == [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+    t80 = next(row for row in thresholds if row["threshold"] == 0.80)
+    assert t80["rows_kept"] == 2
+    assert t80["kept_ratio"] == pytest.approx(2 / 6)
+    assert t80["accuracy_on_kept_rows"] == pytest.approx(0.5)
+    assert t80["win_precision_on_kept_rows"] == pytest.approx(0.5)
+    assert t80["false_win_count_on_kept_rows"] == 1
+
+
+def test_class_imbalance_diagnostic_does_not_alter_readiness_gates(tmp_path):
+    rows = [
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-06-{idx + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{idx + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+            "fold_id": idx // 3,
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+            "predicted_probability": 0.9,
+        }
+        for idx in range(30)
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["class_imbalance_diagnostic_status"] == "REVIEW_CLASS_IMBALANCE"
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
