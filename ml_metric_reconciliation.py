@@ -873,6 +873,138 @@ def threshold_candidate_stability_audit(cohort: pd.DataFrame, selected_threshold
     }
 
 
+
+def _optional_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, float) and math.isnan(value):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _count_rows_readonly(path_value: Any) -> Optional[int]:
+    if not path_value:
+        return None
+    path = Path(str(path_value))
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        if path.suffix.lower() == ".csv":
+            return int(sum(len(chunk) for chunk in pd.read_csv(path, chunksize=10000)))
+        if path.suffix.lower() == ".jsonl":
+            with path.open("r", encoding="utf-8") as handle:
+                return sum(1 for line in handle if line.strip())
+        if path.suffix.lower() == ".json":
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return len(data)
+            if isinstance(data, dict):
+                for key in ("rows", "outcomes", "closed_outcomes", "records", "data"):
+                    if isinstance(data.get(key), list):
+                        return len(data[key])
+    except Exception:
+        return None
+    return None
+
+
+def closed_outcome_to_ml_cohort_coverage_audit(
+    report_or_artifacts: Dict[str, Any],
+    min_threshold_rows: int = 100,
+    min_pred_win_rows: int = 30,
+    low_retention_threshold: float = 0.80,
+) -> Dict[str, Any]:
+    """Build a diagnostic-only bridge from closed outcomes to ML evaluation evidence.
+
+    This function only summarizes available report fields and read-only artifact
+    counts. It does not alter training, inference, predictions, thresholds,
+    readiness gates, or execution controls.
+    """
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
+
+    raw_closed_count = _optional_int(
+        report.get("closed_to_ml_coverage_raw_closed_count")
+        or report.get("raw_closed_outcome_count")
+        or report.get("closed_outcome_count")
+        or report.get("closed_outcomes_count")
+    )
+    raw_source_status = "AVAILABLE_FROM_REPORT_FIELDS" if raw_closed_count is not None else "UNAVAILABLE"
+    for key in ("closed_outcomes", "closed_outcomes_csv", "outcome_ledger", "outcome_ledger_jsonl", "closed_outcome_path"):
+        artifact_count = _count_rows_readonly(report.get(key) or artifact_paths.get(key))
+        if artifact_count is not None:
+            raw_closed_count = artifact_count
+            raw_source_status = f"AVAILABLE_FROM_ARTIFACT:{key}"
+            break
+
+    ml_count = _optional_int(report.get("filtered_cohort_rows_full") or report.get("current_accuracy_sample_count") or report.get("row_level_walkforward_rows"))
+    kept_count = _optional_int(report.get("filtered_cohort_rows_kept") or report.get("threshold_sample_sufficiency_rows_kept"))
+    skipped_count = _optional_int(report.get("filtered_cohort_rows_skipped"))
+    if skipped_count is None and ml_count is not None and kept_count is not None:
+        skipped_count = max(ml_count - kept_count, 0)
+
+    filtered_pred_dist = report.get("filtered_cohort_filtered_prediction_distribution") or {}
+    pred_win_count = _optional_int(report.get("threshold_sample_sufficiency_pred_win_count") or filtered_pred_dist.get("WIN"))
+    pred_loss_count = _optional_int(report.get("threshold_sample_sufficiency_pred_loss_count") or filtered_pred_dist.get("LOSS"))
+
+    closed_to_ml_ratio = round_or_none(_safe_ratio(ml_count, raw_closed_count) if ml_count is not None and raw_closed_count else None)
+    ml_to_threshold_ratio = round_or_none(_safe_ratio(kept_count, ml_count) if kept_count is not None and ml_count else None)
+
+    drop_reasons = {
+        "missing_prediction_link": None,
+        "missing_label": None,
+        "missing_prediction": None,
+        "missing_probability": None,
+        "immature_or_unclosed_outcome": report.get("pending_prediction_rows"),
+        "temporal_guard_exclusion": report.get("future_feature_violation_count"),
+        "non_evaluable_row": report.get("invalid_prediction_rows"),
+        "threshold_exclusion": skipped_count,
+        "predicted_win_scarcity": pred_win_count,
+    }
+    stage_counts = {
+        "raw_closed_outcomes": raw_closed_count,
+        "ml_cohort_rows": ml_count,
+        "threshold_kept_rows": kept_count,
+        "threshold_skipped_rows": skipped_count,
+        "threshold_predicted_win_rows": pred_win_count,
+        "threshold_predicted_loss_rows": pred_loss_count,
+    }
+    if raw_source_status == "UNAVAILABLE" and any(value is not None for key, value in stage_counts.items() if key != "raw_closed_outcomes"):
+        raw_source_status = "AVAILABLE_FROM_REPORT_FIELDS"
+
+    findings = [
+        "DIAGNOSTIC_ONLY_DOES_NOT_ALTER_READINESS_OR_EXECUTION",
+        "Diagnostic-only coverage audit; does not upgrade the model, change training/inference/predictions, apply threshold 0.80 to runtime signals, change readiness gates, or unlock execution.",
+    ]
+    if raw_closed_count is None:
+        findings.append("RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION")
+    elif ml_count is not None and raw_closed_count > ml_count:
+        findings.append("CLOSED_OUTCOME_COUNT_EXCEEDS_ML_COHORT_COUNT")
+    if kept_count is not None and kept_count < min_threshold_rows:
+        findings.append("THRESHOLD_FILTERED_SAMPLE_BELOW_MINIMUM")
+    if pred_win_count is not None and pred_win_count < min_pred_win_rows:
+        findings.append("PREDICTED_WIN_SAMPLE_BELOW_MINIMUM")
+    if closed_to_ml_ratio is not None and closed_to_ml_ratio < low_retention_threshold:
+        findings.append("LOW_COVERAGE_RETENTION_REQUIRES_DROP_REASON_AUDIT")
+
+    return {
+        "closed_to_ml_coverage_status": raw_source_status,
+        "closed_to_ml_coverage_raw_closed_count": raw_closed_count,
+        "closed_to_ml_coverage_ml_cohort_count": ml_count,
+        "closed_to_ml_coverage_threshold_kept_count": kept_count,
+        "closed_to_ml_coverage_threshold_skipped_count": skipped_count,
+        "closed_to_ml_coverage_threshold_pred_win_count": pred_win_count,
+        "closed_to_ml_coverage_threshold_pred_loss_count": pred_loss_count,
+        "closed_to_ml_coverage_closed_to_ml_retention_ratio": closed_to_ml_ratio,
+        "closed_to_ml_coverage_ml_to_threshold_retention_ratio": ml_to_threshold_ratio,
+        "closed_to_ml_coverage_drop_reasons": drop_reasons,
+        "closed_to_ml_coverage_known_stage_counts": stage_counts,
+        "closed_to_ml_coverage_findings": findings,
+        "closed_to_ml_coverage_recommendation": "Diagnostic only: use the coverage bridge to audit where closed outcomes are excluded before any model repair; keep readiness blocked and execution disabled.",
+    }
+
 def threshold_sample_sufficiency_audit(
     report_or_cohort: Any,
     selected_threshold: Optional[float] = None,
@@ -2795,6 +2927,17 @@ def run_ml_metric_reconciliation(
     ready = readiness(components)
     paper_filter_candidate = paper_filter_candidate_registry({**filtered_cohort_comparison, "model_readiness": ready})
     paper_filter_shadow_review = paper_filter_shadow_review_scorecard({**threshold_stability_audit, **threshold_sample_sufficiency, **filtered_cohort_comparison, **paper_filter_candidate, "model_readiness": ready})
+    coverage_audit_input = {
+        **threshold_sample_sufficiency,
+        **filtered_cohort_comparison,
+        "current_accuracy_sample_count": current_evidence.get("current_accuracy_sample_count"),
+        "row_level_walkforward_rows": row_level_walkforward.get("row_level_walkforward_rows"),
+        "matured_prediction_rows": prediction_ledger.get("matured_prediction_rows"),
+        "pending_prediction_rows": prediction_ledger.get("pending_prediction_rows"),
+        "invalid_prediction_rows": prediction_ledger.get("invalid_prediction_rows"),
+        "future_feature_violation_count": temporal_feature_guard.get("future_feature_violation_count"),
+    }
+    closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
@@ -2804,6 +2947,7 @@ def run_ml_metric_reconciliation(
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
+        **closed_to_ml_coverage_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
     })
@@ -2850,6 +2994,7 @@ def run_ml_metric_reconciliation(
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
+        **closed_to_ml_coverage_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
         **model_upgrade_diagnostic_plan,
