@@ -13,7 +13,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
-from ml_engine import PROFITABLE_LABELS, TARGET_LABELS, _encode, build_ml_dataset
+from ml_engine import PROFITABLE_LABELS, TARGET_LABELS, build_ml_dataset, fit_train_only_preprocessor, transform_with_train_preprocessor
 
 
 RESULT_FIELDS = [
@@ -198,9 +198,9 @@ def run_walkforward_validation(
         if train["target"].nunique() < 2:
             continue
 
-        X_train, feature_names = _encode(train)
-        X_test, _ = _encode(test)
-        X_test = X_test.reindex(columns=feature_names, fill_value=0)
+        preprocessor = fit_train_only_preprocessor(train)
+        X_train = transform_with_train_preprocessor(train, preprocessor)
+        X_test = transform_with_train_preprocessor(test, preprocessor)
         y_train = train["target"]
         y_test = test["target"]
 

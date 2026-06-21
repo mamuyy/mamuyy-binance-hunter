@@ -171,13 +171,48 @@ def build_ml_dataset(
     return _prepare_dataset(dataset)
 
 
-def _encode(dataset: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-    encoded = encoder.fit_transform(dataset[CATEGORICAL_FEATURES].astype(str))
+def _new_one_hot_encoder() -> OneHotEncoder:
+    try:
+        return OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+    except TypeError:
+        return OneHotEncoder(handle_unknown="ignore", sparse=False)
+
+
+def fit_train_only_preprocessor(train_dataset: pd.DataFrame) -> Dict[str, Any]:
+    """Fit preprocessing state on training rows only.
+
+    This intentionally only fits the categorical encoder on the supplied training
+    slice. Numeric preparation remains deterministic row-local coercion in
+    `_prepare_dataset`; it does not learn distributional state.
+    """
+    encoder = _new_one_hot_encoder()
+    encoder.fit(train_dataset[CATEGORICAL_FEATURES].astype(str))
+    feature_names = [*NUMERIC_FEATURES, *encoder.get_feature_names_out(CATEGORICAL_FEATURES).tolist()]
+    return {
+        "encoder": encoder,
+        "feature_names": feature_names,
+        "fit_scope": "TRAIN_ONLY",
+        "fit_row_count": int(len(train_dataset)),
+    }
+
+
+def transform_with_train_preprocessor(dataset: pd.DataFrame, preprocessor: Dict[str, Any]) -> pd.DataFrame:
+    """Transform any split using a preprocessor already fit on train rows."""
+    if preprocessor.get("fit_scope") != "TRAIN_ONLY":
+        raise ValueError("preprocessor must be fit with fit_scope=TRAIN_ONLY before transform")
+    encoder = preprocessor["encoder"]
+    encoded = encoder.transform(dataset[CATEGORICAL_FEATURES].astype(str))
     encoded_columns = encoder.get_feature_names_out(CATEGORICAL_FEATURES).tolist()
     encoded_df = pd.DataFrame(encoded, columns=encoded_columns, index=dataset.index)
     features = pd.concat([dataset[NUMERIC_FEATURES], encoded_df], axis=1)
-    return features, features.columns.tolist()
+    return features.reindex(columns=preprocessor["feature_names"], fill_value=0)
+
+
+def _encode(dataset: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Compatibility wrapper for single-split callers; fits only on supplied rows."""
+    preprocessor = fit_train_only_preprocessor(dataset)
+    features = transform_with_train_preprocessor(dataset, preprocessor)
+    return features, preprocessor["feature_names"]
 
 
 def _quality(score: int) -> str:
@@ -301,16 +336,21 @@ def run_ml_research(
             json.dump(result, output_file, indent=2)
         return result
 
-    X, feature_names = _encode(dataset)
     y = dataset["target"]
     stratify = y if y.value_counts().min() >= 2 else None
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
+    train_dataset, test_dataset, y_train, y_test = train_test_split(
+        dataset,
         y,
         test_size=0.3 if len(dataset) >= 20 else 0.4,
         random_state=42,
         stratify=stratify,
     )
+    preprocessor = fit_train_only_preprocessor(train_dataset)
+    X_train = transform_with_train_preprocessor(train_dataset, preprocessor)
+    X_test = transform_with_train_preprocessor(test_dataset, preprocessor)
+    X_all = transform_with_train_preprocessor(dataset, preprocessor)
+    feature_names = preprocessor["feature_names"]
+
     model = RandomForestClassifier(
         n_estimators=200,
         max_depth=5,
@@ -319,7 +359,7 @@ def run_ml_research(
     )
     model.fit(X_train, y_train)
     predictions = model.predict(X_test)
-    probabilities = model.predict_proba(X)
+    probabilities = model.predict_proba(X_all)
     class_to_index = {label: index for index, label in enumerate(model.classes_)}
     profitable_probability = np.zeros(len(dataset))
     for label in PROFITABLE_LABELS:
