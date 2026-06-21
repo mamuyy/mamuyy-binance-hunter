@@ -57,6 +57,7 @@ if "--ml-prediction-cohort-export" in sys.argv:
 
     _result = _run_prediction_cohort_export()
     print(f"Prediction cohort: {_result.get('cohort_path')} selected_source={_result.get('selected_source')} rows={_result.get('rows')} folds={_result.get('folds')}")
+    print(f"Prediction cohort cap: max_folds={_result.get('max_folds')} folds_evaluated={_result.get('folds_evaluated')} export_truncated={_result.get('export_truncated')}")
     print(f"Prediction ledger: {_result.get('ledger_path')} ledger_rows_appended={_result.get('ledger_rows_appended')} ledger_duplicates_skipped={_result.get('ledger_duplicates_skipped')}")
     sys.exit(0)
 

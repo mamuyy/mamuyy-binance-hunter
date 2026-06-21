@@ -57,6 +57,7 @@ def _historical_dataset(database_path: str = "mamuyy_hunter.db") -> pd.DataFrame
     query = """
         SELECT
             o.signal_timestamp AS timestamp,
+            o.close_timestamp AS target_timestamp,
             o.symbol,
             o.status,
             o.win_loss,

@@ -187,6 +187,26 @@ def test_historical_outcomes_win_loss_tp1_hit_creates_nonzero_rows_and_counts(tm
     assert result["target_counts"]["LOSS"] == 6
 
 
+def test_historical_outcomes_close_timestamp_becomes_target_timestamp(tmp_path):
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+    cohort = tmp_path / "cohort.csv"
+    result = run_prediction_cohort_export(
+        paper_trades_path=str(tmp_path / "missing_paper.csv"),
+        signals_log_path=str(tmp_path / "missing_signals.csv"),
+        database_path=str(db),
+        cohort_path=cohort,
+        ledger_path=tmp_path / "ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+    frame = pd.read_csv(cohort)
+
+    assert result["selected_source"] == "historical_outcomes"
+    assert result["rows"] > 0
+    assert frame["target_timestamp"].notna().all()
+
+
 def test_source_diagnostics_report_rejected_paper_reason_and_target_counts(tmp_path):
     paper = tmp_path / "paper_trades.csv"
     paper.write_text("timestamp,symbol,status\n2024-01-01T00:00:00Z,BTCUSDT,OPEN\n", encoding="utf-8")
@@ -207,6 +227,21 @@ def test_source_diagnostics_report_rejected_paper_reason_and_target_counts(tmp_p
     assert result["source_candidate_rows"]["paper_trades"] == 1
     assert any("prepared_rows_below_required_window" in reason for reason in result["source_reject_reasons"]["paper_trades"])
     assert result["target_counts"] == {"LOSS": 6, "WIN": 12}
+
+
+def test_max_folds_caps_export_and_reports_truncation(tmp_path):
+    cohort = tmp_path / "cohort.csv"
+    ledger = tmp_path / "ledger.jsonl"
+    result = materialize_prediction_cohort(_dataset(36), cohort, ledger, train_window=6, test_window=3, max_folds=2)
+    frame = pd.read_csv(cohort)
+
+    assert result["folds"] == 2
+    assert result["folds_evaluated"] == 2
+    assert result["rows"] == 6
+    assert len(frame) == 6
+    assert result["max_folds"] == 2
+    assert result["export_truncated"] is True
+    assert result["export_truncation_reason"] == "max_folds_reached:2"
 
 
 def test_export_ledger_idempotent_after_historical_fallback(tmp_path):

@@ -74,6 +74,7 @@ def materialize_prediction_cohort(
     ledger_path: Optional[str | Path] = "reports/ml_prediction_ledger.jsonl",
     train_window: int = 30,
     test_window: int = 10,
+    max_folds: Optional[int] = None,
     model_version: str = "walkforward_random_forest_v1",
     feature_schema_version: str = "ml_engine_features_v1",
     label_source: str = "ml_engine.build_ml_dataset.target",
@@ -90,13 +91,17 @@ def materialize_prediction_cohort(
     existing_prediction_ids = set()
     ledger_rows_appended = 0
     ledger_duplicates_skipped = 0
+    folds_evaluated = 0
+    effective_max_folds = None if max_folds is None or int(max_folds) <= 0 else int(max_folds)
+    export_truncated = False
+    export_truncation_reason = None
     if ledger_path:
         existing_prediction_ids = {str(row.get("prediction_id")) for row in load_prediction_ledger(ledger_path) if row.get("prediction_id")}
     if dataset.empty or len(dataset) < train_window + test_window or "target" not in dataset.columns or dataset["target"].nunique() < 2:
         pd.DataFrame(rows, columns=COHORT_FIELDS).to_csv(cohort_path, index=False)
         if ledger_path:
             write_prediction_ledger_audit(audit_prediction_ledger(ledger_path), Path(ledger_path).with_name("ml_prediction_ledger_audit.json"))
-        return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": 0, "folds": 0, "ledger_rows_appended": 0, "ledger_duplicates_skipped": 0}
+        return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": 0, "folds": 0, "ledger_rows_appended": 0, "ledger_duplicates_skipped": 0, "max_folds": effective_max_folds, "folds_evaluated": 0, "export_truncated": False, "export_truncation_reason": None}
 
     frame = dataset.copy().reset_index(drop=True)
     if "prediction_timestamp" not in frame.columns:
@@ -109,6 +114,10 @@ def materialize_prediction_cohort(
     fold_id = 1
     start = 0
     while start + train_window + test_window <= len(frame):
+        if effective_max_folds is not None and folds_evaluated >= effective_max_folds:
+            export_truncated = True
+            export_truncation_reason = f"max_folds_reached:{effective_max_folds}"
+            break
         train = frame.iloc[start:start + train_window].copy()
         test = frame.iloc[start + train_window:start + train_window + test_window].copy()
         start += test_window
@@ -170,11 +179,12 @@ def materialize_prediction_cohort(
                     append_prediction(ledger_path, {k: ledger_row.get(k) for k in LEDGER_FIELDS})
                     existing_prediction_ids.add(prediction_id)
                     ledger_rows_appended += 1
+        folds_evaluated += 1
         fold_id += 1
     pd.DataFrame(rows, columns=COHORT_FIELDS).to_csv(cohort_path, index=False, quoting=csv.QUOTE_MINIMAL)
     if ledger_path:
         write_prediction_ledger_audit(audit_prediction_ledger(ledger_path), Path(ledger_path).with_name("ml_prediction_ledger_audit.json"))
-    return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": len(rows), "folds": fold_id - 1, "ledger_rows_appended": ledger_rows_appended, "ledger_duplicates_skipped": ledger_duplicates_skipped}
+    return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": len(rows), "folds": folds_evaluated, "ledger_rows_appended": ledger_rows_appended, "ledger_duplicates_skipped": ledger_duplicates_skipped, "max_folds": effective_max_folds, "folds_evaluated": folds_evaluated, "export_truncated": export_truncated, "export_truncation_reason": export_truncation_reason}
 
 
 def _canonical_target_counts(dataset: pd.DataFrame) -> Dict[str, int]:
@@ -183,6 +193,17 @@ def _canonical_target_counts(dataset: pd.DataFrame) -> Dict[str, int]:
     labels = dataset["target"].apply(canonical_ml_label)
     labels = labels[labels.isin({"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"})]
     return {str(label): int(count) for label, count in labels.value_counts().sort_index().items()}
+
+
+def _default_max_folds() -> Optional[int]:
+    value = os.environ.get("ML_PREDICTION_COHORT_MAX_FOLDS", "250").strip()
+    if value.lower() in {"", "none", "unlimited", "full"}:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return 250
+    return None if parsed <= 0 else parsed
 
 
 def _raw_candidate_rows(path_or_table: str, database_path: str = "mamuyy_hunter.db") -> int:
@@ -314,7 +335,9 @@ def run_prediction_cohort_export(
     ledger_path: str = "reports/ml_prediction_ledger.jsonl",
     train_window: int = 30,
     test_window: int = 10,
+    max_folds: Optional[int] = None,
 ) -> Dict[str, Any]:
+    effective_max_folds = _default_max_folds() if max_folds is None else (None if int(max_folds) <= 0 else int(max_folds))
     dataset, diagnostics = _select_prediction_cohort_source(
         paper_trades_path,
         signals_log_path,
@@ -322,6 +345,6 @@ def run_prediction_cohort_export(
         train_window,
         test_window,
     )
-    result = materialize_prediction_cohort(dataset, cohort_path=cohort_path, ledger_path=ledger_path, train_window=train_window, test_window=test_window)
+    result = materialize_prediction_cohort(dataset, cohort_path=cohort_path, ledger_path=ledger_path, train_window=train_window, test_window=test_window, max_folds=effective_max_folds)
     result.update(diagnostics)
     return result
