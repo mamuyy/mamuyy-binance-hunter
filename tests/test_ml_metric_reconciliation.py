@@ -23,6 +23,7 @@ from ml_metric_reconciliation import (
     paper_filter_candidate_registry,
     paper_filter_shadow_review_scorecard,
     prediction_outcome_linkage_contract_audit,
+    prediction_outcome_linkage_producer_contract_plan,
     threshold_candidate_stability_audit,
     threshold_sample_sufficiency_audit,
     filtered_cohort_walkforward_comparison,
@@ -1976,6 +1977,100 @@ def test_prediction_outcome_linkage_does_not_alter_readiness_governance(tmp_path
     assert report["model_readiness"]["components"]["Walk-Forward Stability"].startswith("BLOCKED")
     assert report["model_readiness"]["execution_allowed"] is False
     assert report["model_readiness"]["paper_only"] is True
+
+
+def _producer_plan_base_report():
+    return {
+        "prediction_outcome_linkage_contract_status": "BLOCKED_LINKAGE_CONTRACT_INCOMPLETE",
+        "prediction_outcome_linkage_contract_gaps": [
+            "RAW_CLOSED_MISSING_STABLE_LINKAGE_ID",
+            "PREDICTION_LEDGER_HAS_ID_BUT_OUTCOME_SOURCE_DOES_NOT",
+            "FALLBACK_JOIN_KEY_WEAK_FOR_MODEL_REPAIR",
+            "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY",
+        ],
+        "raw_to_ml_gap_reason_counts": {
+            "MISSING_PREDICTION_ID": 403,
+            "MISSING_ML_LEDGER_MATCH": 399,
+            "MISSING_JOIN_KEY": 4,
+        },
+        "closed_to_ml_coverage_raw_to_ml_gap_count": 153,
+        "model_readiness": {
+            "overall_status": "BLOCKED_BELOW_BASELINE",
+            "primary_blocker": "BLOCKED_BELOW_BASELINE",
+            "components": {
+                "Baseline Superiority": "BLOCKED_BELOW_BASELINE",
+                "Walk-Forward Stability": "BLOCKED_INSTABILITY",
+            },
+            "execution_allowed": False,
+            "paper_only": True,
+        },
+    }
+
+
+def test_producer_plan_status_available_but_linkage_blocked_when_contract_incomplete():
+    plan = prediction_outcome_linkage_producer_contract_plan(_producer_plan_base_report())
+
+    assert plan["prediction_outcome_linkage_producer_plan_status"] == "PRODUCER_CONTRACT_PLAN_AVAILABLE_LINKAGE_BLOCKED"
+    assert plan["prediction_outcome_linkage_producer_plan_mode"] == "FORWARD_ONLY_NO_BACKFILL_DIAGNOSTIC_PLAN"
+
+
+def test_producer_plan_required_future_fields_include_linkage_and_prediction_context():
+    plan = prediction_outcome_linkage_producer_contract_plan(_producer_plan_base_report())
+    fields = plan["prediction_outcome_linkage_producer_plan_required_future_fields"]
+
+    for field in [
+        "prediction_id",
+        "trade_id or signal_id",
+        "symbol",
+        "source_signal_timestamp",
+        "target_timestamp",
+        "closed_at",
+        "outcome or label",
+        "predicted_probability",
+    ]:
+        assert field in fields
+
+
+def test_producer_plan_validation_rules_require_prediction_id_and_trade_or_signal_id():
+    plan = prediction_outcome_linkage_producer_contract_plan(_producer_plan_base_report())
+    rules = plan["prediction_outcome_linkage_producer_plan_validation_rules"]
+
+    assert "Every future closed outcome must have prediction_id." in rules
+    assert "Every future closed outcome must have either trade_id or signal_id." in rules
+
+
+def test_producer_plan_blocks_model_repair_until_high_confidence_key_exists():
+    plan = prediction_outcome_linkage_producer_contract_plan(_producer_plan_base_report())
+
+    assert "MODEL_REPAIR_BLOCKED_UNTIL_LINKAGE_READY" in plan["prediction_outcome_linkage_producer_plan_blockers"]
+
+
+def test_producer_plan_do_not_do_preserves_diagnostic_boundaries():
+    plan = prediction_outcome_linkage_producer_contract_plan(_producer_plan_base_report())
+    do_not_do = plan["prediction_outcome_linkage_producer_plan_do_not_do"]
+
+    for item in [
+        "no backfill in this PR",
+        "no training changes",
+        "no inference changes",
+        "no prediction changes",
+        "no threshold runtime application",
+        "no readiness unlock",
+    ]:
+        assert item in do_not_do
+
+
+def test_producer_plan_does_not_alter_readiness_governance_values():
+    source = _producer_plan_base_report()
+    before = json.loads(json.dumps(source["model_readiness"]))
+    prediction_outcome_linkage_producer_contract_plan(source)
+
+    assert source["model_readiness"] == before
+    assert source["model_readiness"]["overall_status"] == "BLOCKED_BELOW_BASELINE"
+    assert source["model_readiness"]["components"]["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert source["model_readiness"]["components"]["Walk-Forward Stability"] == "BLOCKED_INSTABILITY"
+    assert source["model_readiness"]["execution_allowed"] is False
+    assert source["model_readiness"]["paper_only"] is True
 
 
 def test_raw_to_ml_gap_reason_audit_available_with_raw_source_and_ledger(tmp_path):

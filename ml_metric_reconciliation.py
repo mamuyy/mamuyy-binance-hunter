@@ -1307,6 +1307,47 @@ LINKAGE_MINIMUM_FUTURE_FIELDS = [
     "predicted_probability",
 ]
 
+LINKAGE_PRODUCER_PLAN_REQUIRED_FUTURE_FIELDS = [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "source_signal_timestamp",
+    "target_timestamp",
+    "closed_at",
+    "outcome or label",
+    "predicted_probability",
+    "model_version",
+    "evaluation_contract",
+]
+
+LINKAGE_PRODUCER_PLAN_RECOMMENDED_WRITE_POINTS = [
+    "When prediction is generated, persist prediction_id, symbol, predicted_probability, model_version, target_timestamp, evaluation_contract.",
+    "When paper trade is opened or tracked, persist prediction_id and trade_id/signal_id.",
+    "When paper trade closes, write closed outcome with prediction_id and trade_id/signal_id.",
+    "If a dedicated linkage ledger exists or is added later, write one row per prediction/outcome pair.",
+]
+
+LINKAGE_PRODUCER_PLAN_VALIDATION_RULES = [
+    "Every future closed outcome must have prediction_id.",
+    "Every future closed outcome must have either trade_id or signal_id.",
+    "Every future closed outcome must have symbol and closed_at.",
+    "Every future closed outcome must have outcome/label.",
+    "Every future linkage row must join to exactly one ML prediction row.",
+    "Duplicated prediction_id in closed outcome rows should be flagged.",
+    "Missing predicted_probability should be flagged.",
+    "Missing target_timestamp should be flagged.",
+]
+
+LINKAGE_PRODUCER_PLAN_DO_NOT_DO = [
+    "no backfill in this PR",
+    "no inference changes",
+    "no training changes",
+    "no prediction changes",
+    "no threshold runtime application",
+    "no readiness unlock",
+    "no database/source mutation",
+]
+
 
 def _payload_dict(row: Dict[str, Any]) -> Dict[str, Any]:
     payload = row.get("payload_json")
@@ -1407,6 +1448,60 @@ def prediction_outcome_linkage_contract_audit(report_or_artifacts: Dict[str, Any
         "prediction_outcome_linkage_minimum_required_future_fields": LINKAGE_MINIMUM_FUTURE_FIELDS,
         "prediction_outcome_linkage_findings": findings + [f"raw_closed_container={container}", f"raw_rows={len(raw_rows)}", f"ml_ledger_rows={len(ml_rows)}"],
         "prediction_outcome_linkage_recommendation": recommendation,
+    }
+
+
+def prediction_outcome_linkage_producer_contract_plan(report_or_artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    """Emit a forward-only producer contract plan for future outcome linkage.
+
+    This is diagnostic/planning-only. It consumes existing audit/readiness fields
+    and does not backfill old rows, write databases, mutate source artifacts,
+    change model training or inference, apply thresholds, or unlock readiness.
+    """
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    readiness_report = report.get("model_readiness") if isinstance(report.get("model_readiness"), dict) else {}
+    contract_gaps = list(report.get("prediction_outcome_linkage_contract_gaps") or [])
+    reason_counts = report.get("raw_to_ml_gap_reason_counts") if isinstance(report.get("raw_to_ml_gap_reason_counts"), dict) else {}
+    coverage_status = report.get("closed_to_ml_coverage_status") or report.get("closed_outcome_to_ml_cohort_coverage_status")
+    linkage_blocked = report.get("prediction_outcome_linkage_contract_status") != "AVAILABLE_LINKAGE_CONTRACT_READY"
+    blockers = set(contract_gaps)
+    if linkage_blocked:
+        blockers.update({
+            "RAW_CLOSED_MISSING_STABLE_LINKAGE_ID",
+            "PREDICTION_LEDGER_HAS_ID_BUT_OUTCOME_SOURCE_DOES_NOT",
+            "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY",
+            "MODEL_REPAIR_BLOCKED_UNTIL_LINKAGE_READY",
+        })
+    if "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY" in contract_gaps:
+        blockers.add("MODEL_REPAIR_BLOCKED_UNTIL_LINKAGE_READY")
+
+    findings = [
+        "DIAGNOSTIC_ONLY_FORWARD_ONLY_PRODUCER_CONTRACT_PLAN",
+        f"linkage_contract_status={report.get('prediction_outcome_linkage_contract_status')}",
+        f"raw_to_ml_gap_count={report.get('closed_to_ml_coverage_raw_to_ml_gap_count')}",
+        f"coverage_status={coverage_status}",
+        f"readiness_overall_status={readiness_report.get('overall_status')}",
+        f"execution_allowed={readiness_report.get('execution_allowed')}",
+        f"paper_only={readiness_report.get('paper_only')}",
+    ]
+    if reason_counts:
+        findings.append(f"raw_to_ml_gap_reason_counts={dict(sorted(reason_counts.items()))}")
+
+    recommendation = (
+        "Add forward-only producer/writer coverage so future closed outcomes carry stable prediction linkage "
+        "fields at prediction generation, paper trade tracking, and close time. Do not backfill historical "
+        "rows or repair/upgrade the model until future one-to-one prediction/outcome linkage is auditable."
+    )
+    return {
+        "prediction_outcome_linkage_producer_plan_status": "PRODUCER_CONTRACT_PLAN_AVAILABLE_LINKAGE_BLOCKED",
+        "prediction_outcome_linkage_producer_plan_mode": "FORWARD_ONLY_NO_BACKFILL_DIAGNOSTIC_PLAN",
+        "prediction_outcome_linkage_producer_plan_required_future_fields": LINKAGE_PRODUCER_PLAN_REQUIRED_FUTURE_FIELDS,
+        "prediction_outcome_linkage_producer_plan_recommended_write_points": LINKAGE_PRODUCER_PLAN_RECOMMENDED_WRITE_POINTS,
+        "prediction_outcome_linkage_producer_plan_validation_rules": LINKAGE_PRODUCER_PLAN_VALIDATION_RULES,
+        "prediction_outcome_linkage_producer_plan_blockers": sorted(blockers),
+        "prediction_outcome_linkage_producer_plan_do_not_do": LINKAGE_PRODUCER_PLAN_DO_NOT_DO,
+        "prediction_outcome_linkage_producer_plan_findings": findings,
+        "prediction_outcome_linkage_producer_plan_recommendation": recommendation,
     }
 
 
@@ -3471,6 +3566,12 @@ def run_ml_metric_reconciliation(
     closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
     gap_reason_audit = raw_closed_to_ml_cohort_gap_reason_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, "prediction_ledger_path": prediction_ledger_path})
     linkage_contract_audit = prediction_outcome_linkage_contract_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, **gap_reason_audit, "prediction_ledger_path": prediction_ledger_path})
+    producer_contract_plan = prediction_outcome_linkage_producer_contract_plan({
+        "model_readiness": ready,
+        **closed_to_ml_coverage_audit,
+        **gap_reason_audit,
+        **linkage_contract_audit,
+    })
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
@@ -3484,6 +3585,7 @@ def run_ml_metric_reconciliation(
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
         **linkage_contract_audit,
+        **producer_contract_plan,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
     })
@@ -3534,6 +3636,7 @@ def run_ml_metric_reconciliation(
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
         **linkage_contract_audit,
+        **producer_contract_plan,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
         **model_upgrade_diagnostic_plan,

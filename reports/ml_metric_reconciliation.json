@@ -468,7 +468,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T17:10:02.816353+00:00",
+  "generated_at": "2026-06-21T17:29:20.705996+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -1102,6 +1102,62 @@
     }
   },
   "prediction_outcome_linkage_preferred_key": null,
+  "prediction_outcome_linkage_producer_plan_blockers": [
+    "MODEL_REPAIR_BLOCKED_UNTIL_LINKAGE_READY",
+    "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY",
+    "PREDICTION_LEDGER_HAS_ID_BUT_OUTCOME_SOURCE_DOES_NOT",
+    "RAW_CLOSED_MISSING_STABLE_LINKAGE_ID"
+  ],
+  "prediction_outcome_linkage_producer_plan_do_not_do": [
+    "no backfill in this PR",
+    "no inference changes",
+    "no training changes",
+    "no prediction changes",
+    "no threshold runtime application",
+    "no readiness unlock",
+    "no database/source mutation"
+  ],
+  "prediction_outcome_linkage_producer_plan_findings": [
+    "DIAGNOSTIC_ONLY_FORWARD_ONLY_PRODUCER_CONTRACT_PLAN",
+    "linkage_contract_status=BLOCKED_LINKAGE_CONTRACT_INCOMPLETE",
+    "raw_to_ml_gap_count=None",
+    "coverage_status=AVAILABLE_FROM_REPORT_FIELDS",
+    "readiness_overall_status=BLOCKED_LABEL_CONTRACT",
+    "execution_allowed=False",
+    "paper_only=True",
+    "raw_to_ml_gap_reason_counts={'JOIN_KEY_UNAVAILABLE': 0, 'UNKNOWN_REQUIRES_MANUAL_REVIEW': 0}"
+  ],
+  "prediction_outcome_linkage_producer_plan_mode": "FORWARD_ONLY_NO_BACKFILL_DIAGNOSTIC_PLAN",
+  "prediction_outcome_linkage_producer_plan_recommendation": "Add forward-only producer/writer coverage so future closed outcomes carry stable prediction linkage fields at prediction generation, paper trade tracking, and close time. Do not backfill historical rows or repair/upgrade the model until future one-to-one prediction/outcome linkage is auditable.",
+  "prediction_outcome_linkage_producer_plan_recommended_write_points": [
+    "When prediction is generated, persist prediction_id, symbol, predicted_probability, model_version, target_timestamp, evaluation_contract.",
+    "When paper trade is opened or tracked, persist prediction_id and trade_id/signal_id.",
+    "When paper trade closes, write closed outcome with prediction_id and trade_id/signal_id.",
+    "If a dedicated linkage ledger exists or is added later, write one row per prediction/outcome pair."
+  ],
+  "prediction_outcome_linkage_producer_plan_required_future_fields": [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "source_signal_timestamp",
+    "target_timestamp",
+    "closed_at",
+    "outcome or label",
+    "predicted_probability",
+    "model_version",
+    "evaluation_contract"
+  ],
+  "prediction_outcome_linkage_producer_plan_status": "PRODUCER_CONTRACT_PLAN_AVAILABLE_LINKAGE_BLOCKED",
+  "prediction_outcome_linkage_producer_plan_validation_rules": [
+    "Every future closed outcome must have prediction_id.",
+    "Every future closed outcome must have either trade_id or signal_id.",
+    "Every future closed outcome must have symbol and closed_at.",
+    "Every future closed outcome must have outcome/label.",
+    "Every future linkage row must join to exactly one ML prediction row.",
+    "Duplicated prediction_id in closed outcome rows should be flagged.",
+    "Missing predicted_probability should be flagged.",
+    "Missing target_timestamp should be flagged."
+  ],
   "prediction_outcome_linkage_raw_closed_key_coverage": {
     "closed_at": {
       "coverage_ratio": null,
