@@ -1231,6 +1231,184 @@ def closed_outcome_to_ml_cohort_coverage_audit(
         "closed_to_ml_coverage_recommendation": "Diagnostic only: use the coverage bridge to audit where closed outcomes are excluded before any model repair; keep readiness blocked and execution disabled.",
     }
 
+
+def _read_json_records_from_container(path: Path, container: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], None
+    if isinstance(data, list):
+        records = data
+        used = "root_list"
+    elif isinstance(data, dict):
+        preferred = [container] if container else []
+        records = None
+        used = None
+        for key in [*preferred, "closed_trades", "rows", "outcomes", "closed_outcomes", "records", "data", "trades", "ledger"]:
+            if key and isinstance(data.get(key), list):
+                records = data.get(key)
+                used = key
+                break
+        if records is None:
+            return [], None
+    else:
+        return [], None
+    return [row for row in records if isinstance(row, dict)], used
+
+
+def _read_jsonl_records(path: Path, max_rows: int = 100_000) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if len(rows) >= max_rows:
+                    break
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        return []
+    return rows
+
+
+def _present(value: Any) -> bool:
+    return value is not None and str(value).strip() != ""
+
+
+def _field_availability(rows: Sequence[Dict[str, Any]], fields: Sequence[str]) -> Dict[str, Dict[str, int]]:
+    total = len(rows)
+    return {field: {"present": sum(1 for row in rows if _present(row.get(field))), "missing": total - sum(1 for row in rows if _present(row.get(field)))} for field in fields}
+
+
+def _row_join_value(row: Dict[str, Any], join_key: str) -> Optional[str]:
+    if join_key == "symbol_entry_time":
+        symbol = row.get("symbol")
+        ts = row.get("entry_time") or row.get("prediction_timestamp")
+        return f"{symbol}|{ts}" if _present(symbol) and _present(ts) else None
+    if join_key == "symbol_closed_at":
+        symbol = row.get("symbol")
+        ts = row.get("closed_at") or row.get("target_timestamp")
+        return f"{symbol}|{ts}" if _present(symbol) and _present(ts) else None
+    value = row.get(join_key)
+    return str(value) if _present(value) else None
+
+
+def _select_gap_join_key(raw_rows: Sequence[Dict[str, Any]], ml_rows: Sequence[Dict[str, Any]]) -> Tuple[Optional[str], str]:
+    candidates = ("prediction_id", "trade_id", "symbol_entry_time", "symbol_closed_at")
+    for key in candidates:
+        raw_present = sum(1 for row in raw_rows if _row_join_value(row, key))
+        ml_present = sum(1 for row in ml_rows if _row_join_value(row, key))
+        if raw_present and ml_present:
+            return key, "AVAILABLE"
+    return None, "JOIN_KEY_UNAVAILABLE"
+
+
+def _safe_unmatched_raw_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "symbol": row.get("symbol"),
+        "status": row.get("status") or row.get("outcome"),
+        "closed_at": row.get("closed_at"),
+        "prediction_id_present": _present(row.get("prediction_id")),
+        "label_present": _present(row.get("label") or row.get("target_label") or row.get("y_true") or row.get("status") or row.get("outcome")),
+        "probability_present": _present(row.get("predicted_probability") or row.get("probability") or row.get("confidence")),
+    }
+
+
+def raw_closed_to_ml_cohort_gap_reason_audit(report_or_artifacts: Dict[str, Any], sample_limit: int = 5) -> Dict[str, Any]:
+    """Read-only diagnostic audit for raw closed outcomes absent from the ML cohort.
+
+    The audit only reads JSON/JSONL artifacts and emits bounded metadata. It
+    does not write raw outcomes, prediction ledgers, databases, model artifacts,
+    threshold settings, readiness gates, or execution controls.
+    """
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
+    raw_path_value = report.get("raw_closed_source_selected_path") or artifact_paths.get("raw_closed_source_selected_path") or CANONICAL_RAW_CLOSED_SOURCE_PATH
+    ledger_path_value = report.get("prediction_ledger_path") or artifact_paths.get("prediction_ledger") or artifact_paths.get("ml_prediction_ledger") or "reports/ml_prediction_ledger.jsonl"
+    raw_path = Path(str(raw_path_value))
+    ledger_path = Path(str(ledger_path_value))
+    raw_rows, container = _read_json_records_from_container(raw_path, report.get("raw_closed_source_selected_container") or CANONICAL_RAW_CLOSED_CONTAINER)
+    ml_rows = _read_jsonl_records(ledger_path)
+    raw_count = _optional_int(report.get("closed_to_ml_coverage_raw_closed_count") or report.get("raw_closed_source_selected_row_count")) or len(raw_rows)
+    ml_count = _optional_int(report.get("closed_to_ml_coverage_ml_cohort_count") or report.get("prediction_ledger_rows") or report.get("current_accuracy_sample_count")) or len(ml_rows)
+    gap_count = _optional_int(report.get("closed_to_ml_coverage_raw_to_ml_gap_count"))
+    if gap_count is None and raw_count is not None and ml_count is not None:
+        gap_count = max(raw_count - ml_count, 0)
+
+    reason_counts: Counter[str] = Counter()
+    findings = ["DIAGNOSTIC_ONLY_READ_ONLY_GAP_REASON_AUDIT"]
+    join_key, join_status = _select_gap_join_key(raw_rows, ml_rows)
+    unmatched_raw: List[Dict[str, Any]] = []
+    unmatched_ml_count = 0
+
+    missing_prediction_id_count = sum(1 for row in raw_rows if not _present(row.get("prediction_id")))
+    if missing_prediction_id_count:
+        reason_counts["MISSING_PREDICTION_ID"] = missing_prediction_id_count
+
+    if not raw_rows or not ml_rows:
+        join_status = "JOIN_KEY_UNAVAILABLE"
+        join_key = None
+    if join_key is None:
+        reason_counts["JOIN_KEY_UNAVAILABLE"] = gap_count or 0
+        reason_counts["UNKNOWN_REQUIRES_MANUAL_REVIEW"] = gap_count or 0
+        unmatched_raw = list(raw_rows[:sample_limit])
+        findings.append("JOIN_KEY_UNAVAILABLE_PRESERVED_COUNTS_ONLY")
+    else:
+        raw_keys = [_row_join_value(row, join_key) for row in raw_rows]
+        ml_keys = [_row_join_value(row, join_key) for row in ml_rows]
+        raw_dupes = {key for key, count in Counter(k for k in raw_keys if k).items() if count > 1}
+        ml_dupes = {key for key, count in Counter(k for k in ml_keys if k).items() if count > 1}
+        ml_index = {key: row for key, row in zip(ml_keys, ml_rows) if key}
+        raw_key_set = {key for key in raw_keys if key}
+        unmatched_ml_count = sum(1 for key in ml_keys if key and key not in raw_key_set)
+        for row, key in zip(raw_rows, raw_keys):
+            if not key:
+                reason_counts["MISSING_JOIN_KEY"] += 1
+                unmatched_raw.append(row)
+                continue
+            if key in raw_dupes or key in ml_dupes:
+                reason_counts["DUPLICATE_JOIN_KEY"] += 1
+            ml_row = ml_index.get(key)
+            if ml_row is None:
+                reason_counts["MISSING_ML_LEDGER_MATCH"] += 1
+                unmatched_raw.append(row)
+                continue
+            if not _present(ml_row.get("y_true") or ml_row.get("target_label") or row.get("label") or row.get("status") or row.get("outcome")):
+                reason_counts["MISSING_LABEL"] += 1
+            if not _present(ml_row.get("y_pred") or ml_row.get("prediction") or ml_row.get("predicted_label")):
+                reason_counts["MISSING_PREDICTION"] += 1
+            if not _present(ml_row.get("predicted_probability") or ml_row.get("probability") or ml_row.get("confidence")):
+                reason_counts["MISSING_PROBABILITY"] += 1
+            if not _present(row.get("status") or row.get("outcome") or row.get("closed_status")):
+                reason_counts["MISSING_OUTCOME_STATUS"] += 1
+            if str(ml_row.get("evaluation_status") or "").upper() not in {"", "READY", "EVALUATED", "VALID"}:
+                reason_counts["NON_EVALUABLE_ROW"] += 1
+
+    return {
+        "raw_to_ml_gap_reason_audit_status": "AVAILABLE" if raw_rows and ml_rows else "UNAVAILABLE",
+        "raw_to_ml_gap_raw_closed_count": raw_count,
+        "raw_to_ml_gap_ml_cohort_count": ml_count,
+        "raw_to_ml_gap_count": gap_count,
+        "raw_to_ml_gap_join_key_used": join_key,
+        "raw_to_ml_gap_join_key_status": join_status,
+        "raw_to_ml_gap_reason_counts": dict(sorted(reason_counts.items())),
+        "raw_to_ml_gap_field_availability": {
+            "raw_closed": _field_availability(raw_rows, ["prediction_id", "trade_id", "symbol", "entry_time", "closed_at", "status", "outcome", "label"]),
+            "ml_cohort": _field_availability(ml_rows, ["prediction_id", "trade_id", "symbol", "prediction_timestamp", "target_timestamp", "y_true", "target_label", "y_pred", "predicted_probability"]),
+            "raw_closed_container": container,
+        },
+        "raw_to_ml_gap_unmatched_raw_count": len(unmatched_raw) if join_key else (gap_count or 0),
+        "raw_to_ml_gap_unmatched_ml_count": unmatched_ml_count,
+        "raw_to_ml_gap_sample_unmatched_raw_metadata": [_safe_unmatched_raw_metadata(row) for row in unmatched_raw[:sample_limit]],
+        "raw_to_ml_gap_findings": findings,
+        "raw_to_ml_gap_recommendation": "Diagnostic only: use these gap reasons to plan source/label repair; do not mutate source files, training, inference, predictions, thresholds, readiness gates, or execution.",
+    }
+
 def threshold_sample_sufficiency_audit(
     report_or_cohort: Any,
     selected_threshold: Optional[float] = None,
@@ -3166,6 +3344,7 @@ def run_ml_metric_reconciliation(
     raw_closed_source_discovery = raw_closed_outcome_source_discovery_audit({"artifact_paths": {"closed_outcomes": Path("reports") / "closed_outcomes.json"}})
     coverage_audit_input.update(raw_closed_source_discovery)
     closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
+    gap_reason_audit = raw_closed_to_ml_cohort_gap_reason_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, "prediction_ledger_path": prediction_ledger_path})
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
@@ -3177,6 +3356,7 @@ def run_ml_metric_reconciliation(
         **filtered_cohort_comparison,
         **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
+        **gap_reason_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
     })
@@ -3225,6 +3405,7 @@ def run_ml_metric_reconciliation(
         **filtered_cohort_comparison,
         **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
+        **gap_reason_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
         **model_upgrade_diagnostic_plan,
