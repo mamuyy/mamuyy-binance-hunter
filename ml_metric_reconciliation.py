@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import hashlib
 import os
 import sqlite3
 import tempfile
@@ -516,6 +517,168 @@ def mcc_binary(y_true: Sequence[Any], y_pred: Sequence[Any]) -> Optional[float]:
     denominator = (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)
     return ((tp * tn) - (fp * fn)) / math.sqrt(denominator) if denominator else 0.0
 
+
+
+ROW_LEVEL_WALKFORWARD_FIELDS = [
+    "prediction_id",
+    "fold_id",
+    "train_start",
+    "train_end",
+    "test_start",
+    "test_end",
+    "prediction_timestamp",
+    "feature_timestamp_max",
+    "symbol",
+    "canonical_label",
+    "y_true",
+    "y_pred",
+    "predicted_probability",
+    "baseline_prediction",
+    "model_correct",
+    "baseline_correct",
+]
+
+
+def _first_existing_column(frame: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:
+    return find_column(frame.columns, candidates)
+
+
+def _stable_prediction_id(row: pd.Series, idx: int) -> str:
+    explicit = row.get("prediction_id")
+    if pd.notna(explicit) and str(explicit):
+        return str(explicit)
+    parts = [
+        str(row.get("symbol", "")),
+        str(row.get("prediction_timestamp", row.get("timestamp", row.get("signal_timestamp", "")))),
+        str(row.get("__y_true", "")),
+        str(row.get("__y_pred", "")),
+        str(idx),
+    ]
+    return "row-" + hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _majority_label(values: Sequence[Any]) -> Any:
+    counts = Counter(str(value) for value in values if pd.notna(value))
+    if not counts:
+        return None
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def row_level_walkforward_audit(
+    cohort: pd.DataFrame,
+    temporal_feature_guard: Dict[str, Any],
+    preprocessing_guard: Dict[str, Any],
+    min_folds: int = 2,
+    min_test_rows: int = 10,
+    train_window: int = 6,
+    test_window: int = 3,
+) -> Dict[str, Any]:
+    findings: List[str] = []
+    if cohort.empty:
+        return {
+            "row_level_walkforward_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
+            "row_level_walkforward_rows": 0,
+            "row_level_walkforward_folds": 0,
+            "baseline_accuracy": None,
+            "model_accuracy": None,
+            "model_vs_baseline_delta": None,
+            "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
+            "row_level_walkforward_findings": ["No valid row-level prediction cohort is available."],
+            "rows": [],
+            "folds": [],
+        }
+    if temporal_feature_guard.get("status") == "BLOCKED":
+        findings.append("Temporal/preprocessing guard is BLOCKED: temporal feature guard failed.")
+    if str(preprocessing_guard.get("train_only_preprocessing_status")) .startswith("BLOCKED"):
+        findings.append("Temporal/preprocessing guard is BLOCKED: train-only preprocessing guard failed.")
+
+    ts_col = _first_existing_column(cohort, ("prediction_timestamp", "timestamp", "signal_timestamp"))
+    if not ts_col:
+        findings.append("prediction_timestamp is missing from row-level predictions.")
+        return {"row_level_walkforward_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS", "row_level_walkforward_rows": 0, "row_level_walkforward_folds": 0, "baseline_accuracy": None, "model_accuracy": None, "model_vs_baseline_delta": None, "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS", "row_level_walkforward_findings": findings, "rows": [], "folds": []}
+
+    frame = cohort.copy().reset_index(drop=True)
+    if "__y_true" not in frame.columns:
+        y_true_col = _first_existing_column(frame, TRUE_COLUMNS)
+        if y_true_col:
+            frame["__y_true"] = frame[y_true_col]
+    if "__y_pred" not in frame.columns:
+        y_pred_col = _first_existing_column(frame, PREDICTION_COLUMNS)
+        if y_pred_col:
+            frame["__y_pred"] = frame[y_pred_col]
+    if "__y_true" not in frame.columns or "__y_pred" not in frame.columns:
+        findings.append("y_true/y_pred columns are missing from row-level predictions.")
+        return {"row_level_walkforward_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS", "row_level_walkforward_rows": 0, "row_level_walkforward_folds": 0, "baseline_accuracy": None, "model_accuracy": None, "model_vs_baseline_delta": None, "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS", "row_level_walkforward_findings": findings, "rows": [], "folds": []}
+    frame["__prediction_ts_sort"] = pd.to_datetime(frame[ts_col], errors="coerce", utc=True)
+    frame = frame.sort_values(["__prediction_ts_sort", ts_col], na_position="last").reset_index(drop=True)
+    rows: List[Dict[str, Any]] = []
+    folds: List[Dict[str, Any]] = []
+    fold_id = 1
+    start = 0
+    feature_ts_col = _first_existing_column(frame, ("feature_timestamp_max", "max_feature_timestamp", "feature_timestamp"))
+    symbol_col = _first_existing_column(frame, ("symbol", "asset"))
+    prob_col = _first_existing_column(frame, ("predicted_probability", "prediction_probability", "probability", "confidence"))
+    while start + train_window + test_window <= len(frame):
+        train = frame.iloc[start:start+train_window]
+        test = frame.iloc[start+train_window:start+train_window+test_window]
+        start += test_window
+        baseline_prediction = _majority_label(train["__y_true"].tolist())
+        if baseline_prediction is None:
+            findings.append(f"Fold {fold_id} has no train labels for baseline.")
+            continue
+        fold_rows = []
+        for idx, row in test.iterrows():
+            y_true = str(row.get("__y_true"))
+            y_pred = str(row.get("__y_pred"))
+            out = {
+                "prediction_id": _stable_prediction_id(row, int(idx)),
+                "fold_id": fold_id,
+                "train_start": str(train[ts_col].iloc[0]),
+                "train_end": str(train[ts_col].iloc[-1]),
+                "test_start": str(test[ts_col].iloc[0]),
+                "test_end": str(test[ts_col].iloc[-1]),
+                "prediction_timestamp": str(row.get(ts_col)),
+                "feature_timestamp_max": None if not feature_ts_col else row.get(feature_ts_col),
+                "symbol": None if not symbol_col else row.get(symbol_col),
+                "canonical_label": y_true,
+                "y_true": y_true,
+                "y_pred": y_pred,
+                "predicted_probability": None if not prob_col else row.get(prob_col),
+                "baseline_prediction": baseline_prediction,
+                "model_correct": bool(y_true == y_pred),
+                "baseline_correct": bool(y_true == baseline_prediction),
+            }
+            rows.append(out); fold_rows.append(out)
+        folds.append({
+            "fold_id": fold_id,
+            "train_start": str(train[ts_col].iloc[0]),
+            "train_end": str(train[ts_col].iloc[-1]),
+            "test_start": str(test[ts_col].iloc[0]),
+            "test_end": str(test[ts_col].iloc[-1]),
+            "train_rows": int(len(train)),
+            "test_rows": int(len(fold_rows)),
+            "baseline_prediction": baseline_prediction,
+            "model_accuracy": round_or_none(sum(r["model_correct"] for r in fold_rows) / len(fold_rows) if fold_rows else None),
+            "baseline_accuracy": round_or_none(sum(r["baseline_correct"] for r in fold_rows) / len(fold_rows) if fold_rows else None),
+        })
+        fold_id += 1
+    model_accuracy = round_or_none(sum(r["model_correct"] for r in rows) / len(rows) if rows else None)
+    baseline_accuracy = round_or_none(sum(r["baseline_correct"] for r in rows) / len(rows) if rows else None)
+    delta = round_or_none(model_accuracy - baseline_accuracy if model_accuracy is not None and baseline_accuracy is not None else None)
+    if not rows:
+        status = "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
+        findings.append("No fold-level test rows were produced from the row-level cohort.")
+    elif len(folds) < min_folds:
+        status = "BLOCKED_INSUFFICIENT_FOLDS"; findings.append(f"Only {len(folds)} folds available; minimum is {min_folds}.")
+    elif len(rows) < min_test_rows:
+        status = "BLOCKED_INSUFFICIENT_TEST_ROWS"; findings.append(f"Only {len(rows)} evaluated rows available; minimum is {min_test_rows}.")
+    elif temporal_feature_guard.get("status") == "BLOCKED" or str(preprocessing_guard.get("train_only_preprocessing_status")).startswith("BLOCKED"):
+        status = "BLOCKED_GUARD_FAILURE"
+    elif delta is None or delta <= 0:
+        status = "BLOCKED_BELOW_BASELINE"; findings.append("Model accuracy does not exceed majority-class baseline accuracy.")
+    else:
+        status = "PASS_BASELINE_SUPERIORITY"; findings.append("Model accuracy exceeds train-fold majority-class baseline with enough folds and rows.")
+    return {"row_level_walkforward_status": status, "row_level_walkforward_rows": len(rows), "row_level_walkforward_folds": len(folds), "baseline_accuracy": baseline_accuracy, "model_accuracy": model_accuracy, "model_vs_baseline_delta": delta, "baseline_superiority_status": status, "row_level_walkforward_findings": findings, "rows": rows, "folds": folds}
 
 def baseline_status(metrics: Optional[Dict[str, Any]], min_samples: int = 30) -> Dict[str, Any]:
     if not metrics:
@@ -1216,6 +1379,8 @@ def run_ml_metric_reconciliation(
     )
     preprocessing_guard = audit_train_only_preprocessing()
 
+    row_level_walkforward = row_level_walkforward_audit(cohort, temporal_feature_guard, preprocessing_guard)
+
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
     evaluation_metric_integrity = metric_integrity["evaluation_metric_integrity"]
@@ -1227,9 +1392,9 @@ def run_ml_metric_reconciliation(
         "Data Lineage": data_lineage_status(lineage),
         "Label Integrity": "BLOCKED_LABEL_CONTRACT" if (label_contract["status"] != "PASS" or prediction_ledger["label_contract_status"] == "BLOCKED") else ("REVIEW" if prediction_ledger["label_contract_status"] == "REVIEW" else "PASS"),
         "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY" if prediction_ledger["temporal_guard_status"] == "BLOCKED" or temporal_feature_guard["status"] == "BLOCKED" else ("BLOCKED_LEAKAGE" if any(isinstance(f, dict) and str(f.get("status", "")).startswith("BLOCKED") for f in code_leakage_findings()) else ("UNVERIFIABLE" if cohort.empty else "REVIEW")),
-        "Baseline Superiority": baseline["status"],
+        "Baseline Superiority": row_level_walkforward["baseline_superiority_status"],
         "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS" if not metrics else "REVIEW",
-        "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS" if walkforward.get("status") in {"SOURCE_MISSING", "UNREPRODUCIBLE"} else ("UNVERIFIABLE" if any(f.get("leakage_status") == "UNVERIFIABLE" for f in walkforward.get("folds", [])) else "REVIEW"),
+        "Walk-Forward Stability": row_level_walkforward["row_level_walkforward_status"] if row_level_walkforward["row_level_walkforward_status"].startswith("BLOCKED") else ("BLOCKED_INSUFFICIENT_OOS" if walkforward.get("status") in {"SOURCE_MISSING", "UNREPRODUCIBLE"} else ("UNVERIFIABLE" if any(f.get("leakage_status") == "UNVERIFIABLE" for f in walkforward.get("folds", [])) else "REVIEW")),
         "Regime Stability": "UNAVAILABLE" if not segments else "REVIEW",
         "Calibration Quality": "UNAVAILABLE",
         "Candidate-Evidence Support": candidate_bridge["status"],
@@ -1263,6 +1428,15 @@ def run_ml_metric_reconciliation(
         "preprocessing_guard_findings": preprocessing_guard["preprocessing_guard_findings"],
         "reproduced_metrics": reproduced_metrics,
         "baseline_comparison": baseline,
+        "row_level_walkforward_status": row_level_walkforward["row_level_walkforward_status"],
+        "row_level_walkforward_rows": row_level_walkforward["row_level_walkforward_rows"],
+        "row_level_walkforward_folds": row_level_walkforward["row_level_walkforward_folds"],
+        "baseline_accuracy": row_level_walkforward["baseline_accuracy"],
+        "model_accuracy": row_level_walkforward["model_accuracy"],
+        "model_vs_baseline_delta": row_level_walkforward["model_vs_baseline_delta"],
+        "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
+        "row_level_walkforward_findings": row_level_walkforward["row_level_walkforward_findings"],
+        "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
         "walkforward_reconciliation": walkforward,
@@ -1298,15 +1472,19 @@ def run_ml_metric_reconciliation(
             "confusion_matrix_csv": str(output / "ml_confusion_matrix.csv"),
             "segment_performance_csv": str(output / "ml_segment_performance.csv"),
             "prediction_ledger_audit_json": str(output / "ml_prediction_ledger_audit.json"),
+            "row_level_walkforward_json": str(output / "ml_row_level_walkforward.json"),
+            "row_level_walkforward_rows_csv": str(output / "ml_row_level_walkforward_rows.csv"),
         },
         "limitations": ["No predictions are fabricated from labels.", "Display-value reproduction is separated from full evaluation reproduction.", "Missing or stale artifacts are not invented.", "Report is advisory and PAPER_ONLY."],
     }
     atomic_write_json(output / "ml_metric_reconciliation.json", report)
+    atomic_write_json(output / "ml_row_level_walkforward.json", {k: v for k, v in row_level_walkforward.items() if k != "rows"})
     write_prediction_ledger_audit(prediction_ledger, output / "ml_prediction_ledger_audit.json")
     write_csv(output / "ml_metric_identity.csv", identities, ["display_value", "metric_name", "identity", "producer", "contract_match_walkforward", "sample_count", "display_reproduction_status", "evaluation_reproduction_status", "reproducibility_status"])
     write_csv(output / "ml_walkforward_folds.csv", walkforward.get("folds", []), ["fold_id", "training_start", "training_end", "test_start", "test_end", "index_gap", "temporal_embargo", "train_rows", "test_rows", "class_distribution", "accuracy", "balanced_accuracy", "macro_f1", "baseline_accuracy", "improvement_over_baseline", "regime_distribution", "excluded_rows", "leakage_status", "leakage_reasons"])
     write_csv(output / "ml_confusion_matrix.csv", reproduced_metrics.get("confusion_matrix", []), ["actual_class", *TARGET_LABELS])
     write_csv(output / "ml_segment_performance.csv", segments, ["segment_type", "segment_value", "samples", "class_support", "accuracy", "balanced_accuracy", "macro_f1", "baseline", "improvement_over_baseline", "confidence_interval", "confidence_interval_reason", "readiness_status"])
+    write_csv(output / "ml_row_level_walkforward_rows.csv", row_level_walkforward.get("rows", []), ROW_LEVEL_WALKFORWARD_FIELDS)
     return report
 
 
