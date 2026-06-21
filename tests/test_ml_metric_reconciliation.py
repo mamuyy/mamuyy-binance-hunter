@@ -232,8 +232,8 @@ def test_readiness_leakage_safety_not_blocked_by_metadata_only_cohort(tmp_path, 
 
     components = report["model_readiness"]["components"]
     assert components["Leakage Safety"] == "REVIEW"
-    assert components["Metric Integrity"] == "BLOCKED_UNREPRODUCIBLE"
-    assert components["Evaluation Metric Integrity"] == "BLOCKED_UNREPRODUCIBLE"
+    assert components["Metric Integrity"] == "REVIEW"
+    assert components["Evaluation Metric Integrity"] == "REVIEW"
     assert components["Baseline Superiority"].startswith("BLOCKED")
     assert components["Walk-Forward Stability"].startswith("BLOCKED")
     assert report["temporal_feature_guard_status"] == "PASS"
@@ -582,3 +582,113 @@ def test_overall_readiness_remains_fail_closed_with_display_pass(tmp_path, monke
     assert report["governance"]["paper_only"] is True
     assert report["governance"]["execution_allowed"] is False
     assert report["governance"]["automatic_promotion_allowed"] is False
+
+
+def _write_valid_ledger(path: Path, rows):
+    path.write_text(
+        "".join(
+            json.dumps({
+                "prediction_id": row.get("prediction_id", f"p{idx}"),
+                "candidate_id": f"c{idx}",
+                "symbol": "BTCUSDT",
+                "side": "LONG",
+                "prediction_timestamp": row["prediction_timestamp"],
+                "feature_timestamp_max": row.get("feature_timestamp_max", row["prediction_timestamp"]),
+                "target_horizon": "24h",
+                "target_timestamp": row.get("target_timestamp", row.get("target_maturity_timestamp")),
+                "target_label": row["y_true"],
+                "y_pred": row["y_pred"],
+                "y_true": row["y_true"],
+                **({"predicted_probability": row["predicted_probability"]} if "predicted_probability" in row else {}),
+                "model_version": row.get("model_version", "m1"),
+                "feature_schema_version": "features-v1",
+                "fold_id": row.get("fold_id", idx // 2),
+                "train_window_start": "2023-12-01T00:00:00Z",
+                "train_window_end": "2023-12-31T00:00:00Z",
+                "test_window_start": row["prediction_timestamp"],
+                "test_window_end": row.get("target_timestamp", row.get("target_maturity_timestamp")),
+                "label_source": "prediction_ledger",
+                "label_status": "MATURED",
+                "evaluation_status": "EVALUATED",
+                "temporal_guard_status": "PASS",
+                "created_at": "2024-01-15T00:00:00Z",
+                "updated_at": "2024-01-15T00:00:00Z",
+            }) + "\n"
+            for idx, row in enumerate(rows)
+        ),
+        encoding="utf-8",
+    )
+
+
+def _run_current_metric_report(tmp_path, rows):
+    model = tmp_path / "model_output.json"
+    model.write_text(json.dumps({"accuracy": 0.01, "ai_confidence_score": 1, "rows": 999}), encoding="utf-8")
+    cohort = tmp_path / "prediction_cohort.csv"
+    pd.DataFrame(rows).to_csv(cohort, index=False)
+    ledger = tmp_path / "ledger.jsonl"
+    _write_valid_ledger(ledger, rows)
+    return run_ml_metric_reconciliation(
+        output_dir=str(tmp_path / "reports"),
+        db_path=str(tmp_path / "missing.db"),
+        model_output_path=str(model),
+        walkforward_path=str(tmp_path / "missing_walkforward.csv"),
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path=str(ledger),
+    )
+
+
+def test_current_accuracy_reproduced_from_cohort_rows(tmp_path):
+    rows = [
+        {"prediction_id": "p1", "prediction_timestamp": "2024-01-01T00:00:00Z", "target_maturity_timestamp": "2024-01-02T00:00:00Z", "target_timestamp": "2024-01-02T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.9},
+        {"prediction_id": "p2", "prediction_timestamp": "2024-01-02T00:00:00Z", "target_maturity_timestamp": "2024-01-03T00:00:00Z", "target_timestamp": "2024-01-03T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.8},
+        {"prediction_id": "p3", "prediction_timestamp": "2024-01-03T00:00:00Z", "target_maturity_timestamp": "2024-01-04T00:00:00Z", "target_timestamp": "2024-01-04T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 1, "y_true": "LOSS", "y_pred": "LOSS", "predicted_probability": 0.7},
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    assert report["current_accuracy_reproduction_status"] == "REPRODUCED_EXACT"
+    assert report["current_accuracy_sample_count"] == 3
+    assert report["current_accuracy_value"] == pytest.approx(2 / 3)
+
+
+def test_ai_confidence_reproduced_from_mean_predicted_probability(tmp_path):
+    rows = [
+        {"prediction_id": "p1", "prediction_timestamp": "2024-01-01T00:00:00Z", "target_maturity_timestamp": "2024-01-02T00:00:00Z", "target_timestamp": "2024-01-02T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.2},
+        {"prediction_id": "p2", "prediction_timestamp": "2024-01-02T00:00:00Z", "target_maturity_timestamp": "2024-01-03T00:00:00Z", "target_timestamp": "2024-01-03T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 1, "y_true": "LOSS", "y_pred": "LOSS", "predicted_probability": 0.6},
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    assert report["ai_confidence_reproduction_status"] == "REPRODUCED_EXACT"
+    assert report["ai_confidence_sample_count"] == 2
+    assert report["ai_confidence_value"] == pytest.approx(0.4)
+    assert report["ai_confidence_formula"] == "mean(predicted_probability) over evaluated prediction cohort rows with non-null predicted_probability"
+
+
+def test_missing_predicted_probability_makes_ai_confidence_unavailable(tmp_path):
+    rows = [
+        {"prediction_id": "p1", "prediction_timestamp": "2024-01-01T00:00:00Z", "target_maturity_timestamp": "2024-01-02T00:00:00Z", "target_timestamp": "2024-01-02T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "WIN", "y_pred": "WIN"},
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    assert report["ai_confidence_reproduction_status"] in {"REVIEW", "UNAVAILABLE"}
+    assert report["ai_confidence_value"] is None
+
+
+def test_random_holdout_not_mandatory_when_cohort_evidence_exists(tmp_path):
+    rows = [
+        {"prediction_id": "p1", "prediction_timestamp": "2024-01-01T00:00:00Z", "target_maturity_timestamp": "2024-01-02T00:00:00Z", "target_timestamp": "2024-01-02T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.9},
+        {"prediction_id": "p2", "prediction_timestamp": "2024-01-02T00:00:00Z", "target_maturity_timestamp": "2024-01-03T00:00:00Z", "target_timestamp": "2024-01-03T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 1, "y_true": "LOSS", "y_pred": "LOSS", "predicted_probability": 0.8},
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    current = {row["metric_name"]: row for row in report["metric_identity"]}
+    assert current["Current Model Accuracy"]["producer"] == "prediction cohort / prediction ledger"
+    assert current["Current Model Accuracy"]["evaluation_reproduction_status"] == "REPRODUCED_EXACT"
+    assert report["model_readiness"]["components"]["Metric Integrity"] != "BLOCKED_UNREPRODUCIBLE"
+    assert report["model_readiness"]["components"]["Evaluation Metric Integrity"] != "BLOCKED_UNREPRODUCIBLE"
+
+
+def test_baseline_and_walkforward_blockers_remain_unchanged(tmp_path):
+    rows = [
+        {"prediction_id": "p1", "prediction_timestamp": "2024-01-01T00:00:00Z", "target_maturity_timestamp": "2024-01-02T00:00:00Z", "target_timestamp": "2024-01-02T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 0, "y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.9},
+        {"prediction_id": "p2", "prediction_timestamp": "2024-01-02T00:00:00Z", "target_maturity_timestamp": "2024-01-03T00:00:00Z", "target_timestamp": "2024-01-03T00:00:00Z", "model_version": "m1", "evaluation_contract": "c", "fold_id": 1, "y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.8},
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert components["Baseline Superiority"].startswith("BLOCKED")
+    assert components["Walk-Forward Stability"].startswith("BLOCKED")
