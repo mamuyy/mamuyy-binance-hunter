@@ -1333,6 +1333,138 @@ def paper_filter_shadow_review_scorecard(
         "paper_filter_shadow_review_recommendation": "Keep candidate OFF by default. Use this scorecard only for future paper-only governance review; do not apply threshold 0.80, change config/training/predictions/threshold selection/readiness gates, or unlock execution.",
     }
 
+
+def ml_model_repair_upgrade_diagnostic_plan(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a diagnostic-only plan for future ML model repair/upgrade work.
+
+    This function is intentionally observational. It does not train a model,
+    change inference, select or apply thresholds, mutate readiness gates, promote
+    candidates, or unlock execution.
+    """
+    required_fields = (
+        "model_readiness",
+        "baseline_superiority_status",
+        "threshold_candidate_diagnostic_status",
+        "threshold_stability_audit_status",
+        "threshold_sample_sufficiency_status",
+        "filtered_cohort_comparison_status",
+        "paper_filter_candidate_status",
+        "paper_filter_shadow_review_status",
+    )
+    missing = [field for field in required_fields if field not in report]
+
+    readiness = report.get("model_readiness") or {}
+    components = readiness.get("components") or {}
+    baseline_status_value = str(report.get("baseline_superiority_status") or components.get("Baseline Superiority") or "")
+    overall_status = str(readiness.get("overall_status") or "")
+    primary_blocker = str(readiness.get("primary_blocker") or "")
+    baseline_delta = safe_float(report.get("model_vs_baseline_delta"))
+
+    primary_problem: List[str] = []
+    findings: List[str] = [
+        "Diagnostic/planning-only: no model training, inference, prediction, threshold, readiness, or execution behavior is changed."
+    ]
+    blockers: List[str] = []
+    required_evidence: List[str] = []
+
+    broad_below_baseline = (
+        "BLOCKED_BELOW_BASELINE" in {overall_status, primary_blocker, baseline_status_value}
+        or baseline_status_value.startswith("BLOCKED_BELOW_BASELINE")
+        or (baseline_delta is not None and baseline_delta < 0)
+    )
+    if broad_below_baseline:
+        primary_problem.append("BROAD_MODEL_BELOW_BASELINE")
+        blockers.append("BASELINE_SUPERIORITY_NOT_PROVEN")
+        required_evidence.append("MODEL_ACCURACY_ABOVE_BASELINE_ON_ROW_LEVEL_WALKFORWARD")
+
+    threshold_selected = safe_float(report.get("threshold_candidate_selected") or report.get("filtered_cohort_selected_threshold"))
+    false_win_delta = safe_float(report.get("filtered_cohort_false_win_delta"))
+    filtered_vs_full_delta = safe_float(report.get("filtered_cohort_filtered_vs_full_accuracy_delta"))
+    filtered_baseline_delta = safe_float(report.get("filtered_cohort_filtered_model_vs_baseline_delta"))
+    sample_status = str(report.get("threshold_sample_sufficiency_status") or "")
+    candidate_blockers = list(report.get("paper_filter_candidate_blockers") or [])
+    shadow_blockers = list(report.get("paper_filter_shadow_review_blockers") or [])
+    sample_blockers = {"INSUFFICIENT_FILTERED_ROWS", "INSUFFICIENT_PREDICTED_WIN_SAMPLE", "INSUFFICIENT_SEGMENT_ROWS"}
+    promising_filter = (
+        threshold_selected == 0.8
+        and (false_win_delta is not None and false_win_delta < 0)
+        and (
+            (filtered_vs_full_delta is not None and filtered_vs_full_delta > 0)
+            or (filtered_baseline_delta is not None and filtered_baseline_delta > 0)
+            or report.get("filtered_cohort_filtered_false_win_count") == 0
+        )
+    )
+    undersampled = (
+        "INSUFFICIENT" in sample_status
+        or bool(sample_blockers.intersection(candidate_blockers))
+        or bool(sample_blockers.intersection(shadow_blockers))
+    )
+    if promising_filter and undersampled:
+        primary_problem.append("THRESHOLD_FILTER_PROMISING_BUT_UNDERSAMPLED")
+        blockers.append("THRESHOLD_FILTER_SAMPLE_SUPPORT_INSUFFICIENT")
+        required_evidence.extend([
+            "MIN_FILTERED_ROWS_GTE_100",
+            "MIN_PREDICTED_WIN_ROWS_GTE_30",
+            "MIN_PER_SEGMENT_ROWS_GTE_10",
+        ])
+
+    pred_dist = report.get("threshold_stability_pred_distribution") or report.get("filtered_cohort_filtered_prediction_distribution") or {}
+    pred_win = int(pred_dist.get("WIN") or 0)
+    pred_loss = int(pred_dist.get("LOSS") or 0)
+    if pred_loss > pred_win and (pred_win + pred_loss) > 0:
+        primary_problem.append("CLASS_IMBALANCE_OR_DECISION_BOUNDARY_REVIEW")
+        required_evidence.append("CLASS_DISTRIBUTION_AND_DECISION_BOUNDARY_ERROR_ANALYSIS")
+
+    regime_summary = report.get("filtered_cohort_regime_summary")
+    regime_blocked = (
+        "REGIME_SEGMENT_UNAVAILABLE" in candidate_blockers
+        or "REGIME_SEGMENT_UNAVAILABLE" in shadow_blockers
+        or "REGIME_SEGMENT_UNAVAILABLE" in set(report.get("filtered_cohort_findings") or [])
+        or (isinstance(regime_summary, dict) and regime_summary.get("status") == "UNAVAILABLE")
+    )
+    if regime_blocked:
+        primary_problem.append("REGIME_EVIDENCE_GAP")
+        blockers.append("REGIME_EVIDENCE_UNAVAILABLE")
+        required_evidence.append("REGIME_SEGMENTED_THRESHOLD_AND_BASELINE_COMPARISON")
+
+    candidate_paths = [
+        "CLASS_IMBALANCE_REPAIR",
+        "COST_SENSITIVE_TRAINING",
+        "PROBABILITY_CALIBRATION",
+        "REGIME_AWARE_MODELING",
+        "FEATURE_RELIABILITY_REVIEW",
+    ]
+    recommended_first_path = "CLASS_IMBALANCE_AND_THRESHOLD_CALIBRATION_DIAGNOSTIC"
+    if broad_below_baseline and promising_filter and undersampled:
+        findings.append("Broad model performance is below baseline while threshold-filtered evidence improves but lacks enough sample support.")
+    elif broad_below_baseline:
+        findings.append("Broad model performance remains below baseline; repair diagnostics should precede any upgrade.")
+    if regime_blocked:
+        findings.append("Regime evidence is missing or blocked, so filtered-cohort stability cannot be accepted yet.")
+
+    readiness_state = "REPAIR_PLAN_ONLY_READINESS_LOCKED" if broad_below_baseline or blockers else "REPAIR_PLAN_ONLY_EVIDENCE_REVIEW"
+    return {
+        "ml_model_upgrade_diagnostic_status": "AVAILABLE" if not missing else "UNAVAILABLE_MISSING_PRIOR_FIELDS",
+        "ml_model_upgrade_readiness_state": readiness_state,
+        "ml_model_upgrade_primary_problem": sorted(set(primary_problem), key=primary_problem.index) or ["NO_PRIMARY_PROBLEM_IDENTIFIED_FROM_AVAILABLE_FIELDS"],
+        "ml_model_upgrade_candidate_paths": candidate_paths,
+        "ml_model_upgrade_recommended_first_path": recommended_first_path,
+        "ml_model_upgrade_blockers": sorted(set(blockers + missing), key=(blockers + missing).index),
+        "ml_model_upgrade_required_evidence": sorted(set(required_evidence), key=required_evidence.index),
+        "ml_model_upgrade_do_not_change": [
+            "NO_LIVE_OR_TESTNET_EXECUTION",
+            "NO_RUNTIME_THRESHOLD_APPLICATION",
+            "NO_READINESS_UNLOCK",
+            "NO_TRAINING_CHANGE_IN_THIS_PR",
+            "NO_PREDICTION_CHANGE_IN_THIS_PR",
+        ],
+        "ml_model_upgrade_findings": findings,
+        "ml_model_upgrade_recommendation": (
+            "Keep execution disabled and paper-only. Use this plan to investigate class imbalance, cost-sensitive/threshold-aware training, "
+            "probability calibration, regime-aware modeling, and feature reliability before any future model upgrade PR."
+        ),
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -2663,6 +2795,18 @@ def run_ml_metric_reconciliation(
     ready = readiness(components)
     paper_filter_candidate = paper_filter_candidate_registry({**filtered_cohort_comparison, "model_readiness": ready})
     paper_filter_shadow_review = paper_filter_shadow_review_scorecard({**threshold_stability_audit, **threshold_sample_sufficiency, **filtered_cohort_comparison, **paper_filter_candidate, "model_readiness": ready})
+    model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
+        "model_readiness": ready,
+        "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
+        "model_vs_baseline_delta": row_level_walkforward["model_vs_baseline_delta"],
+        **baseline_audit,
+        **threshold_candidate_diagnostic,
+        **threshold_stability_audit,
+        **threshold_sample_sufficiency,
+        **filtered_cohort_comparison,
+        **paper_filter_candidate,
+        **paper_filter_shadow_review,
+    })
     default_sources = db_path == "mamuyy_hunter.db" and model_output_path == "model_output.json" and walkforward_path == "walkforward_results.csv"
     production_artifacts_exist = any(item.get("exists") for item in artifacts if item.get("artifact_name") in {"model_output", "walkforward_results", "database_table:historical_outcomes", "database_table:ml_results", "database_table:walkforward_results"})
     context = artifact_context or ("RUNTIME_AUDIT" if metrics else ("RUNTIME_AUDIT_NO_PREDICTION_COHORT" if (default_sources and production_artifacts_exist) else "NON_PRODUCTION_EMPTY_FIXTURE"))
@@ -2708,6 +2852,7 @@ def run_ml_metric_reconciliation(
         **filtered_cohort_comparison,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
+        **model_upgrade_diagnostic_plan,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
