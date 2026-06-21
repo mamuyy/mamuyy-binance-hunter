@@ -910,6 +910,199 @@ def _count_rows_readonly(path_value: Any) -> Optional[int]:
     return None
 
 
+RAW_CLOSED_FIELD_CANDIDATES = {
+    "closed_at",
+    "status",
+    "outcome",
+    "label",
+    "pnl",
+    "prediction_id",
+    "symbol",
+    "entry_time",
+    "exit_time",
+}
+RAW_CLOSED_PATH_HINTS = ("outcome", "closed", "ledger", "trade")
+MAX_DISCOVERY_FILE_BYTES = 5_000_000
+MAX_DISCOVERY_CANDIDATES = 80
+
+
+def _safe_candidate_path(path_value: Any) -> Optional[Path]:
+    if not path_value:
+        return None
+    try:
+        path = Path(str(path_value)).expanduser()
+    except (TypeError, ValueError):
+        return None
+    return path if path.exists() and path.is_file() else None
+
+
+def _metadata_from_records(records: Sequence[Any]) -> Tuple[List[str], int]:
+    fields = set()
+    rows_seen = 0
+    for row in records[:25]:
+        if isinstance(row, dict):
+            rows_seen += 1
+            fields.update(str(key) for key in row.keys())
+    detected = sorted(field for field in fields if field in RAW_CLOSED_FIELD_CANDIDATES)
+    return detected, rows_seen
+
+
+def _json_record_container(data: Any) -> Tuple[Optional[Sequence[Any]], Optional[int], Optional[str]]:
+    if isinstance(data, list):
+        return data, len(data), "root_list"
+    if isinstance(data, dict):
+        for key in ("rows", "outcomes", "closed_outcomes", "records", "data", "trades", "closed_trades", "ledger"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value, len(value), key
+    return None, None, None
+
+
+def _inspect_json_candidate(path: Path) -> Dict[str, Any]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    records, row_count, container = _json_record_container(data)
+    detected, rows_seen = _metadata_from_records(list(records or [])[:25])
+    return {"row_count": row_count, "detected_fields": detected, "sampled_rows": rows_seen, "container": container}
+
+
+def _inspect_jsonl_candidate(path: Path) -> Dict[str, Any]:
+    row_count = 0
+    sample: List[Any] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            row_count += 1
+            if len(sample) < 25:
+                try:
+                    sample.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    detected, rows_seen = _metadata_from_records(sample)
+    return {"row_count": row_count, "detected_fields": detected, "sampled_rows": rows_seen, "container": "jsonl_lines"}
+
+
+def _inspect_csv_candidate(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = [str(field) for field in (reader.fieldnames or [])]
+        row_count = sum(1 for _ in reader)
+    return {
+        "row_count": row_count,
+        "detected_fields": sorted(field for field in fields if field in RAW_CLOSED_FIELD_CANDIDATES),
+        "sampled_rows": min(row_count, 25),
+        "container": "csv_rows",
+    }
+
+
+def _inspect_sqlite_candidate(path: Path) -> List[Dict[str, Any]]:
+    candidates: List[Dict[str, Any]] = []
+    with connect_readonly(str(path)) as connection:
+        tables = [row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        for table in tables[:30]:
+            columns = [row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()]
+            detected = sorted(column for column in columns if column in RAW_CLOSED_FIELD_CANDIDATES)
+            if not detected and not any(hint in table.lower() for hint in RAW_CLOSED_PATH_HINTS):
+                continue
+            row_count = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] or 0)
+            candidates.append({
+                "path": f"{path}#{table}",
+                "type": "sqlite",
+                "row_count": row_count,
+                "detected_fields": detected,
+                "confidence_score": _raw_closed_confidence(str(path), detected, row_count, table),
+                "reason": "sqlite table has closed-outcome-like name or fields",
+                "sampled_rows": 0,
+            })
+    return candidates
+
+
+def _raw_closed_confidence(path_text: str, detected_fields: Sequence[str], row_count: Optional[int], table: str = "") -> float:
+    text = f"{path_text} {table}".lower()
+    score = 0.0
+    score += min(len(detected_fields) * 0.12, 0.60)
+    score += 0.12 if row_count and row_count > 0 else 0.0
+    score += 0.10 if "closed" in text else 0.0
+    score += 0.10 if "outcome" in text else 0.0
+    score += 0.06 if "trade" in text else 0.0
+    score += 0.04 if "ledger" in text else 0.0
+    return round(min(score, 0.99), 3)
+
+
+def raw_closed_outcome_source_discovery_audit(report_or_artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    """Discover raw closed-outcome source candidates using bounded read-only inspection."""
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
+    candidates: List[Dict[str, Any]] = []
+    findings = ["DIAGNOSTIC_ONLY_READ_ONLY_SOURCE_DISCOVERY"]
+    read_errors = 0
+    path_values = []
+    for key in ("closed_outcomes", "closed_outcomes_csv", "outcome_ledger", "outcome_ledger_jsonl", "closed_outcome_path", "trade_ledger", "paper_trade_ledger"):
+        path_values.extend([report.get(key), artifact_paths.get(key)])
+    explicit = [_safe_candidate_path(value) for value in path_values]
+    paths = {path.resolve() for path in explicit if path is not None}
+    for pattern in ("reports/outcome*.json", "reports/*outcome*.json", "reports/*closed*.json", "reports/*ledger*.json", "reports/*trade*.json", "reports/**/*.json", "reports/**/*.jsonl", "reports/**/*.csv", "data/*.db", "data/*.sqlite", "*.db", "*.sqlite"):
+        for path in Path(".").glob(pattern):
+            if path.is_file() and any(hint in str(path).lower() for hint in RAW_CLOSED_PATH_HINTS):
+                paths.add(path.resolve())
+            if len(paths) >= MAX_DISCOVERY_CANDIDATES:
+                break
+    for path in sorted(paths, key=lambda p: str(p))[:MAX_DISCOVERY_CANDIDATES]:
+        suffix = path.suffix.lower()
+        source_type = "json" if suffix == ".json" else "jsonl" if suffix == ".jsonl" else "csv" if suffix == ".csv" else "sqlite" if suffix in {".db", ".sqlite"} else "unknown"
+        try:
+            if source_type in {"json", "jsonl", "csv"} and path.stat().st_size > MAX_DISCOVERY_FILE_BYTES:
+                findings.append(f"SKIPPED_LARGE_FILE:{path}")
+                continue
+            if source_type == "json":
+                meta = _inspect_json_candidate(path)
+            elif source_type == "jsonl":
+                meta = _inspect_jsonl_candidate(path)
+            elif source_type == "csv":
+                meta = _inspect_csv_candidate(path)
+            elif source_type == "sqlite":
+                candidates.extend(_inspect_sqlite_candidate(path))
+                continue
+            else:
+                meta = {"row_count": None, "detected_fields": [], "sampled_rows": 0, "container": None}
+            detected = meta["detected_fields"]
+            confidence = _raw_closed_confidence(str(path), detected, meta.get("row_count"))
+            if confidence >= 0.20:
+                candidates.append({
+                    "path": str(path),
+                    "type": source_type,
+                    "row_count": meta.get("row_count"),
+                    "detected_fields": detected,
+                    "confidence_score": confidence,
+                    "reason": "path and fields look like closed outcome source",
+                    "sampled_rows": meta.get("sampled_rows", 0),
+                    "container": meta.get("container"),
+                })
+        except Exception as exc:
+            read_errors += 1
+            findings.append(f"READ_ERROR:{path}:{exc.__class__.__name__}")
+    candidates = sorted(candidates, key=lambda row: (row.get("confidence_score") or 0, row.get("row_count") or 0), reverse=True)
+    selected = candidates[0] if candidates and (len(candidates) == 1 or (candidates[0]["confidence_score"] - candidates[1]["confidence_score"]) >= 0.20) else None
+    if read_errors and candidates:
+        status = "READ_ERROR_PARTIAL_DISCOVERY"
+    elif selected:
+        status = "AVAILABLE_SELECTED_SOURCE"
+    elif candidates:
+        status = "AVAILABLE_CANDIDATES_NEED_REVIEW"
+    else:
+        status = "UNAVAILABLE_NO_CANDIDATE_SOURCE_FOUND"
+    return {
+        "raw_closed_source_discovery_status": status,
+        "raw_closed_source_candidate_count": len(candidates),
+        "raw_closed_source_selected_path": selected.get("path") if selected else None,
+        "raw_closed_source_selected_type": selected.get("type") if selected else None,
+        "raw_closed_source_selected_row_count": selected.get("row_count") if selected else None,
+        "raw_closed_source_candidates": candidates[:25],
+        "raw_closed_source_findings": findings,
+        "raw_closed_source_recommendation": "Diagnostic only: review selected/candidate source before using it for model repair; do not change training, inference, thresholds, readiness, or execution.",
+    }
+
+
 def closed_outcome_to_ml_cohort_coverage_audit(
     report_or_artifacts: Dict[str, Any],
     min_threshold_rows: int = 100,
@@ -926,12 +1119,13 @@ def closed_outcome_to_ml_cohort_coverage_audit(
     artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
 
     raw_closed_count = _optional_int(
-        report.get("closed_to_ml_coverage_raw_closed_count")
+        report.get("raw_closed_source_selected_row_count")
+        or report.get("closed_to_ml_coverage_raw_closed_count")
         or report.get("raw_closed_outcome_count")
         or report.get("closed_outcome_count")
         or report.get("closed_outcomes_count")
     )
-    raw_source_status = "AVAILABLE_FROM_REPORT_FIELDS" if raw_closed_count is not None else "UNAVAILABLE"
+    raw_source_status = "AVAILABLE_FROM_RAW_CLOSED_SOURCE_DISCOVERY" if report.get("raw_closed_source_selected_row_count") is not None else ("AVAILABLE_FROM_REPORT_FIELDS" if raw_closed_count is not None else "UNAVAILABLE")
     for key in ("closed_outcomes", "closed_outcomes_csv", "outcome_ledger", "outcome_ledger_jsonl", "closed_outcome_path"):
         artifact_count = _count_rows_readonly(report.get(key) or artifact_paths.get(key))
         if artifact_count is not None:
@@ -2937,6 +3131,8 @@ def run_ml_metric_reconciliation(
         "invalid_prediction_rows": prediction_ledger.get("invalid_prediction_rows"),
         "future_feature_violation_count": temporal_feature_guard.get("future_feature_violation_count"),
     }
+    raw_closed_source_discovery = raw_closed_outcome_source_discovery_audit({"artifact_paths": {"closed_outcomes": Path("reports") / "closed_outcomes.json"}})
+    coverage_audit_input.update(raw_closed_source_discovery)
     closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
@@ -2947,6 +3143,7 @@ def run_ml_metric_reconciliation(
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
+        **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
@@ -2994,6 +3191,7 @@ def run_ml_metric_reconciliation(
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
+        **raw_closed_source_discovery,
         **closed_to_ml_coverage_audit,
         **paper_filter_candidate,
         **paper_filter_shadow_review,

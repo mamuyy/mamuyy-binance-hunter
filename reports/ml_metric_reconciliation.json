@@ -466,7 +466,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T15:54:16.667466+00:00",
+  "generated_at": "2026-06-21T16:05:40.055100+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -941,6 +941,16 @@
     }
   ],
   "probability_threshold_diagnostic": [],
+  "raw_closed_source_candidate_count": 0,
+  "raw_closed_source_candidates": [],
+  "raw_closed_source_discovery_status": "UNAVAILABLE_NO_CANDIDATE_SOURCE_FOUND",
+  "raw_closed_source_findings": [
+    "DIAGNOSTIC_ONLY_READ_ONLY_SOURCE_DISCOVERY"
+  ],
+  "raw_closed_source_recommendation": "Diagnostic only: review selected/candidate source before using it for model repair; do not change training, inference, thresholds, readiness, or execution.",
+  "raw_closed_source_selected_path": null,
+  "raw_closed_source_selected_row_count": null,
+  "raw_closed_source_selected_type": null,
   "reproduced_metrics": {
     "confusion_matrix": [
       {

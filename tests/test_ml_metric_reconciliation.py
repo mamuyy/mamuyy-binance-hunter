@@ -32,6 +32,7 @@ from ml_metric_reconciliation import (
     readiness,
     readiness_temporal_feature_guard,
     reconstruct_walkforward,
+    raw_closed_outcome_source_discovery_audit,
     run_ml_metric_reconciliation,
     segment_performance,
     write_csv,
@@ -1130,6 +1131,112 @@ def _coverage_base_report(**overrides):
     }
     report.update(overrides)
     return report
+
+
+def _write_json(path: Path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_raw_closed_source_discovery_finds_json_selected_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "reports" / "closed_outcomes.json"
+    _write_json(path, [{"closed_at": "2024-01-02", "outcome": "WIN", "pnl": 1.2, "prediction_id": "p1", "symbol": "BTCUSDT"}])
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_discovery_status"] == "AVAILABLE_SELECTED_SOURCE"
+    assert audit["raw_closed_source_selected_type"] == "json"
+    assert audit["raw_closed_source_selected_row_count"] == 1
+
+
+def test_raw_closed_source_discovery_counts_json_list_rows(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "outcome_rows.json", [
+        {"closed_at": "t1", "outcome": "WIN", "pnl": 1},
+        {"closed_at": "t2", "outcome": "LOSS", "pnl": -1},
+    ])
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_selected_row_count"] == 2
+
+
+def test_raw_closed_source_discovery_counts_jsonl_rows(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "reports" / "closed_ledger.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join([
+            json.dumps({"closed_at": "t1", "status": "CLOSED", "outcome": "WIN"}),
+            json.dumps({"closed_at": "t2", "status": "CLOSED", "outcome": "LOSS"}),
+            json.dumps({"closed_at": "t3", "status": "CLOSED", "outcome": "WIN"}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_selected_type"] == "jsonl"
+    assert audit["raw_closed_source_selected_row_count"] == 3
+
+
+def test_raw_closed_source_discovery_counts_csv_rows(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / "reports" / "closed_trades.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([
+        {"closed_at": "t1", "status": "CLOSED", "pnl": 1.0},
+        {"closed_at": "t2", "status": "CLOSED", "pnl": -1.0},
+    ]).to_csv(path, index=False)
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_selected_type"] == "csv"
+    assert audit["raw_closed_source_selected_row_count"] == 2
+
+
+def test_raw_closed_source_discovery_emits_field_metadata(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "closed_outcome_metadata.json", [{"closed_at": "t1", "status": "CLOSED", "label": "WIN", "symbol": "ETHUSDT", "entry_time": "e", "exit_time": "x"}])
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+    candidate = audit["raw_closed_source_candidates"][0]
+
+    assert {"closed_at", "status", "label", "symbol", "entry_time", "exit_time"}.issubset(set(candidate["detected_fields"]))
+    assert "sampled_rows" in candidate
+
+
+def test_raw_closed_source_discovery_multiple_sources_need_review(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "closed_outcomes_a.json", [{"closed_at": "t1", "outcome": "WIN", "pnl": 1}])
+    _write_json(tmp_path / "reports" / "closed_outcomes_b.json", [{"closed_at": "t2", "outcome": "LOSS", "pnl": -1}])
+
+    audit = raw_closed_outcome_source_discovery_audit({})
+
+    assert audit["raw_closed_source_discovery_status"] == "AVAILABLE_CANDIDATES_NEED_REVIEW"
+    assert audit["raw_closed_source_selected_path"] is None
+
+
+def test_closed_to_ml_coverage_uses_selected_raw_closed_source_count():
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(raw_closed_source_selected_row_count=500))
+
+    assert audit["closed_to_ml_coverage_status"] == "AVAILABLE_FROM_RAW_CLOSED_SOURCE_DISCOVERY"
+    assert audit["closed_to_ml_coverage_raw_closed_count"] == 500
+    assert audit["closed_to_ml_coverage_closed_to_ml_retention_ratio"] == 0.5
+    assert "CLOSED_OUTCOME_COUNT_EXCEEDS_ML_COHORT_COUNT" in audit["closed_to_ml_coverage_findings"]
+    assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" not in audit["closed_to_ml_coverage_findings"]
+
+
+def test_raw_closed_source_discovery_no_candidate_and_coverage_report_fields(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    discovery = raw_closed_outcome_source_discovery_audit({})
+    audit = closed_outcome_to_ml_cohort_coverage_audit(_coverage_base_report(**discovery))
+
+    assert discovery["raw_closed_source_discovery_status"] == "UNAVAILABLE_NO_CANDIDATE_SOURCE_FOUND"
+    assert audit["closed_to_ml_coverage_status"] == "AVAILABLE_FROM_REPORT_FIELDS"
+    assert audit["closed_to_ml_coverage_raw_closed_count"] is None
 
 
 def test_closed_to_ml_coverage_available_from_report_fields_without_raw_source():
