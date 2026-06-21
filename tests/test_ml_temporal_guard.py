@@ -62,3 +62,39 @@ def test_governance_invariants_remain_unchanged(tmp_path, monkeypatch):
     assert report["governance"]["execution_allowed"] is False
     assert report["governance"]["automatic_promotion_allowed"] is False
     assert report["governance"]["model_promotion_allowed"] is False
+
+
+def test_asof_join_multi_symbol_is_group_safe_and_ignores_future_rows():
+    preds = pd.DataFrame({
+        "symbol": ["ETH", "BTC", "ETH", "XRP"],
+        "prediction_timestamp": [
+            "2024-01-01T01:00:00Z",
+            "2024-01-01T00:45:00Z",
+            "2024-01-01T02:00:00Z",
+            "2024-01-01T01:30:00Z",
+        ],
+    })
+    feats = pd.DataFrame({
+        "symbol": ["BTC", "BTC", "ETH", "ETH", "ETH", "XRP"],
+        "timestamp": [
+            "2024-01-01T00:30:00Z",
+            "2024-01-01T00:50:00Z",
+            "2024-01-01T00:59:00Z",
+            "2024-01-01T01:30:00Z",
+            "2024-01-01T02:01:00Z",
+            "2024-01-01T01:31:00Z",
+        ],
+        "score": [10, 999, 20, 21, 999, 999],
+    })
+
+    joined = asof_feature_join(preds, feats)
+
+    assert len(joined) == len(preds)
+    assert joined["symbol"].tolist() == ["ETH", "BTC", "ETH", "XRP"]
+    assert joined["score"].tolist()[:3] == [20, 10, 21]
+    assert pd.isna(joined.loc[3, "score"])
+    assert pd.isna(joined.loc[3, "feature_timestamp_max"])
+    assert all(
+        pd.isna(row.feature_timestamp_max) or row.feature_timestamp_max <= row.prediction_timestamp
+        for row in joined.itertuples(index=False)
+    )

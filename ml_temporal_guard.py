@@ -103,24 +103,59 @@ def asof_feature_join(
     prediction_time_col: str = "prediction_timestamp",
     feature_time_col: str = "timestamp",
 ) -> pd.DataFrame:
-    if predictions.empty or features.empty:
-        out = predictions.copy()
+    """Join latest per-symbol feature row with timestamp <= prediction time.
+
+    pandas.merge_asof requires its time key to be monotonic. Sorting a mixed-symbol
+    frame by [symbol, timestamp] can make the timestamp key non-monotonic globally,
+    so this helper executes merge_asof independently for each symbol and restores
+    the original prediction row order afterward.
+    """
+    out = predictions.copy()
+    if "feature_timestamp_max" not in out.columns:
         out["feature_timestamp_max"] = pd.NaT
+    if predictions.empty or features.empty:
         return out
+
     left = predictions.copy()
     right = features.copy()
     left[prediction_time_col] = pd.to_datetime(left[prediction_time_col], errors="coerce", utc=True)
     right[feature_time_col] = pd.to_datetime(right[feature_time_col], errors="coerce", utc=True)
-    left = left.sort_values([by, prediction_time_col])
-    right = right.sort_values([by, feature_time_col])
-    joined = pd.merge_asof(
-        left,
-        right,
-        left_on=prediction_time_col,
-        right_on=feature_time_col,
-        by=by,
-        direction="backward",
-        suffixes=("", "_feature"),
-    )
-    joined["feature_timestamp_max"] = joined[feature_time_col]
+    left["__asof_original_order"] = range(len(left))
+
+    unmatched_feature_columns = [column for column in right.columns if column != by and column not in left.columns]
+    joined_groups: List[pd.DataFrame] = []
+    for symbol, left_group in left.groupby(by, dropna=False, sort=False):
+        right_group = right[right[by].eq(symbol)] if pd.notna(symbol) else right[right[by].isna()]
+        valid_left = left_group[left_group[prediction_time_col].notna()].copy()
+        invalid_left = left_group[left_group[prediction_time_col].isna()].copy()
+        group_parts: List[pd.DataFrame] = []
+        if not valid_left.empty and not right_group.empty:
+            right_group = right_group[right_group[feature_time_col].notna()].copy()
+            if not right_group.empty:
+                merged = pd.merge_asof(
+                    valid_left.sort_values(prediction_time_col),
+                    right_group.drop(columns=[by]).sort_values(feature_time_col),
+                    left_on=prediction_time_col,
+                    right_on=feature_time_col,
+                    direction="backward",
+                    suffixes=("", "_feature"),
+                )
+                group_parts.append(merged)
+            else:
+                group_parts.append(valid_left)
+        elif not valid_left.empty:
+            group_parts.append(valid_left)
+        if not invalid_left.empty:
+            group_parts.append(invalid_left)
+        group = pd.concat(group_parts, ignore_index=True, sort=False) if group_parts else left_group.copy()
+        for column in unmatched_feature_columns:
+            if column not in group.columns:
+                group[column] = pd.NA
+        if feature_time_col not in group.columns:
+            group[feature_time_col] = pd.NaT
+        joined_groups.append(group)
+
+    joined = pd.concat(joined_groups, ignore_index=True, sort=False) if joined_groups else left.copy()
+    joined = joined.sort_values("__asof_original_order").drop(columns=["__asof_original_order"]).reset_index(drop=True)
+    joined["feature_timestamp_max"] = pd.to_datetime(joined.get(feature_time_col), errors="coerce", utc=True)
     return joined
