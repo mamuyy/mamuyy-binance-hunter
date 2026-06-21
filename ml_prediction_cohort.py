@@ -16,7 +16,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
 from ml_engine import build_ml_dataset, fit_train_only_preprocessor, transform_with_train_preprocessor
-from ml_prediction_ledger import LEDGER_FIELDS, append_prediction, canonical_ml_label, create_ledger_row, write_prediction_ledger_audit, audit_prediction_ledger
+from ml_prediction_ledger import LEDGER_FIELDS, append_prediction, canonical_ml_label, create_ledger_row, write_prediction_ledger_audit, audit_prediction_ledger, load_prediction_ledger
 
 COHORT_FIELDS = [
     "prediction_id", "candidate_id", "symbol", "side", "prediction_timestamp",
@@ -85,11 +85,16 @@ def materialize_prediction_cohort(
     cohort_path = Path(cohort_path)
     cohort_path.parent.mkdir(parents=True, exist_ok=True)
     rows: List[Dict[str, Any]] = []
+    existing_prediction_ids = set()
+    ledger_rows_appended = 0
+    ledger_duplicates_skipped = 0
+    if ledger_path:
+        existing_prediction_ids = {str(row.get("prediction_id")) for row in load_prediction_ledger(ledger_path) if row.get("prediction_id")}
     if dataset.empty or len(dataset) < train_window + test_window or "target" not in dataset.columns or dataset["target"].nunique() < 2:
         pd.DataFrame(rows, columns=COHORT_FIELDS).to_csv(cohort_path, index=False)
         if ledger_path:
             write_prediction_ledger_audit(audit_prediction_ledger(ledger_path), Path(ledger_path).with_name("ml_prediction_ledger_audit.json"))
-        return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": 0, "folds": 0}
+        return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": 0, "folds": 0, "ledger_rows_appended": 0, "ledger_duplicates_skipped": 0}
 
     frame = dataset.copy().reset_index(drop=True)
     if "prediction_timestamp" not in frame.columns:
@@ -156,12 +161,18 @@ def materialize_prediction_cohort(
             out["prediction_id"] = ledger_row["prediction_id"]
             rows.append(out)
             if ledger_path:
-                append_prediction(ledger_path, {k: ledger_row.get(k) for k in LEDGER_FIELDS})
+                prediction_id = str(ledger_row.get("prediction_id"))
+                if prediction_id in existing_prediction_ids:
+                    ledger_duplicates_skipped += 1
+                else:
+                    append_prediction(ledger_path, {k: ledger_row.get(k) for k in LEDGER_FIELDS})
+                    existing_prediction_ids.add(prediction_id)
+                    ledger_rows_appended += 1
         fold_id += 1
     pd.DataFrame(rows, columns=COHORT_FIELDS).to_csv(cohort_path, index=False, quoting=csv.QUOTE_MINIMAL)
     if ledger_path:
         write_prediction_ledger_audit(audit_prediction_ledger(ledger_path), Path(ledger_path).with_name("ml_prediction_ledger_audit.json"))
-    return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": len(rows), "folds": fold_id - 1}
+    return {"cohort_path": str(cohort_path), "ledger_path": str(ledger_path) if ledger_path else None, "rows": len(rows), "folds": fold_id - 1, "ledger_rows_appended": ledger_rows_appended, "ledger_duplicates_skipped": ledger_duplicates_skipped}
 
 
 def run_prediction_cohort_export(

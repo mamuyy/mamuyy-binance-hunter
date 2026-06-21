@@ -162,13 +162,19 @@ def audit_prediction_ledger(path: str | Path = "reports/ml_prediction_ledger.jso
     temporal_findings = [f for f in temporal_findings if f["reasons"]]
     label_values = {row.get("y_true") for row in rows if row.get("y_true") is not None}
     invalid_labels = sorted(str(v) for v in label_values if v not in CANONICAL_LABELS)
+    prediction_ids = [str(row.get("prediction_id")) for row in rows if row.get("prediction_id")]
+    duplicate_prediction_id_count = len(prediction_ids) - len(set(prediction_ids))
+    duplicate_prediction_ids = sorted([pid for pid in set(prediction_ids) if prediction_ids.count(pid) > 1])
     matured = sum(1 for row in rows if row.get("label_status") == "MATURED")
     pending = sum(1 for row in rows if row.get("label_status") == "PENDING")
     invalid = sum(1 for row in rows if row.get("label_status") in INVALID_LABEL_STATUSES) + len(temporal_findings)
+    findings = []
+    if duplicate_prediction_id_count > 0:
+        findings.append(f"duplicate prediction_id values detected: {duplicate_prediction_id_count}")
     temporal_status = "BLOCKED" if temporal_findings else ("PASS" if rows else "REVIEW")
     label_status = "BLOCKED" if missing_fields or invalid_labels else ("PASS" if rows else "REVIEW")
-    eval_status = "PASS" if rows and matured > 0 and not temporal_findings and not invalid_labels else ("REVIEW" if rows else "BLOCKED")
-    return {"prediction_ledger_available": True, "prediction_ledger_path": str(path), "prediction_ledger_rows": len(rows), "matured_prediction_rows": matured, "pending_prediction_rows": pending, "invalid_prediction_rows": invalid, "temporal_guard_status": temporal_status, "label_contract_status": label_status, "evaluation_reproducibility_status": eval_status, "model_readiness_blocker": "BLOCKED_TEMPORAL_INTEGRITY" if temporal_findings else (None if eval_status == "PASS" else "BLOCKED_INSUFFICIENT_PREDICTION_COHORT"), "missing_schema_fields": missing_fields, "invalid_labels": invalid_labels, "temporal_findings": temporal_findings}
+    eval_status = "PASS" if rows and matured > 0 and not temporal_findings and not invalid_labels and duplicate_prediction_id_count == 0 else ("REVIEW" if rows and duplicate_prediction_id_count == 0 else ("BLOCKED" if rows else "BLOCKED"))
+    return {"prediction_ledger_available": True, "prediction_ledger_path": str(path), "prediction_ledger_rows": len(rows), "matured_prediction_rows": matured, "pending_prediction_rows": pending, "invalid_prediction_rows": invalid, "temporal_guard_status": temporal_status, "label_contract_status": label_status, "evaluation_reproducibility_status": eval_status, "model_readiness_blocker": "BLOCKED_TEMPORAL_INTEGRITY" if temporal_findings else (None if eval_status == "PASS" else "BLOCKED_INSUFFICIENT_PREDICTION_COHORT"), "missing_schema_fields": missing_fields, "invalid_labels": invalid_labels, "temporal_findings": temporal_findings, "duplicate_prediction_id_count": duplicate_prediction_id_count, "duplicate_prediction_ids": duplicate_prediction_ids, "findings": findings}
 
 
 def write_prediction_ledger_audit(report: Dict[str, Any], output_path: str | Path = "reports/ml_prediction_ledger_audit.json") -> None:

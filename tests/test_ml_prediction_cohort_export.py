@@ -94,6 +94,21 @@ def test_reconciliation_discovers_default_cohort_artifact(tmp_path, monkeypatch)
     assert Path("reports/ml_prediction_ledger_audit.json").exists()
 
 
+def test_ledger_write_is_idempotent_by_prediction_id(tmp_path):
+    cohort = tmp_path / "reports" / "ml_prediction_cohort.csv"
+    ledger = tmp_path / "reports" / "ml_prediction_ledger.jsonl"
+    first = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    first_rows = load_prediction_ledger(ledger)
+    second = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    second_rows = load_prediction_ledger(ledger)
+    assert len(first_rows) == 6
+    assert len(second_rows) == 6
+    assert first["ledger_rows_appended"] == 6
+    assert first["ledger_duplicates_skipped"] == 0
+    assert second["ledger_rows_appended"] == 0
+    assert second["ledger_duplicates_skipped"] == 6
+
+
 def test_governance_invariants_unchanged(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     report = run_ml_metric_reconciliation(output_dir="reports", db_path="missing.db", model_output_path="missing.json", walkforward_path="missing.csv")
