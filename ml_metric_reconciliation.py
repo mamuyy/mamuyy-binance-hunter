@@ -859,6 +859,141 @@ def baseline_root_cause_audit(row_level_walkforward: Dict[str, Any]) -> Dict[str
         "baseline_root_cause_recommendation": recommendation,
     }
 
+
+def larger_fold_baseline_diagnostic(
+    cohort: pd.DataFrame,
+    min_test_rows: int = 10,
+    min_train_rows: int = 20,
+) -> Dict[str, Any]:
+    """Evaluate majority-class baseline evidence on larger blocked folds.
+
+    This diagnostic is intentionally advisory. It does not feed readiness gates,
+    model training, thresholds, execution controls, or promotion logic.
+    """
+    base: Dict[str, Any] = {
+        "larger_fold_baseline_diagnostic_status": "UNAVAILABLE_INSUFFICIENT_ROWS",
+        "larger_fold_rows": 0,
+        "larger_fold_count": 0,
+        "larger_fold_min_test_rows": int(min_test_rows),
+        "larger_fold_min_train_rows": int(min_train_rows),
+        "larger_fold_model_accuracy": None,
+        "larger_fold_baseline_accuracy": None,
+        "larger_fold_model_vs_baseline_delta": None,
+        "larger_fold_baseline_prediction_distribution": {},
+        "larger_fold_model_worse_folds": 0,
+        "larger_fold_model_better_folds": 0,
+        "larger_fold_model_tie_folds": 0,
+        "larger_fold_findings": [],
+        "larger_fold_recommendation": (
+            "Diagnostic only: keep existing readiness gates unchanged and use this evidence to decide whether next work "
+            "should target fold-size governance, class-imbalance-aware baseline review, or model/threshold repair."
+        ),
+        "larger_fold_details": [],
+    }
+    if cohort.empty or len(cohort) < min_train_rows + min_test_rows:
+        base["larger_fold_findings"] = [
+            f"Insufficient rows for larger-fold diagnostic: need at least {min_train_rows + min_test_rows}, found {0 if cohort.empty else len(cohort)}."
+        ]
+        return base
+
+    ts_col = _first_existing_column(cohort, ("prediction_timestamp", "timestamp", "signal_timestamp"))
+    if not ts_col:
+        base["larger_fold_findings"] = ["prediction_timestamp is missing from row-level predictions."]
+        return base
+
+    frame = cohort.copy().reset_index(drop=True)
+    if "__y_true" not in frame.columns:
+        y_true_col = _first_existing_column(frame, TRUE_COLUMNS)
+        if y_true_col:
+            frame["__y_true"] = frame[y_true_col]
+    if "__y_pred" not in frame.columns:
+        y_pred_col = _first_existing_column(frame, PREDICTION_COLUMNS)
+        if y_pred_col:
+            frame["__y_pred"] = frame[y_pred_col]
+    if "__y_true" not in frame.columns or "__y_pred" not in frame.columns:
+        base["larger_fold_findings"] = ["y_true/y_pred columns are missing from row-level predictions."]
+        return base
+
+    frame["__prediction_ts_sort"] = pd.to_datetime(frame[ts_col], errors="coerce", utc=True)
+    frame = frame.sort_values(["__prediction_ts_sort", ts_col], na_position="last").reset_index(drop=True)
+    rows: List[Dict[str, Any]] = []
+    folds: List[Dict[str, Any]] = []
+    fold_id = 1
+    start = 0
+    while start + min_train_rows + min_test_rows <= len(frame):
+        train = frame.iloc[start:start + min_train_rows]
+        test = frame.iloc[start + min_train_rows:start + min_train_rows + min_test_rows]
+        start += min_test_rows
+        baseline_prediction = _majority_label([canonical_ml_label(value) for value in train["__y_true"].tolist()])
+        if baseline_prediction is None:
+            continue
+        fold_rows = []
+        for _, row in test.iterrows():
+            y_true = canonical_ml_label(row.get("__y_true"))
+            y_pred = canonical_ml_label(row.get("__y_pred"))
+            out = {
+                "fold_id": fold_id,
+                "y_true": y_true,
+                "y_pred": y_pred,
+                "baseline_prediction": baseline_prediction,
+                "model_correct": bool(y_true == y_pred),
+                "baseline_correct": bool(y_true == baseline_prediction),
+            }
+            rows.append(out)
+            fold_rows.append(out)
+        model_accuracy = round_or_none(sum(r["model_correct"] for r in fold_rows) / len(fold_rows) if fold_rows else None)
+        baseline_accuracy = round_or_none(sum(r["baseline_correct"] for r in fold_rows) / len(fold_rows) if fold_rows else None)
+        folds.append({
+            "fold_id": fold_id,
+            "train_start": str(train[ts_col].iloc[0]),
+            "train_end": str(train[ts_col].iloc[-1]),
+            "test_start": str(test[ts_col].iloc[0]),
+            "test_end": str(test[ts_col].iloc[-1]),
+            "train_rows": int(len(train)),
+            "test_rows": int(len(fold_rows)),
+            "baseline_prediction": baseline_prediction,
+            "model_accuracy": model_accuracy,
+            "baseline_accuracy": baseline_accuracy,
+            "model_vs_baseline_delta": round_or_none(model_accuracy - baseline_accuracy if model_accuracy is not None and baseline_accuracy is not None else None),
+        })
+        fold_id += 1
+
+    if not rows:
+        base["larger_fold_findings"] = ["No larger diagnostic folds could be built from the row-level cohort."]
+        return base
+
+    model_accuracy = round_or_none(sum(r["model_correct"] for r in rows) / len(rows))
+    baseline_accuracy = round_or_none(sum(r["baseline_correct"] for r in rows) / len(rows))
+    delta = round_or_none(model_accuracy - baseline_accuracy)
+    worse = [fold for fold in folds if safe_float(fold.get("model_accuracy")) is not None and safe_float(fold.get("baseline_accuracy")) is not None and safe_float(fold.get("model_accuracy")) < safe_float(fold.get("baseline_accuracy"))]
+    better = [fold for fold in folds if safe_float(fold.get("model_accuracy")) is not None and safe_float(fold.get("baseline_accuracy")) is not None and safe_float(fold.get("model_accuracy")) > safe_float(fold.get("baseline_accuracy"))]
+    tie = [fold for fold in folds if fold not in worse and fold not in better]
+    findings = [
+        f"Larger-fold diagnostic is available for {len(rows)} rows across {len(folds)} folds.",
+        f"Diagnostic model accuracy is {model_accuracy} versus baseline accuracy {baseline_accuracy} with delta {delta}.",
+    ]
+    findings.append(
+        "Larger diagnostic folds still show the model below or equal to the majority-class baseline."
+        if delta is not None and delta <= 0
+        else "Larger diagnostic folds show model improvement over baseline; this is diagnostic evidence only and does not unlock readiness."
+    )
+    return {
+        **base,
+        "larger_fold_baseline_diagnostic_status": "AVAILABLE",
+        "larger_fold_rows": len(rows),
+        "larger_fold_count": len(folds),
+        "larger_fold_model_accuracy": model_accuracy,
+        "larger_fold_baseline_accuracy": baseline_accuracy,
+        "larger_fold_model_vs_baseline_delta": delta,
+        "larger_fold_baseline_prediction_distribution": _counter_dict([fold.get("baseline_prediction") for fold in folds]),
+        "larger_fold_model_worse_folds": len(worse),
+        "larger_fold_model_better_folds": len(better),
+        "larger_fold_model_tie_folds": len(tie),
+        "larger_fold_findings": findings,
+        "larger_fold_details": folds,
+    }
+
+
 def baseline_status(metrics: Optional[Dict[str, Any]], min_samples: int = 30) -> Dict[str, Any]:
     if not metrics:
         return {"status": "BLOCKED_INSUFFICIENT_SAMPLE", "sample_size": 0, "absolute_accuracy_improvement": None, "practically_meaningful": False}
@@ -1603,6 +1738,7 @@ def run_ml_metric_reconciliation(
 
     row_level_walkforward = row_level_walkforward_audit(cohort, temporal_feature_guard, preprocessing_guard)
     baseline_audit = baseline_root_cause_audit(row_level_walkforward)
+    larger_fold_diagnostic = larger_fold_baseline_diagnostic(cohort)
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -1661,6 +1797,7 @@ def run_ml_metric_reconciliation(
         "baseline_superiority_status": row_level_walkforward["baseline_superiority_status"],
         "row_level_walkforward_findings": row_level_walkforward["row_level_walkforward_findings"],
         **baseline_audit,
+        **larger_fold_diagnostic,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
