@@ -20,6 +20,7 @@ from ml_metric_reconciliation import (
     ml_high_confidence_threshold_candidate_diagnostic,
     threshold_candidate_stability_audit,
     threshold_sample_sufficiency_audit,
+    filtered_cohort_walkforward_comparison,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -1158,6 +1159,94 @@ def test_threshold_sample_sufficiency_does_not_change_readiness_or_governance(tm
     report = _run_current_metric_report(tmp_path, rows)
     components = report["model_readiness"]["components"]
     assert "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE" in report["threshold_sample_sufficiency_status"]
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+
+
+def _filtered_comparison_rows():
+    rows = []
+    specs = [
+        ("WIN", "WIN", 0.90, 1, "BTCUSDT"),
+        ("LOSS", "WIN", 0.88, 1, "BTCUSDT"),
+        ("LOSS", "LOSS", 0.87, 2, "ETHUSDT"),
+        ("WIN", "LOSS", 0.70, 2, "ETHUSDT"),
+        ("LOSS", "WIN", 0.60, 3, "SOLUSDT"),
+    ]
+    for idx, (true, pred, prob, fold, symbol) in enumerate(specs):
+        rows.append({"y_true": true, "y_pred": pred, "predicted_probability": prob, "fold_id": fold, "symbol": symbol})
+    return rows
+
+
+def test_filtered_cohort_comparison_available_with_threshold_and_probability():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_comparison_status"] == "AVAILABLE"
+    assert diagnostic["filtered_cohort_selected_threshold"] == 0.80
+
+
+def test_filtered_cohort_comparison_rows_kept_ratio_and_skipped():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_rows_full"] == 5
+    assert diagnostic["filtered_cohort_rows_kept"] == 3
+    assert diagnostic["filtered_cohort_rows_skipped"] == 2
+    assert diagnostic["filtered_cohort_kept_ratio"] == 0.6
+
+
+def test_filtered_cohort_comparison_accuracy_baseline_and_delta():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_filtered_model_accuracy"] == pytest.approx(2 / 3)
+    assert diagnostic["filtered_cohort_filtered_baseline_accuracy"] == pytest.approx(2 / 3)
+    assert diagnostic["filtered_cohort_filtered_model_vs_baseline_delta"] == 0.0
+
+
+def test_filtered_cohort_comparison_false_win_count_and_delta():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_full_false_win_count"] == 2
+    assert diagnostic["filtered_cohort_filtered_false_win_count"] == 1
+    assert diagnostic["filtered_cohort_false_win_delta"] == -1
+
+
+def test_filtered_cohort_comparison_insufficient_sample_findings():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert "REVIEW_INSUFFICIENT_FILTERED_SAMPLE" in diagnostic["filtered_cohort_findings"]
+    assert "REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE" in diagnostic["filtered_cohort_findings"]
+
+
+def test_filtered_cohort_comparison_fold_and_symbol_summaries():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_fold_count"] == 2
+    assert {row["segment"] for row in diagnostic["filtered_cohort_fold_summary"]} == {"1", "2"}
+    assert {row["segment"] for row in diagnostic["filtered_cohort_symbol_summary"]} == {"BTCUSDT", "ETHUSDT"}
+    assert all("insufficient_kept_rows" in row for row in diagnostic["filtered_cohort_fold_summary"])
+
+
+def test_filtered_cohort_comparison_reports_regime_unavailable_without_regime_column():
+    diagnostic = filtered_cohort_walkforward_comparison(pd.DataFrame(_filtered_comparison_rows()), selected_threshold=0.80)
+    assert diagnostic["filtered_cohort_regime_summary"]["status"] == "UNAVAILABLE"
+    assert "REGIME_SEGMENT_UNAVAILABLE" in diagnostic["filtered_cohort_findings"]
+
+
+def test_filtered_cohort_comparison_does_not_change_readiness_or_governance(tmp_path):
+    rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
+    for idx, row in enumerate(rows):
+        row["y_true"] = "WIN" if idx < 80 else "LOSS"
+        row["y_pred"] = "WIN" if idx < 2 else "LOSS"
+        row.update({
+            "prediction_id": f"p-filtered-{idx}",
+            "prediction_timestamp": f"2024-06-{(idx % 28) + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+        })
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["filtered_cohort_comparison_status"] == "AVAILABLE"
     assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
