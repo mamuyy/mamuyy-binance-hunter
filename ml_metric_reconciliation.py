@@ -1211,6 +1211,128 @@ def paper_filter_candidate_registry(
         "paper_filter_candidate_recommendation": "Keep candidate OFF by default. Continue paper-only shadow evidence collection; do not apply threshold 0.80 to runtime signals or unlock execution until future governance review explicitly approves it.",
     }
 
+
+def paper_filter_shadow_review_scorecard(
+    report: Dict[str, Any],
+    min_filtered_rows: int = 100,
+    min_pred_win_rows: int = 30,
+    min_segment_rows: int = 10,
+) -> Dict[str, Any]:
+    """Summarize paper-filter candidate evidence for governance review only.
+
+    This scorecard is diagnostic-only. It does not enable the candidate, apply
+    thresholds to runtime signals, change configuration, alter training or
+    predictions, modify threshold selection, change readiness gates, or unlock
+    execution.
+    """
+    if "paper_filter_candidate_status" not in report:
+        return {
+            "paper_filter_shadow_review_status": "UNAVAILABLE_NO_CANDIDATE_REGISTRY",
+            "paper_filter_shadow_review_candidate_name": None,
+            "paper_filter_shadow_review_candidate_enabled": False,
+            "paper_filter_shadow_review_threshold": None,
+            "paper_filter_shadow_review_positive_evidence_count": 0,
+            "paper_filter_shadow_review_blocker_count": 1,
+            "paper_filter_shadow_review_blockers": ["UNAVAILABLE_NO_CANDIDATE_REGISTRY"],
+            "paper_filter_shadow_review_passed_requirements": [],
+            "paper_filter_shadow_review_failed_requirements": ["CANDIDATE_REGISTRY_AVAILABLE"],
+            "paper_filter_shadow_review_missing_requirements": [],
+            "paper_filter_shadow_review_min_filtered_rows_required": min_filtered_rows,
+            "paper_filter_shadow_review_min_pred_win_rows_required": min_pred_win_rows,
+            "paper_filter_shadow_review_min_segment_rows_required": min_segment_rows,
+            "paper_filter_shadow_review_regime_required": True,
+            "paper_filter_shadow_review_governance_verdict": "NO_REVIEW_WITHOUT_CANDIDATE_REGISTRY",
+            "paper_filter_shadow_review_findings": ["Paper filter candidate registry is missing; no shadow review scorecard can be completed."],
+            "paper_filter_shadow_review_recommendation": "Keep candidate OFF. Generate the paper-only candidate registry before governance review.",
+        }
+
+    evidence = list(report.get("paper_filter_candidate_positive_evidence") or [])
+    blockers = list(report.get("paper_filter_candidate_blockers") or [])
+    passed: List[str] = []
+    failed: List[str] = []
+    missing: List[str] = []
+
+    evidence_to_requirement = {
+        "FILTERED_MODEL_BEAT_FILTERED_BASELINE": "FILTERED_MODEL_ABOVE_FILTERED_BASELINE",
+        "FILTERED_FALSE_WIN_COUNT_ZERO": "FALSE_WIN_LOW_OR_ZERO",
+        "FALSE_WIN_COUNT_IMPROVED_VERSUS_FULL_COHORT": "FALSE_WIN_LOW_OR_ZERO",
+        "FILTERED_MODEL_ACCURACY_IMPROVED_OVER_FULL_MODEL": "FILTERED_ACCURACY_ABOVE_FULL_ACCURACY",
+    }
+    for item in evidence:
+        req = evidence_to_requirement.get(item)
+        if req and req not in passed:
+            passed.append(req)
+
+    blocker_to_requirement = {
+        "INSUFFICIENT_FILTERED_ROWS": "MIN_FILTERED_ROWS_GTE_100",
+        "INSUFFICIENT_PREDICTED_WIN_SAMPLE": "MIN_PREDICTED_WIN_ROWS_GTE_30",
+        "INSUFFICIENT_SEGMENT_ROWS": "MIN_PER_SEGMENT_ROWS_GTE_10",
+        "REGIME_SEGMENT_UNAVAILABLE": "REGIME_EVIDENCE_AVAILABLE",
+        "OVERALL_READINESS_BLOCKED_BELOW_BASELINE": "OVERALL_READINESS_NOT_BLOCKED",
+        "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE": "FILTERED_COHORT_EVIDENCE_AVAILABLE",
+    }
+    for item in blockers:
+        req = blocker_to_requirement.get(item)
+        if req and req not in failed:
+            failed.append(req)
+
+    default_requirements = [
+        "MIN_FILTERED_ROWS_GTE_100",
+        "MIN_PREDICTED_WIN_ROWS_GTE_30",
+        "MIN_PER_SEGMENT_ROWS_GTE_10",
+        "REGIME_EVIDENCE_AVAILABLE",
+        "OVERALL_READINESS_NOT_BLOCKED",
+    ]
+    for req, ok in (
+        ("MIN_FILTERED_ROWS_GTE_100", int(report.get("filtered_cohort_rows_kept") or report.get("threshold_sample_sufficiency_rows_kept") or 0) >= min_filtered_rows),
+        ("MIN_PREDICTED_WIN_ROWS_GTE_30", int((report.get("filtered_cohort_filtered_prediction_distribution") or {}).get("WIN", report.get("threshold_sample_sufficiency_pred_win_count") or 0)) >= min_pred_win_rows),
+        ("OVERALL_READINESS_NOT_BLOCKED", (report.get("model_readiness") or {}).get("overall_status") not in {"BLOCKED_BELOW_BASELINE"} and (report.get("model_readiness") or {}).get("primary_blocker") not in {"BLOCKED_BELOW_BASELINE"}),
+    ):
+        if ok and req not in failed and req not in passed:
+            passed.append(req)
+    if "INSUFFICIENT_SEGMENT_ROWS" not in blockers and "MIN_PER_SEGMENT_ROWS_GTE_10" not in failed:
+        passed.append("MIN_PER_SEGMENT_ROWS_GTE_10")
+    if "REGIME_SEGMENT_UNAVAILABLE" not in blockers and "REGIME_EVIDENCE_AVAILABLE" not in failed:
+        passed.append("REGIME_EVIDENCE_AVAILABLE")
+
+    for req in default_requirements:
+        if req not in passed and req not in failed:
+            missing.append(req)
+
+    status = "REVIEW_READY_FOR_PAPER_ONLY_GOVERNANCE_REVIEW" if not failed and not missing else "REVIEW_SHADOW_CANDIDATE_BLOCKED"
+    if report.get("paper_filter_candidate_status") == "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE":
+        status = "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE"
+
+    promising = bool(evidence) and any(b in blockers for b in {"INSUFFICIENT_FILTERED_ROWS", "INSUFFICIENT_PREDICTED_WIN_SAMPLE", "INSUFFICIENT_SEGMENT_ROWS", "REGIME_SEGMENT_UNAVAILABLE"})
+    findings = [
+        "Scorecard is diagnostic/governance-only and is not a permission system.",
+        "Candidate remains disabled; threshold is not applied to runtime signals.",
+    ]
+    if promising:
+        findings.append("Candidate evidence is promising, but sample, segment, regime, or readiness blockers mean it is not review-ready.")
+    if status == "REVIEW_READY_FOR_PAPER_ONLY_GOVERNANCE_REVIEW":
+        findings.append("Synthetic or current evidence satisfies scorecard requirements for paper-only governance review; execution remains disabled.")
+
+    return {
+        "paper_filter_shadow_review_status": status,
+        "paper_filter_shadow_review_candidate_name": report.get("paper_filter_candidate_name"),
+        "paper_filter_shadow_review_candidate_enabled": False,
+        "paper_filter_shadow_review_threshold": report.get("paper_filter_candidate_threshold"),
+        "paper_filter_shadow_review_positive_evidence_count": len(evidence),
+        "paper_filter_shadow_review_blocker_count": len(blockers),
+        "paper_filter_shadow_review_blockers": blockers,
+        "paper_filter_shadow_review_passed_requirements": sorted(set(passed), key=passed.index),
+        "paper_filter_shadow_review_failed_requirements": failed,
+        "paper_filter_shadow_review_missing_requirements": missing,
+        "paper_filter_shadow_review_min_filtered_rows_required": min_filtered_rows,
+        "paper_filter_shadow_review_min_pred_win_rows_required": min_pred_win_rows,
+        "paper_filter_shadow_review_min_segment_rows_required": min_segment_rows,
+        "paper_filter_shadow_review_regime_required": True,
+        "paper_filter_shadow_review_governance_verdict": "PAPER_ONLY_REVIEW_READY_CANDIDATE_DISABLED" if status == "REVIEW_READY_FOR_PAPER_ONLY_GOVERNANCE_REVIEW" else "PAPER_ONLY_REVIEW_BLOCKED_CANDIDATE_DISABLED",
+        "paper_filter_shadow_review_findings": findings,
+        "paper_filter_shadow_review_recommendation": "Keep candidate OFF by default. Use this scorecard only for future paper-only governance review; do not apply threshold 0.80, change config/training/predictions/threshold selection/readiness gates, or unlock execution.",
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -2540,6 +2662,7 @@ def run_ml_metric_reconciliation(
     }
     ready = readiness(components)
     paper_filter_candidate = paper_filter_candidate_registry({**filtered_cohort_comparison, "model_readiness": ready})
+    paper_filter_shadow_review = paper_filter_shadow_review_scorecard({**threshold_stability_audit, **threshold_sample_sufficiency, **filtered_cohort_comparison, **paper_filter_candidate, "model_readiness": ready})
     default_sources = db_path == "mamuyy_hunter.db" and model_output_path == "model_output.json" and walkforward_path == "walkforward_results.csv"
     production_artifacts_exist = any(item.get("exists") for item in artifacts if item.get("artifact_name") in {"model_output", "walkforward_results", "database_table:historical_outcomes", "database_table:ml_results", "database_table:walkforward_results"})
     context = artifact_context or ("RUNTIME_AUDIT" if metrics else ("RUNTIME_AUDIT_NO_PREDICTION_COHORT" if (default_sources and production_artifacts_exist) else "NON_PRODUCTION_EMPTY_FIXTURE"))
@@ -2584,6 +2707,7 @@ def run_ml_metric_reconciliation(
         **threshold_sample_sufficiency,
         **filtered_cohort_comparison,
         **paper_filter_candidate,
+        **paper_filter_shadow_review,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
