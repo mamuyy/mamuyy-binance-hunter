@@ -924,6 +924,9 @@ RAW_CLOSED_FIELD_CANDIDATES = {
 RAW_CLOSED_PATH_HINTS = ("outcome", "closed", "ledger", "trade")
 MAX_DISCOVERY_FILE_BYTES = 5_000_000
 MAX_DISCOVERY_CANDIDATES = 80
+CANONICAL_RAW_CLOSED_SOURCE_PATH = Path("reports") / "paper_outcome_audit.json"
+CANONICAL_RAW_CLOSED_CONTAINER = "closed_trades"
+CANONICAL_RAW_CLOSED_FIELDS = {"closed_at", "status", "symbol", "outcome", "label", "pnl", "prediction_id"}
 
 
 def _safe_candidate_path(path_value: Any) -> Optional[Path]:
@@ -963,6 +966,29 @@ def _inspect_json_candidate(path: Path) -> Dict[str, Any]:
     records, row_count, container = _json_record_container(data)
     detected, rows_seen = _metadata_from_records(list(records or [])[:25])
     return {"row_count": row_count, "detected_fields": detected, "sampled_rows": rows_seen, "container": container}
+
+
+def _is_canonical_raw_closed_source_candidate(candidate: Dict[str, Any]) -> bool:
+    """Identify the canonical diagnostic raw closed-outcome source.
+
+    The rule is intentionally narrow and read-only: select
+    reports/paper_outcome_audit.json only when it exposes a non-empty
+    closed_trades JSON container with enough closed-outcome fields to support
+    coverage reconciliation.
+    """
+    try:
+        path = Path(str(candidate.get("path") or "")).resolve()
+        canonical_path = CANONICAL_RAW_CLOSED_SOURCE_PATH.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    detected_fields = set(candidate.get("detected_fields") or [])
+    return (
+        path == canonical_path
+        and candidate.get("type") == "json"
+        and candidate.get("container") == CANONICAL_RAW_CLOSED_CONTAINER
+        and (candidate.get("row_count") or 0) > 0
+        and len(detected_fields & CANONICAL_RAW_CLOSED_FIELDS) >= 2
+    )
 
 
 def _inspect_jsonl_candidate(path: Path) -> Dict[str, Any]:
@@ -1082,7 +1108,10 @@ def raw_closed_outcome_source_discovery_audit(report_or_artifacts: Dict[str, Any
             read_errors += 1
             findings.append(f"READ_ERROR:{path}:{exc.__class__.__name__}")
     candidates = sorted(candidates, key=lambda row: (row.get("confidence_score") or 0, row.get("row_count") or 0), reverse=True)
-    selected = candidates[0] if candidates and (len(candidates) == 1 or (candidates[0]["confidence_score"] - candidates[1]["confidence_score"]) >= 0.20) else None
+    canonical_candidates = [candidate for candidate in candidates if _is_canonical_raw_closed_source_candidate(candidate)]
+    selected = canonical_candidates[0] if canonical_candidates else (
+        candidates[0] if candidates and (len(candidates) == 1 or (candidates[0]["confidence_score"] - candidates[1]["confidence_score"]) >= 0.20) else None
+    )
     if read_errors and candidates:
         status = "READ_ERROR_PARTIAL_DISCOVERY"
     elif selected:
@@ -1145,6 +1174,7 @@ def closed_outcome_to_ml_cohort_coverage_audit(
 
     closed_to_ml_ratio = round_or_none(_safe_ratio(ml_count, raw_closed_count) if ml_count is not None and raw_closed_count else None)
     ml_to_threshold_ratio = round_or_none(_safe_ratio(kept_count, ml_count) if kept_count is not None and ml_count else None)
+    raw_to_ml_gap_count = raw_closed_count - ml_count if raw_closed_count is not None and ml_count is not None else None
 
     drop_reasons = {
         "missing_prediction_link": None,
@@ -1160,6 +1190,7 @@ def closed_outcome_to_ml_cohort_coverage_audit(
     stage_counts = {
         "raw_closed_outcomes": raw_closed_count,
         "ml_cohort_rows": ml_count,
+        "raw_to_ml_gap_rows": raw_to_ml_gap_count,
         "threshold_kept_rows": kept_count,
         "threshold_skipped_rows": skipped_count,
         "threshold_predicted_win_rows": pred_win_count,
@@ -1192,6 +1223,7 @@ def closed_outcome_to_ml_cohort_coverage_audit(
         "closed_to_ml_coverage_threshold_pred_win_count": pred_win_count,
         "closed_to_ml_coverage_threshold_pred_loss_count": pred_loss_count,
         "closed_to_ml_coverage_closed_to_ml_retention_ratio": closed_to_ml_ratio,
+        "closed_to_ml_coverage_raw_to_ml_gap_count": raw_to_ml_gap_count,
         "closed_to_ml_coverage_ml_to_threshold_retention_ratio": ml_to_threshold_ratio,
         "closed_to_ml_coverage_drop_reasons": drop_reasons,
         "closed_to_ml_coverage_known_stage_counts": stage_counts,
