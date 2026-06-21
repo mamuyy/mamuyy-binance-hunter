@@ -19,6 +19,7 @@ from ml_metric_reconciliation import (
     ml_class_imbalance_diagnostic,
     ml_high_confidence_threshold_candidate_diagnostic,
     paper_filter_candidate_registry,
+    paper_filter_shadow_review_scorecard,
     threshold_candidate_stability_audit,
     threshold_sample_sufficiency_audit,
     filtered_cohort_walkforward_comparison,
@@ -1341,6 +1342,87 @@ def test_paper_filter_candidate_registry_does_not_alter_readiness_or_governance(
     report = _run_current_metric_report(tmp_path, rows)
     components = report["model_readiness"]["components"]
     assert report["paper_filter_candidate_status"] == "REVIEW_CANDIDATE_NOT_ENABLED"
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+
+
+def test_paper_filter_shadow_review_missing_candidate_registry_unavailable():
+    scorecard = paper_filter_shadow_review_scorecard({})
+    assert scorecard["paper_filter_shadow_review_status"] == "UNAVAILABLE_NO_CANDIDATE_REGISTRY"
+    assert scorecard["paper_filter_shadow_review_candidate_enabled"] is False
+
+
+def test_paper_filter_shadow_review_candidate_with_blockers_blocked():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    scorecard = paper_filter_shadow_review_scorecard({**_paper_filter_candidate_base_report(), **registry})
+    assert scorecard["paper_filter_shadow_review_status"] == "REVIEW_SHADOW_CANDIDATE_BLOCKED"
+    assert scorecard["paper_filter_shadow_review_blocker_count"] >= 1
+
+
+def test_paper_filter_shadow_review_candidate_remains_disabled_with_positive_evidence():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    scorecard = paper_filter_shadow_review_scorecard({**_paper_filter_candidate_base_report(), **registry})
+    assert scorecard["paper_filter_shadow_review_positive_evidence_count"] > 0
+    assert scorecard["paper_filter_shadow_review_candidate_enabled"] is False
+
+
+def test_paper_filter_shadow_review_passed_requirements_include_baseline_and_false_win():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    scorecard = paper_filter_shadow_review_scorecard({**_paper_filter_candidate_base_report(), **registry})
+    passed = scorecard["paper_filter_shadow_review_passed_requirements"]
+    assert "FILTERED_MODEL_ABOVE_FILTERED_BASELINE" in passed
+    assert "FALSE_WIN_LOW_OR_ZERO" in passed
+
+
+def test_paper_filter_shadow_review_failed_requirements_include_current_blockers():
+    registry = paper_filter_candidate_registry(_paper_filter_candidate_base_report())
+    scorecard = paper_filter_shadow_review_scorecard({**_paper_filter_candidate_base_report(), **registry})
+    failed = scorecard["paper_filter_shadow_review_failed_requirements"]
+    assert "MIN_FILTERED_ROWS_GTE_100" in failed
+    assert "MIN_PREDICTED_WIN_ROWS_GTE_30" in failed
+    assert "MIN_PER_SEGMENT_ROWS_GTE_10" in failed
+    assert "REGIME_EVIDENCE_AVAILABLE" in failed
+    assert "OVERALL_READINESS_NOT_BLOCKED" in failed
+
+
+def test_paper_filter_shadow_review_ready_status_keeps_candidate_disabled():
+    report = {
+        **_paper_filter_candidate_base_report(),
+        "filtered_cohort_rows_kept": 120,
+        "filtered_cohort_filtered_prediction_distribution": {"WIN": 35, "LOSS": 85},
+        "filtered_cohort_findings": [],
+        "filtered_cohort_fold_summary": [{"segment": "1", "rows_kept": 60, "insufficient_kept_rows": False}, {"segment": "2", "rows_kept": 60, "insufficient_kept_rows": False}],
+        "filtered_cohort_regime_summary": [{"segment": "bull", "rows_kept": 60}, {"segment": "bear", "rows_kept": 60}],
+        "model_readiness": {"overall_status": "REVIEW", "primary_blocker": None},
+    }
+    registry = paper_filter_candidate_registry(report)
+    scorecard = paper_filter_shadow_review_scorecard({**report, **registry})
+    assert scorecard["paper_filter_shadow_review_status"] == "REVIEW_READY_FOR_PAPER_ONLY_GOVERNANCE_REVIEW"
+    assert scorecard["paper_filter_shadow_review_candidate_enabled"] is False
+
+
+def test_paper_filter_shadow_review_does_not_change_readiness_or_governance(tmp_path):
+    rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
+    for idx, row in enumerate(rows):
+        row["y_true"] = "WIN" if idx < 80 else "LOSS"
+        row["y_pred"] = "WIN" if idx < 2 else "LOSS"
+        row.update({
+            "prediction_id": f"p-shadow-{idx}",
+            "prediction_timestamp": f"2024-06-{(idx % 28) + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{(idx % 28) + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+        })
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["paper_filter_shadow_review_candidate_enabled"] is False
     assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"

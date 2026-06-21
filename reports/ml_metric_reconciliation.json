@@ -431,7 +431,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T15:04:17.257739+00:00",
+  "generated_at": "2026-06-21T15:28:36.887330+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -814,6 +814,37 @@
   "paper_filter_candidate_regime_required": true,
   "paper_filter_candidate_status": "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE",
   "paper_filter_candidate_threshold": null,
+  "paper_filter_shadow_review_blocker_count": 1,
+  "paper_filter_shadow_review_blockers": [
+    "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE"
+  ],
+  "paper_filter_shadow_review_candidate_enabled": false,
+  "paper_filter_shadow_review_candidate_name": "ML_HIGH_CONFIDENCE_THRESHOLD_FILTER_CANDIDATE",
+  "paper_filter_shadow_review_failed_requirements": [
+    "FILTERED_COHORT_EVIDENCE_AVAILABLE"
+  ],
+  "paper_filter_shadow_review_findings": [
+    "Scorecard is diagnostic/governance-only and is not a permission system.",
+    "Candidate remains disabled; threshold is not applied to runtime signals."
+  ],
+  "paper_filter_shadow_review_governance_verdict": "PAPER_ONLY_REVIEW_BLOCKED_CANDIDATE_DISABLED",
+  "paper_filter_shadow_review_min_filtered_rows_required": 100,
+  "paper_filter_shadow_review_min_pred_win_rows_required": 30,
+  "paper_filter_shadow_review_min_segment_rows_required": 10,
+  "paper_filter_shadow_review_missing_requirements": [
+    "MIN_FILTERED_ROWS_GTE_100",
+    "MIN_PREDICTED_WIN_ROWS_GTE_30"
+  ],
+  "paper_filter_shadow_review_passed_requirements": [
+    "OVERALL_READINESS_NOT_BLOCKED",
+    "MIN_PER_SEGMENT_ROWS_GTE_10",
+    "REGIME_EVIDENCE_AVAILABLE"
+  ],
+  "paper_filter_shadow_review_positive_evidence_count": 0,
+  "paper_filter_shadow_review_recommendation": "Keep candidate OFF by default. Use this scorecard only for future paper-only governance review; do not apply threshold 0.80, change config/training/predictions/threshold selection/readiness gates, or unlock execution.",
+  "paper_filter_shadow_review_regime_required": true,
+  "paper_filter_shadow_review_status": "UNAVAILABLE_NO_FILTERED_COHORT_EVIDENCE",
+  "paper_filter_shadow_review_threshold": null,
   "pending_prediction_rows": 0,
   "phase": "9D.1C-C Train-Only Preprocessing Guard",
   "predicted_label_distribution": {},
