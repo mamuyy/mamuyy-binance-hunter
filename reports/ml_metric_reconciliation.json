@@ -1,4 +1,9 @@
 {
+  "ai_confidence_formula": "mean(predicted_probability) over evaluated prediction cohort rows with non-null predicted_probability",
+  "ai_confidence_reproduction_status": "UNAVAILABLE",
+  "ai_confidence_sample_count": 0,
+  "ai_confidence_source": null,
+  "ai_confidence_value": null,
   "artifact_context": "NON_PRODUCTION_EMPTY_FIXTURE",
   "artifact_discovery": [
     {
@@ -8,6 +13,14 @@
       "consumer": "telegram.format_ml_analysis_message/dashboard/ml_results",
       "discovered_path": null,
       "exists": false,
+      "explicit_path_authoritative": false,
+      "fallback_paths_considered": [
+        "model_output.json",
+        "/workspace/mamuyy-binance-hunter/model_output.json",
+        "reports/model_output.json",
+        "/workspace/mamuyy-binance-hunter/reports/model_output.json"
+      ],
+      "fallbacks_allowed": true,
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "ml_engine.run_ml_research",
@@ -23,6 +36,14 @@
       "consumer": "telegram.format_walkforward_report_message/dashboard/walkforward_results",
       "discovered_path": null,
       "exists": false,
+      "explicit_path_authoritative": false,
+      "fallback_paths_considered": [
+        "walkforward_results.csv",
+        "/workspace/mamuyy-binance-hunter/walkforward_results.csv",
+        "reports/walkforward_results.csv",
+        "/workspace/mamuyy-binance-hunter/reports/walkforward_results.csv"
+      ],
+      "fallbacks_allowed": true,
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "walkforward.run_walkforward_validation",
@@ -38,6 +59,14 @@
       "consumer": "operator reports",
       "discovered_path": null,
       "exists": false,
+      "explicit_path_authoritative": false,
+      "fallback_paths_considered": [
+        "ml_quality_audit.json",
+        "/workspace/mamuyy-binance-hunter/ml_quality_audit.json",
+        "reports/ml_quality_audit.json",
+        "/workspace/mamuyy-binance-hunter/reports/ml_quality_audit.json"
+      ],
+      "fallbacks_allowed": true,
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "ml_quality_audit.run_audit",
@@ -53,6 +82,12 @@
       "consumer": "Phase 9D candidate evidence reports",
       "discovered_path": null,
       "exists": false,
+      "explicit_path_authoritative": false,
+      "fallback_paths_considered": [
+        "reports/candidate_evidence_ledger.jsonl",
+        "/workspace/mamuyy-binance-hunter/reports/candidate_evidence_ledger.jsonl"
+      ],
+      "fallbacks_allowed": true,
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "candidate_evidence_ledger.run",
@@ -71,7 +106,18 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
+      "row_count": 0,
       "schema": [],
+      "sqlite_diagnostics": {
+        "database_file_exists": false,
+        "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+        "query_status": "DATABASE_MISSING",
+        "readonly_uri": "file:/workspace/mamuyy-binance-hunter/mamuyy_hunter.db?mode=ro",
+        "row_count": 0,
+        "schema": [],
+        "sqlite_exception": null,
+        "table_lookup_result": false
+      },
       "stale_source": false,
       "stale_ttl_days": 7.0,
       "timestamp_field_used": null
@@ -86,7 +132,18 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
+      "row_count": 0,
       "schema": [],
+      "sqlite_diagnostics": {
+        "database_file_exists": false,
+        "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+        "query_status": "DATABASE_MISSING",
+        "readonly_uri": "file:/workspace/mamuyy-binance-hunter/mamuyy_hunter.db?mode=ro",
+        "row_count": 0,
+        "schema": [],
+        "sqlite_exception": null,
+        "table_lookup_result": false
+      },
       "stale_source": false,
       "stale_ttl_days": 7.0,
       "timestamp_field_used": null
@@ -101,7 +158,18 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
+      "row_count": 0,
       "schema": [],
+      "sqlite_diagnostics": {
+        "database_file_exists": false,
+        "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+        "query_status": "DATABASE_MISSING",
+        "readonly_uri": "file:/workspace/mamuyy-binance-hunter/mamuyy_hunter.db?mode=ro",
+        "row_count": 0,
+        "schema": [],
+        "sqlite_exception": null,
+        "table_lookup_result": false
+      },
       "stale_source": false,
       "stale_ttl_days": 7.0,
       "timestamp_field_used": null
@@ -116,7 +184,18 @@
       "file_age_days": null,
       "generated_timestamp": null,
       "producer": "database.py insert_* or historical label/outcome producers",
+      "row_count": 0,
       "schema": [],
+      "sqlite_diagnostics": {
+        "database_file_exists": false,
+        "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+        "query_status": "DATABASE_MISSING",
+        "readonly_uri": "file:/workspace/mamuyy-binance-hunter/mamuyy_hunter.db?mode=ro",
+        "row_count": 0,
+        "schema": [],
+        "sqlite_exception": null,
+        "table_lookup_result": false
+      },
       "stale_source": false,
       "stale_ttl_days": 7.0,
       "timestamp_field_used": null
@@ -126,15 +205,21 @@
     "confusion_matrix_csv": "reports/ml_confusion_matrix.csv",
     "json": "reports/ml_metric_reconciliation.json",
     "metric_identity_csv": "reports/ml_metric_identity.csv",
+    "prediction_ledger_audit_json": "reports/ml_prediction_ledger_audit.json",
+    "row_level_walkforward_json": "reports/ml_row_level_walkforward.json",
+    "row_level_walkforward_rows_csv": "reports/ml_row_level_walkforward_rows.csv",
     "segment_performance_csv": "reports/ml_segment_performance.csv",
     "walkforward_folds_csv": "reports/ml_walkforward_folds.csv"
   },
+  "asof_feature_join_status": "REVIEW",
+  "baseline_accuracy": null,
   "baseline_comparison": {
     "absolute_accuracy_improvement": null,
     "practically_meaningful": false,
     "sample_size": 0,
     "status": "BLOCKED_INSUFFICIENT_SAMPLE"
   },
+  "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
   "candidate_evidence_bridge": {
     "by_horizon": {
       "24h": null,
@@ -155,17 +240,37 @@
   },
   "current_accuracy_reconciliation": {
     "contract_match_walkforward": false,
+    "correct_predictions": null,
+    "current_accuracy_value": null,
     "display_reproduction_status": "SOURCE_MISSING",
     "display_value": "32.81%",
-    "evaluation_reproduction_status": "UNREPRODUCIBLE",
+    "evaluation_reproduction_status": "SOURCE_MISSING",
     "holdout_sample_count": null,
-    "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+    "identity": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
     "mandatory_current_readiness": true,
     "metric_name": "Current Model Accuracy",
-    "producer": "ml_engine.py:run_ml_research",
+    "producer": "prediction cohort / prediction ledger",
     "reproducibility_status": "SOURCE_MISSING",
-    "sample_count": null,
+    "sample_count": 0,
+    "source_artifact": null,
     "total_dataset_rows": null
+  },
+  "current_accuracy_reproduction_status": "SOURCE_MISSING",
+  "current_accuracy_sample_count": 0,
+  "current_accuracy_source": null,
+  "current_accuracy_value": null,
+  "current_readiness_metric_evidence": {
+    "ai_confidence_formula": "mean(predicted_probability) over evaluated prediction cohort rows with non-null predicted_probability",
+    "ai_confidence_reproduction_status": "UNAVAILABLE",
+    "ai_confidence_sample_count": 0,
+    "ai_confidence_source": null,
+    "ai_confidence_value": null,
+    "current_accuracy_correct_predictions": null,
+    "current_accuracy_reproduction_status": "SOURCE_MISSING",
+    "current_accuracy_sample_count": 0,
+    "current_accuracy_source": null,
+    "current_accuracy_value": null,
+    "reason": "no prediction artifact path discovered"
   },
   "dataset_lineage": {
     "class_distribution": {},
@@ -179,12 +284,94 @@
     "feature_count": 13,
     "future_timestamps": null,
     "lineage": "LEGACY_UNKNOWN when DB/table is absent",
+    "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+    "query_status": "DATABASE_MISSING",
     "read_only": true,
     "row_count": 0,
+    "schema": [],
+    "sqlite_diagnostics": {
+      "database_file_exists": false,
+      "normalized_database_path": "/workspace/mamuyy-binance-hunter/mamuyy_hunter.db",
+      "query_status": "DATABASE_MISSING",
+      "readonly_uri": "file:/workspace/mamuyy-binance-hunter/mamuyy_hunter.db?mode=ro",
+      "row_count": 0,
+      "schema": [],
+      "sqlite_exception": null,
+      "table_lookup_result": false
+    },
+    "sqlite_exception": null,
     "status": "SOURCE_MISSING",
-    "symbol_coverage": null
+    "symbol_coverage": null,
+    "table_lookup_result": false
   },
-  "generated_at": "2026-06-20T16:27:22.286998+00:00",
+  "display_metric_integrity_summary": {
+    "all_mandatory_identity_blockers": [
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "integrity_type": "display",
+        "metric_name": "Current Model Accuracy",
+        "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
+        "status": "SOURCE_MISSING"
+      }
+    ],
+    "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
+    "status": "BLOCKED_UNREPRODUCIBLE"
+  },
+  "evaluation_metric_integrity_summary": {
+    "all_mandatory_identity_blockers": [
+      {
+        "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "integrity_type": "evaluation",
+        "metric_name": "Current Model Accuracy",
+        "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
+        "status": "SOURCE_MISSING"
+      }
+    ],
+    "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
+    "review_identity_findings": [
+      {
+        "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+        "integrity_type": "evaluation",
+        "metric_name": "Walk-Forward Rolling Accuracy",
+        "reason": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
+        "status": "UNVERIFIABLE"
+      },
+      {
+        "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+        "integrity_type": "evaluation",
+        "metric_name": "Walk-Forward Rolling Winrate",
+        "reason": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
+        "status": "UNVERIFIABLE"
+      },
+      {
+        "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+        "integrity_type": "evaluation",
+        "metric_name": "AI Confidence",
+        "reason": "deterministic mean(predicted_probability) over evaluated prediction cohort/ledger rows; unavailable rather than invented when predicted_probability is absent",
+        "status": "UNAVAILABLE"
+      },
+      {
+        "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+        "integrity_type": "evaluation",
+        "metric_name": "Model Health",
+        "reason": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
+        "status": "UNVERIFIABLE"
+      },
+      {
+        "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+        "integrity_type": "evaluation",
+        "metric_name": "Overfit Risk",
+        "reason": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+        "status": "UNVERIFIABLE"
+      }
+    ],
+    "status": "BLOCKED_UNREPRODUCIBLE"
+  },
+  "evaluation_reproducibility_status": "BLOCKED",
+  "feature_timestamp_coverage": 0.0,
+  "full_dataset_fit_violation_count": 0,
+  "future_feature_violation_count": 0,
+  "generated_at": "2026-06-21T12:00:27.631673+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -227,6 +414,8 @@
       "sample_count": null
     }
   ],
+  "invalid_prediction_rows": 0,
+  "label_contract_status": "BLOCKED",
   "label_contracts": [
     {
       "blocked_reason": "Fees/slippage and neutral treatment are explicit, but TP2 HIT versus WIN semantics, historical artifact lineage, and all displayed metric horizons are not fully proven from prediction artifacts.",
@@ -252,6 +441,8 @@
       "tp2_hit_vs_win_mismatch": "outcome_labeler returns status WIN for TP2 hits while ml_engine TARGET_LABELS includes TP2 HIT; legacy artifacts may mix TP2 HIT and WIN semantics."
     }
   ],
+  "label_integrity_component_status": "BLOCKED_LABEL_CONTRACT",
+  "legacy_label_contract_status": "REVIEW",
   "limitations": [
     "No predictions are fabricated from labels.",
     "Display-value reproduction is separated from full evaluation reproduction.",
@@ -266,19 +457,23 @@
     "Walk-Forward Rolling Accuracy",
     "Walk-Forward Rolling Winrate"
   ],
+  "matured_prediction_rows": 0,
   "metric_identity": [
     {
       "contract_match_walkforward": false,
+      "correct_predictions": null,
+      "current_accuracy_value": null,
       "display_reproduction_status": "SOURCE_MISSING",
       "display_value": "32.81%",
-      "evaluation_reproduction_status": "UNREPRODUCIBLE",
+      "evaluation_reproduction_status": "SOURCE_MISSING",
       "holdout_sample_count": null,
-      "identity": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+      "identity": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
       "mandatory_current_readiness": true,
       "metric_name": "Current Model Accuracy",
-      "producer": "ml_engine.py:run_ml_research",
+      "producer": "prediction cohort / prediction ledger",
       "reproducibility_status": "SOURCE_MISSING",
-      "sample_count": null,
+      "sample_count": 0,
+      "source_artifact": null,
       "total_dataset_rows": null
     },
     {
@@ -334,17 +529,20 @@
       "sample_count": 0
     },
     {
+      "ai_confidence_formula": "mean(predicted_probability) over evaluated prediction cohort rows with non-null predicted_probability",
+      "ai_confidence_value": null,
       "contract_match_walkforward": false,
-      "display_reproduction_status": "SOURCE_MISSING",
+      "display_reproduction_status": "UNAVAILABLE",
       "display_value": "65/100",
-      "evaluation_reproduction_status": "UNREPRODUCIBLE",
+      "evaluation_reproduction_status": "UNAVAILABLE",
       "holdout_sample_count": null,
-      "identity": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
+      "identity": "deterministic mean(predicted_probability) over evaluated prediction cohort/ledger rows; unavailable rather than invented when predicted_probability is absent",
       "mandatory_current_readiness": true,
       "metric_name": "AI Confidence",
-      "producer": "ml_engine.py:run_ml_research",
-      "reproducibility_status": "SOURCE_MISSING",
-      "sample_count": null,
+      "producer": "prediction cohort / prediction ledger",
+      "reproducibility_status": "UNAVAILABLE",
+      "sample_count": 0,
+      "source_artifact": null,
       "total_dataset_rows": null
     },
     {
@@ -376,81 +574,130 @@
     "all_mandatory_identity_blockers": [
       {
         "blocker": "BLOCKED_UNREPRODUCIBLE",
+        "integrity_type": "display",
         "metric_name": "Current Model Accuracy",
-        "reason": "random holdout multiclass accuracy from ml_engine.run_ml_research when model_output has accuracy; unresolved if current artifact is missing/stale",
+        "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
         "status": "SOURCE_MISSING"
       },
       {
         "blocker": "BLOCKED_UNREPRODUCIBLE",
-        "metric_name": "Walk-Forward Rolling Accuracy",
-        "reason": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
-        "status": "SOURCE_MISSING"
-      },
-      {
-        "blocker": "BLOCKED_UNREPRODUCIBLE",
-        "metric_name": "Walk-Forward Rolling Winrate",
-        "reason": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
-        "status": "SOURCE_MISSING"
-      },
-      {
-        "blocker": "BLOCKED_UNREPRODUCIBLE",
-        "metric_name": "AI Confidence",
-        "reason": "latest-row profitable class probability heuristic from ml_engine.run_ml_research when model_output has ai_confidence_score",
-        "status": "SOURCE_MISSING"
-      },
-      {
-        "blocker": "BLOCKED_UNREPRODUCIBLE",
-        "metric_name": "Model Health",
-        "reason": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
-        "status": "SOURCE_MISSING"
-      },
-      {
-        "blocker": "BLOCKED_UNREPRODUCIBLE",
-        "metric_name": "Overfit Risk",
-        "reason": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+        "integrity_type": "evaluation",
+        "metric_name": "Current Model Accuracy",
+        "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
         "status": "SOURCE_MISSING"
       }
     ],
+    "display_metric_integrity": {
+      "all_mandatory_identity_blockers": [
+        {
+          "blocker": "BLOCKED_UNREPRODUCIBLE",
+          "integrity_type": "display",
+          "metric_name": "Current Model Accuracy",
+          "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
+          "status": "SOURCE_MISSING"
+        }
+      ],
+      "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
+      "status": "BLOCKED_UNREPRODUCIBLE"
+    },
+    "evaluation_metric_integrity": {
+      "all_mandatory_identity_blockers": [
+        {
+          "blocker": "BLOCKED_UNREPRODUCIBLE",
+          "integrity_type": "evaluation",
+          "metric_name": "Current Model Accuracy",
+          "reason": "prediction cohort/ledger accuracy = correct_predictions / evaluated_predictions using row-level y_true and y_pred; random holdout accuracy is advisory unless exact rows, seed, y_true/y_pred, and sample count are stored",
+          "status": "SOURCE_MISSING"
+        }
+      ],
+      "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
+      "review_identity_findings": [
+        {
+          "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+          "integrity_type": "evaluation",
+          "metric_name": "Walk-Forward Rolling Accuracy",
+          "reason": "unweighted mean of walkforward_results.csv test_accuracy folds according to producer code; weighted is audit-only when test_rows exists",
+          "status": "UNVERIFIABLE"
+        },
+        {
+          "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+          "integrity_type": "evaluation",
+          "metric_name": "Walk-Forward Rolling Winrate",
+          "reason": "unweighted mean of walk-forward test fold target profitable rate/trade winrate, not classifier accuracy, when winrate column exists",
+          "status": "UNVERIFIABLE"
+        },
+        {
+          "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+          "integrity_type": "evaluation",
+          "metric_name": "AI Confidence",
+          "reason": "deterministic mean(predicted_probability) over evaluated prediction cohort/ledger rows; unavailable rather than invented when predicted_probability is absent",
+          "status": "UNAVAILABLE"
+        },
+        {
+          "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+          "integrity_type": "evaluation",
+          "metric_name": "Model Health",
+          "reason": "rule-derived health from walk-forward stability and overfit risk; cannot reproduce without walk-forward source evidence",
+          "status": "UNVERIFIABLE"
+        },
+        {
+          "blocker": "REVIEW_EVIDENCE_UNAVAILABLE",
+          "integrity_type": "evaluation",
+          "metric_name": "Overfit Risk",
+          "reason": "100 * max(0, mean(train_accuracy) - mean(test_accuracy)); cannot reproduce without train/test fold metrics",
+          "status": "UNVERIFIABLE"
+        }
+      ],
+      "status": "BLOCKED_UNREPRODUCIBLE"
+    },
     "primary_metric_integrity_blocker": "BLOCKED_UNREPRODUCIBLE",
     "status": "BLOCKED_UNREPRODUCIBLE"
   },
+  "missing_feature_timestamp_count": 0,
+  "model_accuracy": null,
   "model_readiness": {
     "all_blockers": {
-      "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
+      "Baseline Superiority": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
       "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
+      "Display Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
+      "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
-      "Leakage Safety": "BLOCKED_LEAKAGE",
+      "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
-      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
+      "Walk-Forward Stability": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
     },
     "automatic_promotion_allowed": false,
     "components": {
-      "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
+      "Baseline Superiority": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
       "Calibration Quality": "UNAVAILABLE",
       "Candidate-Evidence Support": "UNAVAILABLE",
       "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
+      "Display Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
+      "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
-      "Leakage Safety": "BLOCKED_LEAKAGE",
+      "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
       "Regime Stability": "UNAVAILABLE",
-      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
+      "Walk-Forward Stability": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
     },
     "execution_allowed": false,
     "mandatory_component_statuses": {
-      "Baseline Superiority": "BLOCKED_INSUFFICIENT_SAMPLE",
+      "Baseline Superiority": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
       "Data Lineage": "BLOCKED_UNREPRODUCIBLE",
+      "Display Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
+      "Evaluation Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Label Integrity": "BLOCKED_LABEL_CONTRACT",
-      "Leakage Safety": "BLOCKED_LEAKAGE",
+      "Leakage Safety": "BLOCKED_TEMPORAL_INTEGRITY",
       "Metric Integrity": "BLOCKED_UNREPRODUCIBLE",
       "Out-of-Sample Adequacy": "BLOCKED_INSUFFICIENT_OOS",
-      "Walk-Forward Stability": "BLOCKED_INSUFFICIENT_OOS"
+      "Walk-Forward Stability": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
     },
     "model_promotion_allowed": false,
-    "overall_status": "BLOCKED_LEAKAGE",
+    "overall_status": "BLOCKED_LABEL_CONTRACT",
     "paper_only": true,
-    "primary_blocker": "BLOCKED_LEAKAGE",
+    "primary_blocker": "BLOCKED_LABEL_CONTRACT",
     "readiness_advisory_only": true,
     "review_reasons": {
       "Calibration Quality": "UNAVAILABLE",
@@ -458,7 +705,40 @@
       "Regime Stability": "UNAVAILABLE"
     }
   },
-  "phase": "9D.1B-B ML Metric Reconciliation",
+  "model_vs_baseline_delta": null,
+  "pending_prediction_rows": 0,
+  "phase": "9D.1C-C Train-Only Preprocessing Guard",
+  "prediction_ledger_available": false,
+  "prediction_ledger_label_contract_status": "BLOCKED",
+  "prediction_ledger_rows": 0,
+  "prediction_ledger_summary": {
+    "evaluation_reproducibility_status": "BLOCKED",
+    "findings": [
+      "prediction ledger missing"
+    ],
+    "invalid_prediction_rows": 0,
+    "label_contract_status": "BLOCKED",
+    "matured_prediction_rows": 0,
+    "model_readiness_blocker": "BLOCKED_INSUFFICIENT_PREDICTION_COHORT",
+    "pending_prediction_rows": 0,
+    "prediction_ledger_available": false,
+    "prediction_ledger_path": "reports/ml_prediction_ledger.jsonl",
+    "prediction_ledger_rows": 0,
+    "temporal_guard_status": "BLOCKED"
+  },
+  "preprocessing_fit_scope": "TRAIN_ONLY_VERIFIED",
+  "preprocessing_guard_findings": [
+    {
+      "evidence": "Holdout path splits raw prepared rows first, fits OneHotEncoder on train_dataset only, then transforms test/all rows with the train-fitted preprocessor.",
+      "finding": "ml_engine_holdout_preprocessing",
+      "status": "PASS"
+    },
+    {
+      "evidence": "Each walk-forward fold fits preprocessing on that fold's train slice and transforms the fold test slice using the same train-fitted state.",
+      "finding": "walkforward_fold_preprocessing",
+      "status": "PASS"
+    }
+  ],
   "reproduced_metrics": {
     "confusion_matrix": [
       {
@@ -472,6 +752,25 @@
     "metrics": null,
     "reason": "no prediction artifact path discovered",
     "status": "SOURCE_MISSING"
+  },
+  "row_level_walkforward_findings": [
+    "No valid row-level prediction cohort is available."
+  ],
+  "row_level_walkforward_folds": 0,
+  "row_level_walkforward_rows": 0,
+  "row_level_walkforward_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
+  "row_level_walkforward_summary": {
+    "baseline_accuracy": null,
+    "baseline_superiority_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS",
+    "folds": [],
+    "model_accuracy": null,
+    "model_vs_baseline_delta": null,
+    "row_level_walkforward_findings": [
+      "No valid row-level prediction cohort is available."
+    ],
+    "row_level_walkforward_folds": 0,
+    "row_level_walkforward_rows": 0,
+    "row_level_walkforward_status": "BLOCKED_MISSING_ROW_LEVEL_PREDICTIONS"
   },
   "segment_performance": [],
   "source_inventory": [
@@ -720,18 +1019,32 @@
     "findings": [
       "No valid prediction/label cohort available",
       {
-        "evidence": "ml_engine.build_ml_dataset merges latest signal/flow row by symbol when paper_trades CSV is used, which may attach post-prediction features unless timestamps are aligned.",
+        "evidence": "ml_engine.build_ml_dataset uses as-of feature joins and temporal feature guard status is also reported separately.",
         "finding": "latest_by_symbol_feature_join",
-        "status": "BLOCKED_TEMPORAL_LEAKAGE"
+        "status": "PASS"
       },
       {
-        "evidence": "ml_engine._encode fits OneHotEncoder inside each call; walkforward fits train and test encoders separately before reindexing, so fit scope is not persisted from train only.",
-        "finding": "preprocessor_fit_scope",
-        "status": "BLOCKED_PREPROCESSOR_LEAKAGE"
+        "evidence": "Holdout path splits raw prepared rows first, fits OneHotEncoder on train_dataset only, then transforms test/all rows with the train-fitted preprocessor.",
+        "finding": "ml_engine_holdout_preprocessing",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Each walk-forward fold fits preprocessing on that fold's train slice and transforms the fold test slice using the same train-fitted state.",
+        "finding": "walkforward_fold_preprocessing",
+        "status": "PASS"
       }
     ],
-    "status": "BLOCKED_LEAKAGE"
+    "status": "UNVERIFIABLE"
   },
+  "target_leakage_column_count": 0,
+  "temporal_feature_guard_status": "REVIEW",
+  "temporal_guard_findings": [
+    {
+      "reason": "no feature rows available",
+      "source_artifact": null
+    }
+  ],
+  "temporal_guard_status": "BLOCKED",
   "terminology_recommendations": [
     "Current Holdout Accuracy",
     "Walk-Forward OOS Accuracy",
@@ -742,6 +1055,7 @@
     "AI Confidence Heuristic",
     "Model Readiness"
   ],
+  "train_only_preprocessing_status": "PASS",
   "walkforward_display_reproduction": {
     "average_accuracy": null,
     "average_winrate": null,
