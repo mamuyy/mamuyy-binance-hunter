@@ -716,6 +716,155 @@ def ml_high_confidence_threshold_candidate_diagnostic(cohort: pd.DataFrame) -> D
         ),
     }
 
+
+def _canonical_probability_frame(cohort: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
+    if cohort.empty:
+        return pd.DataFrame(), "No prediction cohort rows are available."
+    frame = cohort.copy()
+    if "__y_true" not in frame.columns:
+        y_true_col = _first_existing_column(frame, TRUE_COLUMNS)
+        if y_true_col:
+            frame["__y_true"] = frame[y_true_col]
+    if "__y_pred" not in frame.columns:
+        y_pred_col = _first_existing_column(frame, PREDICTION_COLUMNS)
+        if y_pred_col:
+            frame["__y_pred"] = frame[y_pred_col]
+    if "__predicted_probability" not in frame.columns:
+        probability_col = _first_existing_column(frame, PREDICTED_PROBABILITY_COLUMNS)
+        if probability_col:
+            frame["__predicted_probability"] = pd.to_numeric(frame[probability_col], errors="coerce")
+    if "__y_true" not in frame.columns or "__y_pred" not in frame.columns:
+        return pd.DataFrame(), "y_true/y_pred columns are missing from row-level predictions."
+    if "__predicted_probability" not in frame.columns:
+        return pd.DataFrame(), "predicted_probability is missing from row-level predictions."
+    frame["__canonical_y_true"] = frame["__y_true"].map(canonical_ml_label)
+    frame["__canonical_y_pred"] = frame["__y_pred"].map(canonical_ml_label)
+    frame["__predicted_probability"] = pd.to_numeric(frame["__predicted_probability"], errors="coerce")
+    frame = frame[
+        frame["__canonical_y_true"].isin(["WIN", "LOSS"])
+        & frame["__canonical_y_pred"].isin(["WIN", "LOSS"])
+        & frame["__predicted_probability"].notna()
+    ].copy()
+    if frame.empty:
+        return pd.DataFrame(), "No evaluated WIN/LOSS rows with predicted_probability are available."
+    return frame, ""
+
+
+def _threshold_metrics_for_frame(frame: pd.DataFrame, sample_count: Optional[int] = None) -> Dict[str, Any]:
+    actuals = frame["__canonical_y_true"].astype(str).tolist() if "__canonical_y_true" in frame.columns else []
+    preds = frame["__canonical_y_pred"].astype(str).tolist() if "__canonical_y_pred" in frame.columns else []
+    rows_kept = len(frame)
+    sample_count = rows_kept if sample_count is None else sample_count
+    predicted_win_count = sum(pred == "WIN" for pred in preds)
+    true_win_count = sum(actual == "WIN" and pred == "WIN" for actual, pred in zip(actuals, preds))
+    false_win_count = sum(actual == "LOSS" and pred == "WIN" for actual, pred in zip(actuals, preds))
+    return {
+        "rows_kept": rows_kept,
+        "kept_ratio": _safe_ratio(rows_kept, sample_count),
+        "accuracy": _safe_ratio(sum(actual == pred for actual, pred in zip(actuals, preds)), rows_kept),
+        "false_win_count": false_win_count,
+        "win_precision": _safe_ratio(true_win_count, predicted_win_count),
+        "true_label_distribution": _counter_dict(actuals),
+        "predicted_label_distribution": _counter_dict(preds),
+    }
+
+
+def _threshold_segment_summary(frame: pd.DataFrame, column: str) -> List[Dict[str, Any]]:
+    rows = []
+    for value, segment in frame.groupby(column, dropna=False):
+        metrics = _threshold_metrics_for_frame(segment)
+        rows.append({
+            "segment": None if pd.isna(value) else str(value),
+            "rows_kept": metrics["rows_kept"],
+            "accuracy": metrics["accuracy"],
+            "false_win_count": metrics["false_win_count"],
+            "win_precision": metrics["win_precision"],
+            "true_label_distribution": metrics["true_label_distribution"],
+            "predicted_label_distribution": metrics["predicted_label_distribution"],
+        })
+    return sorted(rows, key=lambda row: (-int(row["rows_kept"]), str(row["segment"])))
+
+
+def threshold_candidate_stability_audit(cohort: pd.DataFrame, selected_threshold: Optional[float] = None) -> Dict[str, Any]:
+    """Diagnostic-only audit of selected threshold evidence stability.
+
+    This does not apply the threshold to production signals, training, readiness
+    gates, baseline superiority, walk-forward stability, or execution behavior.
+    """
+    base: Dict[str, Any] = {
+        "threshold_stability_audit_status": "UNAVAILABLE_NO_SELECTED_THRESHOLD",
+        "threshold_stability_selected_threshold": None,
+        "threshold_stability_rows_kept": 0,
+        "threshold_stability_min_segment_rows": None,
+        "threshold_stability_segment_count": 0,
+        "threshold_stability_fold_summary": [],
+        "threshold_stability_symbol_summary": [],
+        "threshold_stability_regime_summary": [],
+        "threshold_stability_label_distribution": {},
+        "threshold_stability_pred_distribution": {},
+        "threshold_stability_false_win_count": None,
+        "threshold_stability_accuracy": None,
+        "threshold_stability_win_precision": None,
+        "threshold_stability_findings": [],
+        "threshold_stability_recommendation": (
+            "Diagnostic only: review selected high-confidence threshold stability before any future model-filter proposal; do not unlock readiness or execution."
+        ),
+    }
+    frame, reason = _canonical_probability_frame(cohort)
+    if frame.empty:
+        return {**base, "threshold_stability_findings": [reason]}
+    if selected_threshold is None:
+        diagnostic = ml_high_confidence_threshold_candidate_diagnostic(cohort)
+        selected_threshold = diagnostic.get("threshold_candidate_selected")
+    selected_threshold = safe_float(selected_threshold)
+    if selected_threshold is None:
+        return {**base, "threshold_stability_findings": ["No selected threshold is available for stability audit."]}
+
+    kept = frame[frame["__predicted_probability"] >= selected_threshold].copy()
+    metrics = _threshold_metrics_for_frame(kept, sample_count=len(frame))
+    findings: List[str] = [
+        "This threshold stability audit is diagnostic-only and does not alter readiness gates, training, or execution behavior."
+    ]
+    summaries: Dict[str, List[Dict[str, Any]]] = {}
+    dimension_columns = {
+        "fold": "fold_id" if "fold_id" in kept.columns else None,
+        "symbol": "symbol" if "symbol" in kept.columns else None,
+        "regime": next((col for col in ("market_regime", "regime", "regime_label") if col in kept.columns), None),
+    }
+    segment_sizes: List[int] = []
+    for name, column in dimension_columns.items():
+        if column is None:
+            summaries[name] = []
+            findings.append(f"{name} segment unavailable")
+            continue
+        summary = _threshold_segment_summary(kept, column)
+        summaries[name] = summary
+        segment_sizes.extend(int(row["rows_kept"]) for row in summary)
+        if metrics["rows_kept"] and any((row["rows_kept"] / metrics["rows_kept"]) > 0.80 for row in summary):
+            findings.append("REVIEW_SEGMENT_CONCENTRATION")
+    if metrics["false_win_count"] == 0:
+        findings.append("False WIN remained zero in available threshold stability evidence")
+    elif metrics["false_win_count"] and metrics["false_win_count"] > 0:
+        findings.append("False WIN appears in at least one segment; threshold requires further review")
+    status = "AVAILABLE" if metrics["rows_kept"] >= 30 else "REVIEW_INSUFFICIENT_THRESHOLD_SAMPLE"
+    return {
+        **base,
+        "threshold_stability_audit_status": status,
+        "threshold_stability_selected_threshold": selected_threshold,
+        "threshold_stability_rows_kept": metrics["rows_kept"],
+        "threshold_stability_min_segment_rows": min(segment_sizes) if segment_sizes else None,
+        "threshold_stability_segment_count": len(segment_sizes),
+        "threshold_stability_fold_summary": summaries["fold"],
+        "threshold_stability_symbol_summary": summaries["symbol"],
+        "threshold_stability_regime_summary": summaries["regime"],
+        "threshold_stability_label_distribution": metrics["true_label_distribution"],
+        "threshold_stability_pred_distribution": metrics["predicted_label_distribution"],
+        "threshold_stability_false_win_count": metrics["false_win_count"],
+        "threshold_stability_accuracy": metrics["accuracy"],
+        "threshold_stability_win_precision": metrics["win_precision"],
+        "threshold_stability_findings": findings,
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -2011,6 +2160,10 @@ def run_ml_metric_reconciliation(
     larger_fold_diagnostic = larger_fold_baseline_diagnostic(cohort)
     class_imbalance_diagnostic = ml_class_imbalance_diagnostic(cohort)
     threshold_candidate_diagnostic = ml_high_confidence_threshold_candidate_diagnostic(cohort)
+    threshold_stability_audit = threshold_candidate_stability_audit(
+        cohort,
+        selected_threshold=threshold_candidate_diagnostic.get("threshold_candidate_selected"),
+    )
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -2072,6 +2225,7 @@ def run_ml_metric_reconciliation(
         **larger_fold_diagnostic,
         **class_imbalance_diagnostic,
         **threshold_candidate_diagnostic,
+        **threshold_stability_audit,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,

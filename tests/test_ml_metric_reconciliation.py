@@ -18,6 +18,7 @@ from ml_metric_reconciliation import (
     larger_fold_baseline_diagnostic,
     ml_class_imbalance_diagnostic,
     ml_high_confidence_threshold_candidate_diagnostic,
+    threshold_candidate_stability_audit,
     leakage_status,
     load_prediction_cohort,
     normalize_sqlite_readonly_uri,
@@ -1008,3 +1009,88 @@ def test_threshold_candidate_diagnostic_does_not_alter_readiness_gates(tmp_path)
     assert report["model_readiness"]["paper_only"] is True
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+
+
+def _threshold_stability_rows(count=36, include_segments=True, false_win_count=0):
+    rows = []
+    for idx in range(count):
+        is_false_win = idx < false_win_count
+        row = {
+            "y_true": "LOSS" if is_false_win else ("WIN" if idx % 3 else "LOSS"),
+            "y_pred": "WIN" if is_false_win else ("WIN" if idx % 3 else "LOSS"),
+            "predicted_probability": 0.85,
+        }
+        if include_segments:
+            row.update({
+                "fold_id": idx % 3,
+                "symbol": "BTCUSDT" if idx % 2 == 0 else "ETHUSDT",
+                "market_regime": "trend" if idx % 4 else "range",
+            })
+        rows.append(row)
+    return rows
+
+
+def test_threshold_stability_audit_available_with_selected_threshold_and_enough_rows():
+    audit = threshold_candidate_stability_audit(pd.DataFrame(_threshold_stability_rows(36)), selected_threshold=0.80)
+    assert audit["threshold_stability_audit_status"] == "AVAILABLE"
+    assert audit["threshold_stability_selected_threshold"] == 0.80
+    assert audit["threshold_stability_rows_kept"] == 36
+
+
+def test_threshold_stability_audit_unavailable_without_selected_threshold():
+    cohort = pd.DataFrame(_threshold_stability_rows(36)).drop(columns=["predicted_probability"])
+    audit = threshold_candidate_stability_audit(cohort)
+    assert audit["threshold_stability_audit_status"] == "UNAVAILABLE_NO_SELECTED_THRESHOLD"
+    assert audit["threshold_stability_selected_threshold"] is None
+
+
+def test_threshold_stability_audit_review_when_threshold_sample_too_small():
+    audit = threshold_candidate_stability_audit(pd.DataFrame(_threshold_stability_rows(12)), selected_threshold=0.80)
+    assert audit["threshold_stability_audit_status"] == "REVIEW_INSUFFICIENT_THRESHOLD_SAMPLE"
+    assert audit["threshold_stability_rows_kept"] == 12
+
+
+def test_threshold_stability_audit_metrics_for_selected_threshold():
+    rows = _threshold_stability_rows(30, false_win_count=2)
+    audit = threshold_candidate_stability_audit(pd.DataFrame(rows), selected_threshold=0.80)
+    assert audit["threshold_stability_false_win_count"] == 2
+    assert audit["threshold_stability_accuracy"] == pytest.approx(28 / 30)
+    assert audit["threshold_stability_win_precision"] == pytest.approx(19 / 21)
+    assert "False WIN appears in at least one segment; threshold requires further review" in audit["threshold_stability_findings"]
+
+
+def test_threshold_stability_audit_segment_summaries_when_columns_exist():
+    audit = threshold_candidate_stability_audit(pd.DataFrame(_threshold_stability_rows(36)), selected_threshold=0.80)
+    assert audit["threshold_stability_fold_summary"]
+    assert audit["threshold_stability_symbol_summary"]
+    assert audit["threshold_stability_regime_summary"]
+    assert audit["threshold_stability_min_segment_rows"] is not None
+    assert "False WIN remained zero in available threshold stability evidence" in audit["threshold_stability_findings"]
+
+
+def test_threshold_stability_audit_does_not_alter_readiness_components(tmp_path):
+    rows = [
+        {
+            "prediction_id": f"p{idx}",
+            "prediction_timestamp": f"2024-06-{idx + 1:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-05-{idx + 1:02d}T00:00:00Z",
+            "target_maturity_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "target_timestamp": f"2024-07-{idx + 1:02d}T00:00:00Z",
+            "model_version": "m1",
+            "evaluation_contract": "c",
+            "fold_id": idx // 10,
+            "symbol": "BTCUSDT" if idx % 2 == 0 else "ETHUSDT",
+            "regime": "trend",
+            "y_true": "LOSS",
+            "y_pred": "WIN",
+            "predicted_probability": 0.9,
+        }
+        for idx in range(30)
+    ]
+    report = _run_current_metric_report(tmp_path, rows)
+    components = report["model_readiness"]["components"]
+    assert report["threshold_stability_audit_status"] == "AVAILABLE"
+    assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
+    assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
