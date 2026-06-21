@@ -1831,3 +1831,140 @@ def test_ml_model_upgrade_does_not_alter_readiness_governance(tmp_path, monkeypa
     assert report["governance"]["execution_allowed"] is False
     assert report["governance"]["paper_only"] is True
     assert report["ml_model_upgrade_diagnostic_status"] == "AVAILABLE"
+
+
+def _write_gap_fixture(tmp_path, raw_rows, ml_rows):
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    raw = reports / "paper_outcome_audit.json"
+    ledger = reports / "ml_prediction_ledger.jsonl"
+    raw.write_text(json.dumps({"closed_trades": raw_rows}), encoding="utf-8")
+    ledger.write_text("".join(json.dumps(row) + "\n" for row in ml_rows), encoding="utf-8")
+    return raw, ledger
+
+
+def _gap_audit(tmp_path, raw_rows, ml_rows, extra=None):
+    from ml_metric_reconciliation import raw_closed_to_ml_cohort_gap_reason_audit
+
+    raw, ledger = _write_gap_fixture(tmp_path, raw_rows, ml_rows)
+    report = {
+        "raw_closed_source_selected_path": str(raw),
+        "raw_closed_source_selected_row_count": len(raw_rows),
+        "prediction_ledger_path": str(ledger),
+    }
+    if extra:
+        report.update(extra)
+    return raw_closed_to_ml_cohort_gap_reason_audit(report)
+
+
+def test_raw_to_ml_gap_reason_audit_available_with_raw_source_and_ledger(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "symbol": "BTC", "status": "WIN", "closed_at": "2024-01-02"}],
+        [{"prediction_id": "p1", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.9}],
+    )
+
+    assert audit["raw_to_ml_gap_reason_audit_status"] == "AVAILABLE"
+
+
+def test_raw_to_ml_gap_reason_audit_reports_counts(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"prediction_id": f"p{i}", "symbol": "BTC", "status": "WIN"} for i in range(4)],
+        [{"prediction_id": "p0", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["raw_to_ml_gap_raw_closed_count"] == 4
+    assert audit["raw_to_ml_gap_ml_cohort_count"] == 1
+    assert audit["raw_to_ml_gap_count"] == 3
+
+
+def test_raw_to_ml_gap_reason_audit_uses_prediction_id_join_key(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "trade_id": "t1", "symbol": "BTC", "status": "WIN"}],
+        [{"prediction_id": "p1", "trade_id": "different", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["raw_to_ml_gap_join_key_used"] == "prediction_id"
+    assert audit["raw_to_ml_gap_join_key_status"] == "AVAILABLE"
+
+
+def test_raw_to_ml_gap_reason_audit_counts_missing_prediction_id(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"symbol": "BTC", "entry_time": "2024-01-01", "status": "WIN"}],
+        [{"prediction_id": "p1", "symbol": "BTC", "prediction_timestamp": "2024-01-02", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["raw_to_ml_gap_reason_counts"]["MISSING_PREDICTION_ID"] == 1
+
+
+def test_raw_to_ml_gap_reason_audit_counts_missing_ml_ledger_match(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "symbol": "BTC", "status": "WIN"}, {"prediction_id": "p2", "symbol": "ETH", "status": "LOSS"}],
+        [{"prediction_id": "p1", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["raw_to_ml_gap_reason_counts"]["MISSING_ML_LEDGER_MATCH"] == 1
+
+
+def test_raw_to_ml_gap_reason_audit_counts_missing_probability(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "symbol": "BTC", "status": "WIN"}],
+        [{"prediction_id": "p1", "y_true": "WIN", "y_pred": "WIN"}],
+    )
+
+    assert audit["raw_to_ml_gap_reason_counts"]["MISSING_PROBABILITY"] == 1
+
+
+def test_raw_to_ml_gap_reason_audit_join_key_unavailable_preserves_counts(tmp_path):
+    audit = _gap_audit(
+        tmp_path,
+        [{"symbol": "BTC", "status": "WIN"}, {"symbol": "ETH", "status": "LOSS"}],
+        [{"y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}],
+    )
+
+    assert audit["raw_to_ml_gap_join_key_status"] == "JOIN_KEY_UNAVAILABLE"
+    assert audit["raw_to_ml_gap_reason_counts"]["JOIN_KEY_UNAVAILABLE"] == 1
+    assert audit["raw_to_ml_gap_reason_counts"]["UNKNOWN_REQUIRES_MANUAL_REVIEW"] == 1
+
+
+def test_raw_to_ml_gap_reason_audit_sample_metadata_bounded_and_safe(tmp_path):
+    raw_rows = [{"prediction_id": f"p{i}", "symbol": "BTC", "status": "WIN", "closed_at": "2024-01-02", "secret": "do-not-dump"} for i in range(10)]
+    audit = _gap_audit(tmp_path, raw_rows, [{"prediction_id": "other", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.8}])
+
+    sample = audit["raw_to_ml_gap_sample_unmatched_raw_metadata"]
+    assert len(sample) == 5
+    assert all("secret" not in row for row in sample)
+    assert set(sample[0]) == {"symbol", "status", "closed_at", "prediction_id_present", "label_present", "probability_present"}
+
+
+def test_raw_to_ml_gap_reason_audit_does_not_alter_readiness_governance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cohort = tmp_path / "prediction_cohort.csv"
+    pd.DataFrame([
+        {"prediction_timestamp": "2024-01-01", "target_timestamp": "2024-01-02", "model_version": "m1", "evaluation_contract": "c", "y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.7},
+        {"prediction_timestamp": "2024-01-02", "target_timestamp": "2024-01-03", "model_version": "m1", "evaluation_contract": "c", "y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.6},
+    ]).to_csv(cohort, index=False)
+    reports = tmp_path / "reports"
+    reports.mkdir(exist_ok=True)
+    (reports / "paper_outcome_audit.json").write_text(json.dumps({"closed_trades": [{"prediction_id": "p1", "symbol": "BTC", "status": "WIN"}]}), encoding="utf-8")
+    (reports / "ml_prediction_ledger.jsonl").write_text(json.dumps({"prediction_id": "p1", "y_true": "WIN", "y_pred": "WIN", "predicted_probability": 0.9}) + "\n", encoding="utf-8")
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path="missing_model.json",
+        walkforward_path="missing_walk.csv",
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path=str(reports / "ml_prediction_ledger.jsonl"),
+    )
+
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Baseline Superiority"].startswith("BLOCKED")
+    assert report["model_readiness"]["components"]["Walk-Forward Stability"].startswith("BLOCKED")
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
