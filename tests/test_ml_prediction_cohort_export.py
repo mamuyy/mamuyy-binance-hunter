@@ -6,7 +6,7 @@ import pytest
 
 from database import init_db
 from ml_prediction_cohort import COHORT_FIELDS, materialize_prediction_cohort, run_prediction_cohort_export
-from ml_prediction_ledger import load_prediction_ledger
+from ml_prediction_ledger import audit_prediction_ledger, load_prediction_ledger
 from ml_metric_reconciliation import run_ml_metric_reconciliation
 
 
@@ -150,6 +150,27 @@ def test_target_label_is_canonicalized_from_selected_dataset_target(tmp_path):
     labels = {row["target_label"] for row in load_prediction_ledger(tmp_path / "ledger.jsonl")}
     assert labels <= {"WIN", "LOSS", "BREAKEVEN", "NEUTRAL"}
     assert labels == {"WIN", "LOSS", "NEUTRAL"}
+
+
+def test_idempotent_rerun_preserves_audit_compatibility_for_legacy_rows(tmp_path):
+    cohort = tmp_path / "reports" / "ml_prediction_cohort.csv"
+    ledger = tmp_path / "reports" / "ml_prediction_ledger.jsonl"
+    first = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    legacy_rows = load_prediction_ledger(ledger)
+    for row in legacy_rows:
+        row.pop("target_label", None)
+        row.pop("temporal_guard_status", None)
+    ledger.write_text("".join(json.dumps(row) + "\n" for row in legacy_rows), encoding="utf-8")
+
+    second = materialize_prediction_cohort(_dataset(), cohort, ledger, train_window=6, test_window=3)
+    audit = audit_prediction_ledger(ledger)
+
+    assert first["ledger_rows_appended"] == 6
+    assert second["ledger_rows_appended"] == 0
+    assert second["ledger_duplicates_skipped"] == 6
+    assert audit["temporal_guard_status"] == "PASS"
+    assert audit["matured_prediction_rows"] == 6
+    assert audit["missing_schema_fields"] == []
 
 
 def test_ledger_write_is_idempotent_by_prediction_id(tmp_path):

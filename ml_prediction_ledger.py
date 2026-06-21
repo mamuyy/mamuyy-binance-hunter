@@ -94,12 +94,19 @@ def _canonical_final_label(value: Any) -> Optional[str]:
     return label if label in FINAL_TARGET_LABELS else None
 
 
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def create_ledger_row(**kwargs: Any) -> Dict[str, Any]:
     now = kwargs.get("created_at") or utc_now()
     row = {field: kwargs.get(field) for field in LEDGER_FIELDS}
     row["created_at"] = row.get("created_at") or now
     row["updated_at"] = row.get("updated_at") or now
-    raw_label = kwargs.get("raw_label_status", kwargs.get("paper_status", row.get("target_label", row.get("y_true"))))
+    raw_label = _first_present(row.get("target_label"), row.get("y_true"), kwargs.get("raw_label_status"), kwargs.get("paper_status"))
     if row.get("target_label") is None and raw_label is not None:
         mapped = normalize_label(raw_label, row.get("target_timestamp"), kwargs.get("as_of"))
         row["target_label"] = _canonical_final_label(mapped["canonical_label"])
@@ -176,23 +183,62 @@ def validate_temporal_row(row: Dict[str, Any], as_of: Any = None) -> List[str]:
     return reasons
 
 
+
+
+def hydrate_ledger_row_for_audit(row: Dict[str, Any], as_of: Any = None) -> Dict[str, Any]:
+    """Return an audit-only hydrated copy of a ledger row without mutating JSONL.
+
+    Legacy ledgers written before ``target_label`` and ``temporal_guard_status``
+    existed remain append-only on disk. Audit can still evaluate them when those
+    fields are derivable from the historical row contents.
+    """
+    hydrated = dict(row)
+    if hydrated.get("target_label") is None:
+        label_source = _first_present(hydrated.get("y_true"), hydrated.get("raw_label_status"), hydrated.get("paper_status"))
+        hydrated["target_label"] = _canonical_final_label(label_source)
+    else:
+        hydrated["target_label"] = _canonical_final_label(hydrated.get("target_label"))
+    if hydrated.get("y_true") is None and hydrated.get("target_label") is not None:
+        hydrated["y_true"] = hydrated.get("target_label")
+    if hydrated.get("label_status") == "MATURED" and hydrated.get("target_label") is None:
+        hydrated["label_status"] = "MISSING"
+    if hydrated.get("temporal_guard_status") is None:
+        hydrated["temporal_guard_status"] = "BLOCKED" if validate_temporal_row(hydrated, as_of) else "PASS"
+    return hydrated
+
+
+def _missing_schema_fields_for_audit(rows: List[Dict[str, Any]], hydrated_rows: List[Dict[str, Any]]) -> List[str]:
+    missing_fields: List[str] = []
+    for field in LEDGER_FIELDS:
+        for original, hydrated in zip(rows, hydrated_rows):
+            if field in original:
+                continue
+            if field == "target_label" and hydrated.get("target_label") in FINAL_TARGET_LABELS:
+                continue
+            if field == "temporal_guard_status" and hydrated.get("temporal_guard_status") in {"PASS", "BLOCKED"}:
+                continue
+            missing_fields.append(field)
+            break
+    return missing_fields
+
 def audit_prediction_ledger(path: str | Path = "reports/ml_prediction_ledger.jsonl", as_of: Any = None) -> Dict[str, Any]:
     path = Path(path)
     if not path.exists():
         return {"prediction_ledger_available": False, "prediction_ledger_path": str(path), "prediction_ledger_rows": 0, "matured_prediction_rows": 0, "pending_prediction_rows": 0, "invalid_prediction_rows": 0, "temporal_guard_status": "BLOCKED", "label_contract_status": "BLOCKED", "evaluation_reproducibility_status": "BLOCKED", "model_readiness_blocker": "BLOCKED_INSUFFICIENT_PREDICTION_COHORT", "findings": ["prediction ledger missing"]}
     rows = load_prediction_ledger(path)
-    missing_fields = [field for field in LEDGER_FIELDS if any(field not in row for row in rows)] if rows else []
-    temporal_findings = [{"prediction_id": row.get("prediction_id"), "reasons": validate_temporal_row(row, as_of)} for row in rows]
+    hydrated_rows = [hydrate_ledger_row_for_audit(row, as_of) for row in rows]
+    missing_fields = _missing_schema_fields_for_audit(rows, hydrated_rows) if rows else []
+    temporal_findings = [{"prediction_id": row.get("prediction_id"), "reasons": validate_temporal_row(row, as_of)} for row in hydrated_rows]
     temporal_findings = [f for f in temporal_findings if f["reasons"]]
-    label_values = {row.get("target_label", row.get("y_true")) for row in rows if row.get("target_label", row.get("y_true")) is not None}
+    label_values = {_first_present(row.get("target_label"), row.get("y_true")) for row in hydrated_rows if _first_present(row.get("target_label"), row.get("y_true")) is not None}
     invalid_labels = sorted(str(v) for v in label_values if v not in CANONICAL_LABELS)
     prediction_ids = [str(row.get("prediction_id")) for row in rows if row.get("prediction_id")]
     duplicate_prediction_id_count = len(prediction_ids) - len(set(prediction_ids))
     duplicate_prediction_ids = sorted([pid for pid in set(prediction_ids) if prediction_ids.count(pid) > 1])
-    matured = sum(1 for row in rows if row.get("label_status") == "MATURED" and row.get("target_label") in FINAL_TARGET_LABELS)
-    pending = sum(1 for row in rows if row.get("label_status") == "PENDING")
-    missing_matured_labels = sum(1 for row in rows if row.get("label_status") == "MATURED" and row.get("target_label") not in FINAL_TARGET_LABELS)
-    invalid = sum(1 for row in rows if row.get("label_status") in INVALID_LABEL_STATUSES) + missing_matured_labels + len(temporal_findings)
+    matured = sum(1 for row in hydrated_rows if row.get("label_status") == "MATURED" and row.get("target_label") in FINAL_TARGET_LABELS)
+    pending = sum(1 for row in hydrated_rows if row.get("label_status") == "PENDING")
+    missing_matured_labels = sum(1 for row in hydrated_rows if row.get("label_status") == "MATURED" and row.get("target_label") not in FINAL_TARGET_LABELS)
+    invalid = sum(1 for row in hydrated_rows if row.get("label_status") in INVALID_LABEL_STATUSES) + missing_matured_labels + len(temporal_findings)
     findings = []
     if duplicate_prediction_id_count > 0:
         findings.append(f"duplicate prediction_id values detected: {duplicate_prediction_id_count}")
