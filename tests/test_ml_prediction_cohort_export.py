@@ -4,7 +4,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from ml_prediction_cohort import COHORT_FIELDS, materialize_prediction_cohort
+from database import init_db
+from ml_prediction_cohort import COHORT_FIELDS, materialize_prediction_cohort, run_prediction_cohort_export
 from ml_prediction_ledger import load_prediction_ledger
 from ml_metric_reconciliation import run_ml_metric_reconciliation
 
@@ -34,6 +35,40 @@ def _dataset(rows=12):
         "funding_warning": ["NO"] * rows,
         "target": labels,
     })
+
+
+def _historical_db(path: Path, rows: int = 18) -> None:
+    init_db(str(path))
+    labels = ["WIN", "LOSS", "TP1 HIT"]
+    with __import__("sqlite3").connect(path) as connection:
+        for i in range(rows):
+            ts = f"2024-02-{i+1:02d}T00:00:00Z"
+            symbol = "BTCUSDT" if i % 2 == 0 else "ETHUSDT"
+            connection.execute(
+                """
+                INSERT INTO historical_outcomes
+                (signal_timestamp, close_timestamp, symbol, entry, exit_price, pnl_pct, status, win_loss, score)
+                VALUES (?, ?, ?, 100, 101, 1.0, ?, ?, ?)
+                """,
+                (ts, f"2024-02-{i+1:02d}T01:00:00Z", symbol, labels[i % len(labels)], labels[i % len(labels)], 50 + i),
+            )
+            connection.execute(
+                """
+                INSERT INTO signals
+                (timestamp, symbol, score, volume_spike, breakout, liquidity_sweep, regime_name, regime_score)
+                VALUES (?, ?, ?, 1, 1, 0, 'TREND', 0.7)
+                """,
+                (ts, symbol, 50 + i),
+            )
+            connection.execute(
+                """
+                INSERT INTO flow_logs
+                (timestamp, symbol, funding_zscore, oi_expansion_rate, taker_delta, pressure_score, squeeze_probability, whale_activity, funding_warning)
+                VALUES (?, ?, 0.1, 0.2, 0.3, 0.4, 0.5, 'LOW', 'NO')
+                """,
+                (ts, symbol),
+            )
+        connection.commit()
 
 
 def test_prediction_cohort_export_creates_expected_csv_fields(tmp_path):
@@ -107,6 +142,128 @@ def test_ledger_write_is_idempotent_by_prediction_id(tmp_path):
     assert first["ledger_duplicates_skipped"] == 0
     assert second["ledger_rows_appended"] == 0
     assert second["ledger_duplicates_skipped"] == 6
+
+
+def test_tiny_invalid_paper_trades_falls_back_to_historical_outcomes(tmp_path):
+    paper = tmp_path / "paper_trades.csv"
+    paper.write_text("timestamp,symbol,status\n2024-01-01T00:00:00Z,BTCUSDT,OPEN\n", encoding="utf-8")
+    signals = tmp_path / "signals_log.csv"
+    signals.write_text("timestamp,symbol,score\n", encoding="utf-8")
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+
+    result = run_prediction_cohort_export(
+        paper_trades_path=str(paper),
+        signals_log_path=str(signals),
+        database_path=str(db),
+        cohort_path=tmp_path / "reports" / "ml_prediction_cohort.csv",
+        ledger_path=tmp_path / "reports" / "ml_prediction_ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+
+    assert result["selected_source"] == "historical_outcomes"
+    assert result["prepared_rows"] == 18
+    assert result["rows"] > 0
+    assert "paper_trades" in result["source_reject_reasons"]
+
+
+def test_historical_outcomes_win_loss_tp1_hit_creates_nonzero_rows_and_counts(tmp_path):
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+    result = run_prediction_cohort_export(
+        paper_trades_path=str(tmp_path / "missing_paper.csv"),
+        signals_log_path=str(tmp_path / "missing_signals.csv"),
+        database_path=str(db),
+        cohort_path=tmp_path / "cohort.csv",
+        ledger_path=tmp_path / "ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+
+    assert result["selected_source"] == "historical_outcomes"
+    assert result["rows"] > 0
+    assert result["target_counts"]["WIN"] == 12
+    assert result["target_counts"]["LOSS"] == 6
+
+
+def test_historical_outcomes_close_timestamp_becomes_target_timestamp(tmp_path):
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+    cohort = tmp_path / "cohort.csv"
+    result = run_prediction_cohort_export(
+        paper_trades_path=str(tmp_path / "missing_paper.csv"),
+        signals_log_path=str(tmp_path / "missing_signals.csv"),
+        database_path=str(db),
+        cohort_path=cohort,
+        ledger_path=tmp_path / "ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+    frame = pd.read_csv(cohort)
+
+    assert result["selected_source"] == "historical_outcomes"
+    assert result["rows"] > 0
+    assert frame["target_timestamp"].notna().all()
+
+
+def test_source_diagnostics_report_rejected_paper_reason_and_target_counts(tmp_path):
+    paper = tmp_path / "paper_trades.csv"
+    paper.write_text("timestamp,symbol,status\n2024-01-01T00:00:00Z,BTCUSDT,OPEN\n", encoding="utf-8")
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+
+    result = run_prediction_cohort_export(
+        paper_trades_path=str(paper),
+        signals_log_path=str(tmp_path / "missing_signals.csv"),
+        database_path=str(db),
+        cohort_path=tmp_path / "cohort.csv",
+        ledger_path=tmp_path / "ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+
+    assert result["source_candidates"] == ["paper_trades", "historical_outcomes", "internal_paper_trades"]
+    assert result["source_candidate_rows"]["paper_trades"] == 1
+    assert any("prepared_rows_below_required_window" in reason for reason in result["source_reject_reasons"]["paper_trades"])
+    assert result["target_counts"] == {"LOSS": 6, "WIN": 12}
+
+
+def test_max_folds_caps_export_and_reports_truncation(tmp_path):
+    cohort = tmp_path / "cohort.csv"
+    ledger = tmp_path / "ledger.jsonl"
+    result = materialize_prediction_cohort(_dataset(36), cohort, ledger, train_window=6, test_window=3, max_folds=2)
+    frame = pd.read_csv(cohort)
+
+    assert result["folds"] == 2
+    assert result["folds_evaluated"] == 2
+    assert result["rows"] == 6
+    assert len(frame) == 6
+    assert result["max_folds"] == 2
+    assert result["export_truncated"] is True
+    assert result["export_truncation_reason"] == "max_folds_reached:2"
+
+
+def test_export_ledger_idempotent_after_historical_fallback(tmp_path):
+    paper = tmp_path / "paper_trades.csv"
+    paper.write_text("timestamp,symbol,status\n", encoding="utf-8")
+    db = tmp_path / "fixture.db"
+    _historical_db(db, rows=18)
+    kwargs = dict(
+        paper_trades_path=str(paper),
+        signals_log_path=str(tmp_path / "missing_signals.csv"),
+        database_path=str(db),
+        cohort_path=tmp_path / "cohort.csv",
+        ledger_path=tmp_path / "ledger.jsonl",
+        train_window=6,
+        test_window=3,
+    )
+    first = run_prediction_cohort_export(**kwargs)
+    second = run_prediction_cohort_export(**kwargs)
+
+    assert first["ledger_rows_appended"] == first["rows"]
+    assert second["ledger_rows_appended"] == 0
+    assert second["ledger_duplicates_skipped"] == first["rows"]
 
 
 def test_governance_invariants_unchanged(tmp_path, monkeypatch):
