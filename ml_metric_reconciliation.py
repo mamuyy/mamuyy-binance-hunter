@@ -983,6 +983,148 @@ def threshold_sample_sufficiency_audit(
         "threshold_sample_sufficiency_findings": findings,
     }
 
+
+def _cohort_comparison_metrics(frame: pd.DataFrame, baseline_label: Optional[str] = None) -> Dict[str, Any]:
+    actuals = frame["__canonical_y_true"].astype(str).tolist() if "__canonical_y_true" in frame.columns else []
+    preds = frame["__canonical_y_pred"].astype(str).tolist() if "__canonical_y_pred" in frame.columns else []
+    rows = len(actuals)
+    baseline_label = baseline_label or _majority_label(actuals)
+    model_accuracy = _safe_ratio(sum(actual == pred for actual, pred in zip(actuals, preds)), rows)
+    baseline_accuracy = _safe_ratio(sum(actual == baseline_label for actual in actuals), rows) if baseline_label else None
+    false_win_count = sum(actual == "LOSS" and pred == "WIN" for actual, pred in zip(actuals, preds))
+    return {
+        "rows": rows,
+        "model_accuracy": model_accuracy,
+        "baseline_accuracy": baseline_accuracy,
+        "false_win_count": false_win_count,
+        "prediction_distribution": _counter_dict(preds),
+        "label_distribution": _counter_dict(actuals),
+        "predicted_win_count": sum(pred == "WIN" for pred in preds),
+        "baseline_label": baseline_label,
+    }
+
+
+def _filtered_segment_comparison_summary(frame: pd.DataFrame, column: str, min_rows: int = 10) -> List[Dict[str, Any]]:
+    rows = []
+    for value, segment in frame.groupby(column, dropna=False):
+        metrics = _cohort_comparison_metrics(segment)
+        rows.append({
+            "segment": None if pd.isna(value) else str(value),
+            "rows_kept": metrics["rows"],
+            "model_accuracy": metrics["model_accuracy"],
+            "baseline_accuracy": metrics["baseline_accuracy"],
+            "model_vs_baseline_delta": round_or_none(metrics["model_accuracy"] - metrics["baseline_accuracy"] if metrics["model_accuracy"] is not None and metrics["baseline_accuracy"] is not None else None),
+            "false_win_count": metrics["false_win_count"],
+            "prediction_distribution": metrics["prediction_distribution"],
+            "label_distribution": metrics["label_distribution"],
+            "insufficient_kept_rows": metrics["rows"] < min_rows,
+        })
+    return sorted(rows, key=lambda row: (-int(row["rows_kept"]), str(row["segment"])))
+
+
+def filtered_cohort_walkforward_comparison(
+    cohort: pd.DataFrame,
+    selected_threshold: Optional[float] = None,
+    min_filtered_rows: int = 100,
+    min_pred_win_rows: int = 30,
+    min_segment_rows: int = 10,
+) -> Dict[str, Any]:
+    """Diagnostic-only full-vs-threshold-filtered cohort comparison.
+
+    This evidence is advisory only. It does not apply thresholds to runtime
+    signals, training, selected-threshold logic, readiness gates, baseline
+    superiority, walk-forward stability, or execution behavior.
+    """
+    base: Dict[str, Any] = {
+        "filtered_cohort_comparison_status": "UNAVAILABLE_NO_SELECTED_THRESHOLD",
+        "filtered_cohort_selected_threshold": None,
+        "filtered_cohort_rows_full": 0,
+        "filtered_cohort_rows_kept": 0,
+        "filtered_cohort_rows_skipped": 0,
+        "filtered_cohort_kept_ratio": None,
+        "filtered_cohort_full_model_accuracy": None,
+        "filtered_cohort_filtered_model_accuracy": None,
+        "filtered_cohort_full_baseline_accuracy": None,
+        "filtered_cohort_filtered_baseline_accuracy": None,
+        "filtered_cohort_filtered_model_vs_baseline_delta": None,
+        "filtered_cohort_filtered_vs_full_accuracy_delta": None,
+        "filtered_cohort_full_false_win_count": None,
+        "filtered_cohort_filtered_false_win_count": None,
+        "filtered_cohort_false_win_delta": None,
+        "filtered_cohort_full_prediction_distribution": {},
+        "filtered_cohort_filtered_prediction_distribution": {},
+        "filtered_cohort_full_label_distribution": {},
+        "filtered_cohort_filtered_label_distribution": {},
+        "filtered_cohort_fold_count": 0,
+        "filtered_cohort_fold_summary": [],
+        "filtered_cohort_symbol_summary": [],
+        "filtered_cohort_regime_summary": [],
+        "filtered_cohort_findings": [],
+        "filtered_cohort_recommendation": "Diagnostic only: do not apply this threshold or unlock execution; use the full-vs-filtered evidence only for future paper-only review.",
+    }
+    selected_threshold = safe_float(selected_threshold)
+    if selected_threshold is None:
+        return {**base, "filtered_cohort_findings": ["No selected threshold is available for filtered cohort comparison."]}
+    frame, reason = _canonical_probability_frame(cohort)
+    if frame.empty:
+        result = {**base, "filtered_cohort_selected_threshold": selected_threshold}
+        result["filtered_cohort_comparison_status"] = "UNAVAILABLE_NO_PROBABILITY_EVIDENCE"
+        result["filtered_cohort_findings"] = [reason]
+        return result
+
+    kept = frame[frame["__predicted_probability"] >= selected_threshold].copy()
+    full = _cohort_comparison_metrics(frame)
+    filtered = _cohort_comparison_metrics(kept)
+    findings = ["Filtered cohort comparison is diagnostic-only and does not alter readiness gates, threshold selection, training, or execution behavior."]
+    if filtered["rows"] < min_filtered_rows:
+        findings.append("REVIEW_INSUFFICIENT_FILTERED_SAMPLE")
+    if filtered["predicted_win_count"] < min_pred_win_rows:
+        findings.append("REVIEW_INSUFFICIENT_PRED_WIN_SAMPLE")
+
+    fold_col = "fold_id" if "fold_id" in kept.columns else None
+    fold_summary = _filtered_segment_comparison_summary(kept, fold_col, min_segment_rows) if fold_col else []
+    if fold_col and (len(fold_summary) < 2 or any(row["rows_kept"] / filtered["rows"] > 0.80 for row in fold_summary if filtered["rows"])):
+        findings.append("REVIEW_SEGMENT_CONCENTRATION")
+    symbol_col = "symbol" if "symbol" in kept.columns else None
+    symbol_summary = _filtered_segment_comparison_summary(kept, symbol_col, min_segment_rows) if symbol_col else []
+    if symbol_col and (len(symbol_summary) < 2 or any(row["rows_kept"] / filtered["rows"] > 0.80 for row in symbol_summary if filtered["rows"])):
+        findings.append("REVIEW_SEGMENT_CONCENTRATION")
+    regime_col = next((col for col in ("market_regime", "regime", "regime_label") if col in kept.columns), None)
+    regime_summary = _filtered_segment_comparison_summary(kept, regime_col, min_segment_rows) if regime_col else []
+    if not regime_col:
+        findings.append("REGIME_SEGMENT_UNAVAILABLE")
+
+    full_acc = full["model_accuracy"]
+    filtered_acc = filtered["model_accuracy"]
+    filtered_baseline = filtered["baseline_accuracy"]
+    return {
+        **base,
+        "filtered_cohort_comparison_status": "AVAILABLE",
+        "filtered_cohort_selected_threshold": selected_threshold,
+        "filtered_cohort_rows_full": full["rows"],
+        "filtered_cohort_rows_kept": filtered["rows"],
+        "filtered_cohort_rows_skipped": full["rows"] - filtered["rows"],
+        "filtered_cohort_kept_ratio": _safe_ratio(filtered["rows"], full["rows"]),
+        "filtered_cohort_full_model_accuracy": full_acc,
+        "filtered_cohort_filtered_model_accuracy": filtered_acc,
+        "filtered_cohort_full_baseline_accuracy": full["baseline_accuracy"],
+        "filtered_cohort_filtered_baseline_accuracy": filtered_baseline,
+        "filtered_cohort_filtered_model_vs_baseline_delta": round_or_none(filtered_acc - filtered_baseline if filtered_acc is not None and filtered_baseline is not None else None),
+        "filtered_cohort_filtered_vs_full_accuracy_delta": round_or_none(filtered_acc - full_acc if filtered_acc is not None and full_acc is not None else None),
+        "filtered_cohort_full_false_win_count": full["false_win_count"],
+        "filtered_cohort_filtered_false_win_count": filtered["false_win_count"],
+        "filtered_cohort_false_win_delta": filtered["false_win_count"] - full["false_win_count"],
+        "filtered_cohort_full_prediction_distribution": full["prediction_distribution"],
+        "filtered_cohort_filtered_prediction_distribution": filtered["prediction_distribution"],
+        "filtered_cohort_full_label_distribution": full["label_distribution"],
+        "filtered_cohort_filtered_label_distribution": filtered["label_distribution"],
+        "filtered_cohort_fold_count": len(fold_summary),
+        "filtered_cohort_fold_summary": fold_summary,
+        "filtered_cohort_symbol_summary": symbol_summary,
+        "filtered_cohort_regime_summary": regime_summary if regime_col else {"status": "UNAVAILABLE", "reason": "No regime column exists in filtered cohort evidence."},
+        "filtered_cohort_findings": sorted(set(findings), key=findings.index),
+    }
+
 def ml_class_imbalance_diagnostic(cohort: pd.DataFrame) -> Dict[str, Any]:
     """Report class-imbalance, confusion-matrix, and threshold diagnostics.
 
@@ -2286,6 +2428,10 @@ def run_ml_metric_reconciliation(
         cohort,
         selected_threshold=threshold_candidate_diagnostic.get("threshold_candidate_selected"),
     )
+    filtered_cohort_comparison = filtered_cohort_walkforward_comparison(
+        cohort,
+        selected_threshold=threshold_candidate_diagnostic.get("threshold_candidate_selected"),
+    )
 
     metric_integrity = metric_integrity_summary(identities)
     display_metric_integrity = metric_integrity["display_metric_integrity"]
@@ -2349,6 +2495,7 @@ def run_ml_metric_reconciliation(
         **threshold_candidate_diagnostic,
         **threshold_stability_audit,
         **threshold_sample_sufficiency,
+        **filtered_cohort_comparison,
         "row_level_walkforward_summary": {k: v for k, v in row_level_walkforward.items() if k not in {"rows"}},
         "walkforward_display_reproduction": wf_display,
         "historical_ml_artifact_reproduction": historical_66,
