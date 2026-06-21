@@ -1352,7 +1352,14 @@ def test_closed_to_ml_coverage_missing_raw_source_does_not_fail():
     assert "RAW_CLOSED_OUTCOME_SOURCE_UNAVAILABLE_FOR_COVERAGE_RECONCILIATION" in audit["closed_to_ml_coverage_findings"]
 
 
-def test_closed_to_ml_coverage_does_not_change_readiness_or_governance(tmp_path):
+def test_closed_to_ml_coverage_does_not_change_readiness_or_governance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_json(tmp_path / "reports" / "paper_outcome_audit.json", {
+        "closed_trades": [
+            {"closed_at": f"2024-01-{(idx % 28) + 1:02d}", "status": "CLOSED", "symbol": "BTCUSDT"}
+            for idx in range(403)
+        ]
+    })
     rows = _threshold_sufficiency_rows(total=120, pred_wins=2, false_win_count=0)
     for idx, row in enumerate(rows):
         row["y_true"] = "WIN" if idx < 80 else "LOSS"
@@ -1368,7 +1375,15 @@ def test_closed_to_ml_coverage_does_not_change_readiness_or_governance(tmp_path)
         })
     report = _run_current_metric_report(tmp_path, rows)
     components = report["model_readiness"]["components"]
-    assert report["closed_to_ml_coverage_status"] in {"AVAILABLE_FROM_REPORT_FIELDS", "AVAILABLE_FROM_ARTIFACT:closed_outcomes"}
+    assert report["closed_to_ml_coverage_status"] in {
+        "AVAILABLE_FROM_REPORT_FIELDS",
+        "AVAILABLE_FROM_ARTIFACT:closed_outcomes",
+        "AVAILABLE_FROM_RAW_CLOSED_SOURCE_DISCOVERY",
+    }
+    assert report["raw_closed_source_discovery_status"] == "AVAILABLE_SELECTED_SOURCE"
+    assert report["closed_to_ml_coverage_status"] == "AVAILABLE_FROM_RAW_CLOSED_SOURCE_DISCOVERY"
+    assert report["closed_to_ml_coverage_raw_closed_count"] == 403
+    assert report["closed_to_ml_coverage_raw_to_ml_gap_count"] == 283
     assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
     assert components["Baseline Superiority"] == "BLOCKED_BELOW_BASELINE"
     assert components["Walk-Forward Stability"] == "BLOCKED_BELOW_BASELINE"
