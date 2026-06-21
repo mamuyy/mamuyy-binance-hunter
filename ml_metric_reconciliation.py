@@ -63,6 +63,31 @@ MANDATORY_CURRENT_READINESS_METRICS = {"Current Model Accuracy", "Walk-Forward R
 
 
 
+def actual_model_feature_columns(feature_columns: Optional[Sequence[str]] = None) -> List[str]:
+    """Return the model feature scope used by ML readiness leakage checks.
+
+    Prediction cohort and ledger artifacts can carry labels, outcomes, row IDs,
+    fold/window metadata, and other evaluation-only evidence columns.  Those
+    columns are not model inputs.  Keep the default scope aligned with
+    ml_engine.build_ml_dataset(), which validates and trains on only
+    NUMERIC_FEATURES + CATEGORICAL_FEATURES.
+    """
+    columns = list(feature_columns) if feature_columns is not None else [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES]
+    return [str(column) for column in columns]
+
+
+def readiness_temporal_feature_guard(
+    cohort: pd.DataFrame,
+    source_artifact: Optional[str] = None,
+    feature_columns: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """Validate temporal integrity using actual model features, not ledger metadata."""
+    return validate_temporal_feature_rows(
+        cohort if not cohort.empty else [],
+        feature_columns=actual_model_feature_columns(feature_columns),
+        source_artifact=source_artifact,
+    )
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1402,9 +1427,8 @@ def run_ml_metric_reconciliation(
     segments = segment_performance(cohort)
     candidate_bridge = candidate_evidence_bridge(model_sample=(metrics or {}).get("samples", 0), paper_sample=lineage.get("row_count", 0))
     prediction_ledger = audit_prediction_ledger(prediction_ledger_path)
-    temporal_feature_guard = validate_temporal_feature_rows(
-        cohort if not cohort.empty else [],
-        feature_columns=[column for column in [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES] if not cohort.empty and column in cohort.columns],
+    temporal_feature_guard = readiness_temporal_feature_guard(
+        cohort,
         source_artifact=discovered_prediction_artifact,
     )
     preprocessing_guard = audit_train_only_preprocessing()

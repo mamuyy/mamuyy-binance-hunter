@@ -20,6 +20,7 @@ from ml_metric_reconciliation import (
     normalize_sqlite_readonly_uri,
     producer_inventory,
     readiness,
+    readiness_temporal_feature_guard,
     reconstruct_walkforward,
     run_ml_metric_reconciliation,
     segment_performance,
@@ -110,6 +111,133 @@ def test_leakage_detection_modes():
     assert leakage_status(train, train.copy())["status"] in {"BLOCKED_TEMPORAL_LEAKAGE", "BLOCKED_SPLIT_CONTAMINATION"}
     assert "BLOCKED_TARGET_LEAKAGE" in leakage_status(train, test, feature_cols=["pnl_percent"])["reasons"]
     assert leakage_status(pd.DataFrame(), test)["status"] == "UNVERIFIABLE"
+
+
+
+def test_temporal_guard_ignores_cohort_metadata_outside_model_features():
+    cohort = pd.DataFrame([
+        {
+            "prediction_timestamp": "2024-01-01T00:00:00Z",
+            "feature_timestamp_max": "2023-12-31T23:59:00Z",
+            "target_timestamp": "2024-01-02T00:00:00Z",
+            "target_horizon": "24h",
+            "target_label": "WIN",
+            "label_status": "MATURED",
+            "label_source": "prediction_ledger",
+            "evaluation_status": "EVALUATED",
+            "prediction_id": "p1",
+            "model_version": "m1",
+            "fold_id": 1,
+            "train_start": "2023-12-01T00:00:00Z",
+            "train_end": "2023-12-31T00:00:00Z",
+            "test_start": "2024-01-01T00:00:00Z",
+            "test_end": "2024-01-02T00:00:00Z",
+            "y_true": "WIN",
+            "y_pred": "WIN",
+        }
+    ])
+
+    result = readiness_temporal_feature_guard(cohort)
+
+    assert result["status"] == "PASS"
+    assert result["target_leakage_column_count"] == 0
+    assert not any(f.get("reason") == "label_or_outcome_columns_in_model_features" for f in result["temporal_guard_findings"])
+
+
+def test_temporal_guard_blocks_when_actual_model_feature_scope_contains_label_columns():
+    cohort = pd.DataFrame([
+        {
+            "prediction_timestamp": "2024-01-01T00:00:00Z",
+            "feature_timestamp_max": "2023-12-31T23:59:00Z",
+            "target_timestamp": "2024-01-02T00:00:00Z",
+            "y_true": "WIN",
+        }
+    ])
+
+    result = readiness_temporal_feature_guard(cohort, feature_columns=["score", "y_true", "target_timestamp"])
+
+    assert result["status"] == "BLOCKED"
+    assert result["target_leakage_column_count"] == 2
+    finding = next(f for f in result["temporal_guard_findings"] if f.get("reason") == "label_or_outcome_columns_in_model_features")
+    assert finding["columns"] == ["target_timestamp", "y_true"]
+
+
+def test_readiness_leakage_safety_not_blocked_by_metadata_only_cohort(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    model = tmp_path / "model_output.json"
+    model.write_text(json.dumps({"accuracy": 0.3281, "ai_confidence_score": 65}), encoding="utf-8")
+    cohort = tmp_path / "prediction_cohort.csv"
+    rows = []
+    for idx in range(12):
+        day = idx + 1
+        rows.append({
+            "prediction_timestamp": f"2024-01-{day:02d}T00:00:00Z",
+            "feature_timestamp_max": f"2024-01-{day:02d}T00:00:00Z",
+            "target_timestamp": f"2024-01-{day + 1:02d}T00:00:00Z",
+            "target_horizon": "24h",
+            "label_status": "MATURED",
+            "label_source": "prediction_ledger",
+            "evaluation_status": "EVALUATED",
+            "prediction_id": f"p{idx}",
+            "model_version": "m1",
+            "evaluation_contract": "contract-v1",
+            "fold_id": idx // 3,
+            "y_true": "WIN" if idx % 2 == 0 else "LOSS",
+            "y_pred": "WIN",
+        })
+    pd.DataFrame(rows).to_csv(cohort, index=False)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        "".join(
+            json.dumps({
+                "prediction_id": row["prediction_id"],
+                "candidate_id": f"c{idx}",
+                "symbol": "BTCUSDT",
+                "side": "LONG",
+                "prediction_timestamp": row["prediction_timestamp"],
+                "feature_timestamp_max": row["feature_timestamp_max"],
+                "target_horizon": row["target_horizon"],
+                "target_timestamp": row["target_timestamp"],
+                "target_label": row["y_true"],
+                "y_pred": row["y_pred"],
+                "y_true": row["y_true"],
+                "predicted_probability": 0.75,
+                "model_version": row["model_version"],
+                "feature_schema_version": "features-v1",
+                "fold_id": row["fold_id"],
+                "train_window_start": "2023-12-01T00:00:00Z",
+                "train_window_end": "2023-12-31T00:00:00Z",
+                "test_window_start": row["prediction_timestamp"],
+                "test_window_end": row["target_timestamp"],
+                "label_source": row["label_source"],
+                "label_status": row["label_status"],
+                "evaluation_status": row["evaluation_status"],
+                "temporal_guard_status": "PASS",
+                "created_at": "2024-01-15T00:00:00Z",
+                "updated_at": "2024-01-15T00:00:00Z",
+            }) + "\n"
+            for idx, row in enumerate(rows)
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path=str(model),
+        walkforward_path="missing.csv",
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path=str(ledger),
+    )
+
+    components = report["model_readiness"]["components"]
+    assert components["Leakage Safety"] == "REVIEW"
+    assert components["Metric Integrity"] == "BLOCKED_UNREPRODUCIBLE"
+    assert components["Evaluation Metric Integrity"] == "BLOCKED_UNREPRODUCIBLE"
+    assert components["Baseline Superiority"].startswith("BLOCKED")
+    assert components["Walk-Forward Stability"].startswith("BLOCKED")
+    assert report["temporal_feature_guard_status"] == "PASS"
+    assert not any(f.get("reason") == "label_or_outcome_columns_in_model_features" for f in report["temporal_guard_findings"])
 
 
 def test_walkforward_aggregates_latest_worst_weighted_and_unverifiable(tmp_path):
