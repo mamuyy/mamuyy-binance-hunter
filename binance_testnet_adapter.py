@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol
 from urllib.error import HTTPError
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
-from urllib.request import urlopen
+import urllib.request
 
 
 BINANCE_TESTNET_ENV_FOUND = "BINANCE_TESTNET_ENV_FOUND"
@@ -64,7 +64,9 @@ class UrllibHttpClient:
 
     def get(self, url: str, **kwargs: Any) -> Any:
         timeout = float(kwargs.get("timeout", 10))
-        with urlopen(url, timeout=timeout) as response:  # nosec B310 - URL is validated before use.
+        headers = kwargs.get("headers") or {}
+        request = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - URL is validated before use.
             body = response.read().decode("utf-8")
             try:
                 parsed_body: Any = json.loads(body) if body else {}
@@ -400,6 +402,8 @@ def classify_binance_signed_error(code: Any, msg: Any, http_status: Any = None) 
     except (TypeError, ValueError):
         numeric_code = None
     message = str(msg or "").lower()
+    if numeric_code == -2014 or "api-key format invalid" in message or "bad api-key format" in message:
+        return "BAD_API_KEY_FORMAT"
     if numeric_code == -2015 or "invalid api-key" in message or "permission" in message or "permissions" in message or "ip" in message:
         return "INVALID_KEY_OR_PERMISSION"
     if numeric_code == -1021 or "timestamp" in message or "recvwindow" in message:
@@ -447,6 +451,8 @@ def _signed_read_only_recommendation(categories: list[str]) -> str:
         return "check_local_clock_server_time_and_recvWindow"
     if "INVALID_SIGNATURE" in category_set:
         return "check_signed_query_construction_and_api_secret_for_usd_m_futures_testnet"
+    if "BAD_API_KEY_FORMAT" in category_set or "INVALID_API_KEY_FORMAT" in category_set:
+        return "check_api_key_header_delivery_and_key_product_for_usd_m_futures_testnet"
     if "INVALID_KEY_OR_PERMISSION" in category_set:
         return "check_key_product_testnet_vs_futures_validity_ip_and_read_permissions"
     if "PERMISSION_DENIED" in category_set:
