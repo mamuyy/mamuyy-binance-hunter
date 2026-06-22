@@ -30,6 +30,7 @@ CLI_SUBCOMMAND_FLAGS = {
     "ml-metric-audit": "--ml-metric-audit",
     "ml-prediction-ledger-audit": "--ml-prediction-ledger-audit",
     "ml-prediction-cohort-export": "--ml-prediction-cohort-export",
+    "binance-testnet-audit": "--binance-testnet-audit",
 }
 
 if len(sys.argv) > 1 and sys.argv[1] in CLI_SUBCOMMAND_FLAGS:
@@ -72,6 +73,25 @@ if "--ml-prediction-ledger-audit" in sys.argv:
     print(f"Rows: {_report.get('prediction_ledger_rows')}")
     print(f"Temporal Guard: {_report.get('temporal_guard_status')}")
     print("Report: reports/ml_prediction_ledger_audit.json")
+    sys.exit(0)
+
+if "--binance-testnet-audit" in sys.argv:
+    from binance_testnet_adapter import run_binance_testnet_audit as _run_binance_testnet_audit
+
+    _result = _run_binance_testnet_audit()
+    _payload = _result.to_dict()
+    print("BINANCE TESTNET AUDIT")
+    print(f"Status: {_payload.get('status')}")
+    print(f"Enabled: {_payload.get('enabled')}")
+    print(f"Broker Mode: {_payload.get('broker_mode') or '-'}")
+    print(f"REST Base URL: {_payload.get('rest_base_url')}")
+    print(f"API Key Present: {_payload.get('api_key_present')} Masked: {_payload.get('api_key_masked') or '-'}")
+    print(f"API Secret Present: {_payload.get('api_secret_present')} Masked: {_payload.get('api_secret_masked') or '-'}")
+    print(f"Public Ping: {_payload.get('public_ping_status')}")
+    print(f"Exchange Info: {_payload.get('exchange_info_status')}")
+    print(f"Order Placement: {_payload.get('order_placement_status')}")
+    print(f"Findings: {_payload.get('findings') or ['none']}")
+    print("Report: reports/binance_testnet_audit.json")
     sys.exit(0)
 
 if "--health" in sys.argv:
