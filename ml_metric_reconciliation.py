@@ -1285,6 +1285,33 @@ def _field_availability(rows: Sequence[Dict[str, Any]], fields: Sequence[str]) -
     return {field: {"present": sum(1 for row in rows if _present(row.get(field))), "missing": total - sum(1 for row in rows if _present(row.get(field)))} for field in fields}
 
 
+LINKAGE_ADOPTION_FIELDS = [
+    "prediction_id",
+    "trade_id",
+    "signal_id",
+    "symbol",
+    "source_signal_timestamp",
+    "target_timestamp",
+    "closed_at",
+    "outcome or label",
+    "predicted_probability",
+    "model_version",
+    "evaluation_contract",
+    "prediction_outcome_linkage_flags",
+]
+
+LINKAGE_ADOPTION_MINIMUM_COMPLETE_FIELDS = [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "target_timestamp",
+    "closed_at",
+    "outcome or label",
+    "predicted_probability",
+]
+
+LINKAGE_ADOPTION_REVIEW_MINIMUM_COMPLETE_ROWS = 30
+
 LINKAGE_REQUIRED_KEYS = [
     "prediction_id",
     "trade_id",
@@ -1376,6 +1403,122 @@ def _key_coverage(rows: Sequence[Dict[str, Any]], keys: Sequence[str], include_p
             "coverage_ratio": round_or_none(_safe_ratio(present, total) if total else None),
         }
     return coverage
+
+
+def _row_has_any(row: Dict[str, Any], keys: Sequence[str]) -> bool:
+    return any(_present(row.get(key)) for key in keys)
+
+
+def _row_has_outcome_or_label(row: Dict[str, Any]) -> bool:
+    return _row_has_any(row, ("outcome", "label", "target_label", "y_true", "status"))
+
+
+def _linkage_adoption_field_present(row: Dict[str, Any], field: str) -> bool:
+    if field == "outcome or label":
+        return _row_has_outcome_or_label(row)
+    return _present(row.get(field))
+
+
+def _flag_values(value: Any) -> List[str]:
+    if not _present(value):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if _present(item)]
+    if isinstance(value, dict):
+        return [str(key) for key, enabled in value.items() if enabled]
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def prediction_outcome_linkage_adoption_audit(
+    report_or_artifacts: Dict[str, Any],
+    review_minimum_complete_rows: int = LINKAGE_ADOPTION_REVIEW_MINIMUM_COMPLETE_ROWS,
+) -> Dict[str, Any]:
+    """Read-only audit of forward-only prediction/outcome linkage adoption.
+
+    The audit inspects the canonical raw closed outcome source only. It reports
+    whether newly produced closed_trades rows have begun carrying linkage fields;
+    it never backfills, mutates source rows, changes model behavior, or changes
+    readiness/execution gates.
+    """
+    report = report_or_artifacts if isinstance(report_or_artifacts, dict) else {}
+    artifact_paths = report.get("artifact_paths") if isinstance(report.get("artifact_paths"), dict) else {}
+    raw_path = Path(str(report.get("raw_closed_source_selected_path") or artifact_paths.get("raw_closed_source_selected_path") or CANONICAL_RAW_CLOSED_SOURCE_PATH))
+    raw_rows, container = _read_json_records_from_container(raw_path, report.get("raw_closed_source_selected_container") or CANONICAL_RAW_CLOSED_CONTAINER)
+    total = len(raw_rows)
+
+    coverage: Dict[str, Dict[str, Any]] = {}
+    for field in LINKAGE_ADOPTION_FIELDS:
+        present = sum(1 for row in raw_rows if _linkage_adoption_field_present(row, field))
+        coverage[field] = {
+            "present": present,
+            "missing": total - present,
+            "coverage_ratio": round_or_none(_safe_ratio(present, total) if total else None),
+        }
+
+    rows_with_prediction_id = coverage["prediction_id"]["present"]
+    rows_with_trade_or_signal_id = sum(1 for row in raw_rows if _row_has_any(row, ("trade_id", "signal_id")))
+    rows_with_predicted_probability = coverage["predicted_probability"]["present"]
+    rows_with_model_version = coverage["model_version"]["present"]
+    rows_with_evaluation_contract = coverage["evaluation_contract"]["present"]
+    complete_rows = sum(
+        1 for row in raw_rows
+        if _present(row.get("prediction_id"))
+        and _row_has_any(row, ("trade_id", "signal_id"))
+        and _present(row.get("symbol"))
+        and _present(row.get("target_timestamp"))
+        and _present(row.get("closed_at"))
+        and _row_has_outcome_or_label(row)
+        and _present(row.get("predicted_probability"))
+    )
+    legacy_like_rows = sum(1 for row in raw_rows if not _present(row.get("prediction_id")))
+
+    flag_counts: Counter[str] = Counter()
+    for row in raw_rows:
+        flag_counts.update(_flag_values(row.get("prediction_outcome_linkage_flags")))
+
+    if rows_with_prediction_id == 0:
+        status = "WAITING_FOR_FORWARD_LINKED_OUTCOMES"
+    elif complete_rows < rows_with_prediction_id:
+        status = "REVIEW_PARTIAL_FORWARD_LINKAGE_ADOPTION"
+    elif complete_rows >= review_minimum_complete_rows:
+        status = "FORWARD_LINKAGE_ADOPTION_OBSERVED_REVIEW_ONLY"
+    else:
+        status = "FORWARD_LINKAGE_ADOPTION_OBSERVED"
+
+    findings = [
+        "DIAGNOSTIC_ONLY_READ_ONLY_FORWARD_LINKAGE_ADOPTION_AUDIT",
+        "Legacy rows are expected to remain incomplete and are counted separately as legacy-like rows.",
+        "No backfill is performed and historical closed_trades rows are not mutated.",
+        "Model repair remains blocked until enough future complete linked rows exist for review.",
+        f"canonical_raw_closed_source={raw_path}",
+        f"raw_closed_container={container}",
+    ]
+    if complete_rows < review_minimum_complete_rows:
+        findings.append(f"Complete linked rows {complete_rows} are below diagnostic review threshold {review_minimum_complete_rows}.")
+    else:
+        findings.append(f"Complete linked rows meet diagnostic review threshold {review_minimum_complete_rows}; this is review-only and does not unlock readiness.")
+
+    return {
+        "prediction_outcome_linkage_adoption_status": status,
+        "prediction_outcome_linkage_adoption_total_closed_rows": total,
+        "prediction_outcome_linkage_adoption_rows_with_prediction_id": rows_with_prediction_id,
+        "prediction_outcome_linkage_adoption_rows_with_trade_or_signal_id": rows_with_trade_or_signal_id,
+        "prediction_outcome_linkage_adoption_rows_with_predicted_probability": rows_with_predicted_probability,
+        "prediction_outcome_linkage_adoption_rows_with_model_version": rows_with_model_version,
+        "prediction_outcome_linkage_adoption_rows_with_evaluation_contract": rows_with_evaluation_contract,
+        "prediction_outcome_linkage_adoption_rows_with_full_minimum_fields": complete_rows,
+        "prediction_outcome_linkage_adoption_legacy_like_rows": legacy_like_rows,
+        "prediction_outcome_linkage_adoption_candidate_linked_rows": complete_rows,
+        "prediction_outcome_linkage_adoption_field_coverage": coverage,
+        "prediction_outcome_linkage_adoption_flag_counts": dict(sorted(flag_counts.items())),
+        "prediction_outcome_linkage_adoption_minimum_complete_fields": LINKAGE_ADOPTION_MINIMUM_COMPLETE_FIELDS,
+        "prediction_outcome_linkage_adoption_review_minimum_complete_rows": review_minimum_complete_rows,
+        "prediction_outcome_linkage_adoption_findings": findings,
+        "prediction_outcome_linkage_adoption_recommendation": (
+            "Review-only: wait for at least 30 complete future-linked closed outcomes before reconsidering model repair; "
+            "do not backfill, mutate historical rows, change training/inference/predictions/thresholds/readiness, or enable execution."
+        ),
+    }
 
 
 def prediction_outcome_linkage_contract_audit(report_or_artifacts: Dict[str, Any]) -> Dict[str, Any]:
@@ -3566,11 +3709,13 @@ def run_ml_metric_reconciliation(
     closed_to_ml_coverage_audit = closed_outcome_to_ml_cohort_coverage_audit(coverage_audit_input)
     gap_reason_audit = raw_closed_to_ml_cohort_gap_reason_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, "prediction_ledger_path": prediction_ledger_path})
     linkage_contract_audit = prediction_outcome_linkage_contract_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, **gap_reason_audit, "prediction_ledger_path": prediction_ledger_path})
+    linkage_adoption_audit = prediction_outcome_linkage_adoption_audit({**coverage_audit_input, **closed_to_ml_coverage_audit, **gap_reason_audit})
     producer_contract_plan = prediction_outcome_linkage_producer_contract_plan({
         "model_readiness": ready,
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
         **linkage_contract_audit,
+        **linkage_adoption_audit,
     })
     model_upgrade_diagnostic_plan = ml_model_repair_upgrade_diagnostic_plan({
         "model_readiness": ready,
@@ -3585,6 +3730,7 @@ def run_ml_metric_reconciliation(
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
         **linkage_contract_audit,
+        **linkage_adoption_audit,
         **producer_contract_plan,
         **paper_filter_candidate,
         **paper_filter_shadow_review,
@@ -3636,6 +3782,7 @@ def run_ml_metric_reconciliation(
         **closed_to_ml_coverage_audit,
         **gap_reason_audit,
         **linkage_contract_audit,
+        **linkage_adoption_audit,
         **producer_contract_plan,
         **paper_filter_candidate,
         **paper_filter_shadow_review,

@@ -22,6 +22,7 @@ from ml_metric_reconciliation import (
     ml_model_repair_upgrade_diagnostic_plan,
     paper_filter_candidate_registry,
     paper_filter_shadow_review_scorecard,
+    prediction_outcome_linkage_adoption_audit,
     prediction_outcome_linkage_contract_audit,
     prediction_outcome_linkage_producer_contract_plan,
     threshold_candidate_stability_audit,
@@ -1869,6 +1870,131 @@ def _linkage_audit(tmp_path, raw_rows, ml_rows, extra=None):
     if extra:
         report.update(extra)
     return prediction_outcome_linkage_contract_audit(report)
+
+
+def _linkage_adoption_audit(tmp_path, raw_rows, extra=None):
+    reports = tmp_path / "reports"
+    reports.mkdir(exist_ok=True)
+    raw = reports / "paper_outcome_audit.json"
+    raw.write_text(json.dumps({"closed_trades": raw_rows}), encoding="utf-8")
+    report = {"raw_closed_source_selected_path": str(raw)}
+    if extra:
+        report.update(extra)
+    return prediction_outcome_linkage_adoption_audit(report)
+
+
+def test_prediction_outcome_linkage_adoption_waits_when_no_prediction_id(tmp_path):
+    audit = _linkage_adoption_audit(
+        tmp_path,
+        [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}],
+    )
+
+    assert audit["prediction_outcome_linkage_adoption_status"] == "WAITING_FOR_FORWARD_LINKED_OUTCOMES"
+    assert audit["prediction_outcome_linkage_adoption_rows_with_prediction_id"] == 0
+
+
+def test_prediction_outcome_linkage_adoption_reviews_partial_rows(tmp_path):
+    audit = _linkage_adoption_audit(
+        tmp_path,
+        [{"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02", "closed_at": "2024-01-03", "outcome": "WIN"}],
+    )
+
+    assert audit["prediction_outcome_linkage_adoption_status"] == "REVIEW_PARTIAL_FORWARD_LINKAGE_ADOPTION"
+    assert audit["prediction_outcome_linkage_adoption_rows_with_trade_or_signal_id"] == 0
+    assert audit["prediction_outcome_linkage_adoption_rows_with_predicted_probability"] == 0
+
+
+def test_prediction_outcome_linkage_adoption_counts_complete_candidate_rows(tmp_path):
+    audit = _linkage_adoption_audit(
+        tmp_path,
+        [{
+            "prediction_id": "p1",
+            "trade_id": "t1",
+            "symbol": "BTC",
+            "target_timestamp": "2024-01-02",
+            "closed_at": "2024-01-03",
+            "label": "WIN",
+            "predicted_probability": 0.81,
+        }],
+    )
+
+    assert audit["prediction_outcome_linkage_adoption_status"] == "FORWARD_LINKAGE_ADOPTION_OBSERVED"
+    assert audit["prediction_outcome_linkage_adoption_rows_with_full_minimum_fields"] == 1
+    assert audit["prediction_outcome_linkage_adoption_candidate_linked_rows"] == 1
+
+
+def test_prediction_outcome_linkage_adoption_field_coverage_counts_present_and_missing(tmp_path):
+    audit = _linkage_adoption_audit(
+        tmp_path,
+        [
+            {"prediction_id": "p1", "trade_id": "t1", "symbol": "BTC", "predicted_probability": 0.8},
+            {"symbol": "ETH", "closed_at": "2024-01-03"},
+        ],
+    )
+    coverage = audit["prediction_outcome_linkage_adoption_field_coverage"]
+
+    assert coverage["prediction_id"] == {"present": 1, "missing": 1, "coverage_ratio": 0.5}
+    assert coverage["symbol"] == {"present": 2, "missing": 0, "coverage_ratio": 1.0}
+    assert coverage["predicted_probability"]["present"] == 1
+
+
+def test_prediction_outcome_linkage_adoption_aggregates_flag_counts(tmp_path):
+    audit = _linkage_adoption_audit(
+        tmp_path,
+        [
+            {"prediction_outcome_linkage_flags": ["FORWARD_LINKED", "COMPLETE"]},
+            {"prediction_outcome_linkage_flags": "FORWARD_LINKED,REVIEW"},
+            {"prediction_outcome_linkage_flags": {"COMPLETE": True, "IGNORED": False}},
+        ],
+    )
+
+    assert audit["prediction_outcome_linkage_adoption_flag_counts"] == {
+        "COMPLETE": 2,
+        "FORWARD_LINKED": 2,
+        "REVIEW": 1,
+    }
+
+
+def test_prediction_outcome_linkage_adoption_counts_legacy_like_without_source_mutation(tmp_path):
+    reports = tmp_path / "reports"
+    reports.mkdir(exist_ok=True)
+    raw = reports / "paper_outcome_audit.json"
+    raw.write_text(json.dumps({"closed_trades": [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}]}), encoding="utf-8")
+    before = raw.read_bytes()
+
+    audit = prediction_outcome_linkage_adoption_audit({"raw_closed_source_selected_path": str(raw)})
+
+    assert audit["prediction_outcome_linkage_adoption_legacy_like_rows"] == 1
+    assert raw.read_bytes() == before
+
+
+def test_prediction_outcome_linkage_adoption_does_not_alter_readiness_governance(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cohort = tmp_path / "prediction_cohort.csv"
+    pd.DataFrame([
+        {"prediction_timestamp": "2024-01-01", "target_timestamp": "2024-01-02", "model_version": "m1", "evaluation_contract": "c", "y_true": "WIN", "y_pred": "LOSS", "predicted_probability": 0.7},
+        {"prediction_timestamp": "2024-01-02", "target_timestamp": "2024-01-03", "model_version": "m1", "evaluation_contract": "c", "y_true": "LOSS", "y_pred": "WIN", "predicted_probability": 0.6},
+    ]).to_csv(cohort, index=False)
+    reports = tmp_path / "reports"
+    reports.mkdir(exist_ok=True)
+    (reports / "paper_outcome_audit.json").write_text(json.dumps({"closed_trades": [{"symbol": "BTC", "closed_at": "2024-01-02", "status": "WIN"}]}), encoding="utf-8")
+    (reports / "ml_prediction_ledger.jsonl").write_text(json.dumps({"prediction_id": "p1", "symbol": "BTC", "target_timestamp": "2024-01-02", "y_true": "WIN", "predicted_probability": 0.9}) + "\n", encoding="utf-8")
+
+    report = run_ml_metric_reconciliation(
+        output_dir="reports",
+        db_path="missing.db",
+        model_output_path="missing_model.json",
+        walkforward_path="missing_walk.csv",
+        prediction_artifact_path=str(cohort),
+        prediction_ledger_path=str(reports / "ml_prediction_ledger.jsonl"),
+    )
+
+    assert report["prediction_outcome_linkage_adoption_status"] == "WAITING_FOR_FORWARD_LINKED_OUTCOMES"
+    assert report["model_readiness"]["overall_status"].startswith("BLOCKED")
+    assert report["model_readiness"]["execution_allowed"] is False
+    assert report["model_readiness"]["paper_only"] is True
+    assert report["governance"]["execution_allowed"] is False
+    assert report["governance"]["paper_only"] is True
 
 
 def test_prediction_outcome_linkage_blocks_when_raw_lacks_ids_but_ledger_has_prediction_id(tmp_path):

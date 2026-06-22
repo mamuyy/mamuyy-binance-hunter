@@ -468,7 +468,7 @@
   "filtered_cohort_symbol_summary": [],
   "full_dataset_fit_violation_count": 0,
   "future_feature_violation_count": 0,
-  "generated_at": "2026-06-21T17:29:20.705996+00:00",
+  "generated_at": "2026-06-22T00:05:21.875418+00:00",
   "governance": {
     "automatic_promotion_allowed": false,
     "execution_allowed": false,
@@ -929,6 +929,99 @@
     "prediction_ledger_rows": 0,
     "temporal_guard_status": "BLOCKED"
   },
+  "prediction_outcome_linkage_adoption_candidate_linked_rows": 0,
+  "prediction_outcome_linkage_adoption_field_coverage": {
+    "closed_at": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "evaluation_contract": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "model_version": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "outcome or label": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "predicted_probability": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "prediction_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "prediction_outcome_linkage_flags": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "signal_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "source_signal_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "symbol": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "target_timestamp": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    },
+    "trade_id": {
+      "coverage_ratio": null,
+      "missing": 0,
+      "present": 0
+    }
+  },
+  "prediction_outcome_linkage_adoption_findings": [
+    "DIAGNOSTIC_ONLY_READ_ONLY_FORWARD_LINKAGE_ADOPTION_AUDIT",
+    "Legacy rows are expected to remain incomplete and are counted separately as legacy-like rows.",
+    "No backfill is performed and historical closed_trades rows are not mutated.",
+    "Model repair remains blocked until enough future complete linked rows exist for review.",
+    "canonical_raw_closed_source=reports/paper_outcome_audit.json",
+    "raw_closed_container=None",
+    "Complete linked rows 0 are below diagnostic review threshold 30."
+  ],
+  "prediction_outcome_linkage_adoption_flag_counts": {},
+  "prediction_outcome_linkage_adoption_legacy_like_rows": 0,
+  "prediction_outcome_linkage_adoption_minimum_complete_fields": [
+    "prediction_id",
+    "trade_id or signal_id",
+    "symbol",
+    "target_timestamp",
+    "closed_at",
+    "outcome or label",
+    "predicted_probability"
+  ],
+  "prediction_outcome_linkage_adoption_recommendation": "Review-only: wait for at least 30 complete future-linked closed outcomes before reconsidering model repair; do not backfill, mutate historical rows, change training/inference/predictions/thresholds/readiness, or enable execution.",
+  "prediction_outcome_linkage_adoption_review_minimum_complete_rows": 30,
+  "prediction_outcome_linkage_adoption_rows_with_evaluation_contract": 0,
+  "prediction_outcome_linkage_adoption_rows_with_full_minimum_fields": 0,
+  "prediction_outcome_linkage_adoption_rows_with_model_version": 0,
+  "prediction_outcome_linkage_adoption_rows_with_predicted_probability": 0,
+  "prediction_outcome_linkage_adoption_rows_with_prediction_id": 0,
+  "prediction_outcome_linkage_adoption_rows_with_trade_or_signal_id": 0,
+  "prediction_outcome_linkage_adoption_status": "WAITING_FOR_FORWARD_LINKED_OUTCOMES",
+  "prediction_outcome_linkage_adoption_total_closed_rows": 0,
   "prediction_outcome_linkage_available_keys": [],
   "prediction_outcome_linkage_contract_gaps": [
     "NO_HIGH_CONFIDENCE_ONE_TO_ONE_LINKAGE_KEY",
