@@ -13,9 +13,11 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol
+from urllib.error import HTTPError
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
@@ -327,34 +329,70 @@ def _response_status_code(response_or_exception: Any) -> Optional[int]:
             return int(value) if value is not None else None
         except (TypeError, ValueError):
             return None
-    value = getattr(response_or_exception, "status_code", None) or getattr(response_or_exception, "status", None)
+    value = (
+        getattr(response_or_exception, "status_code", None)
+        or getattr(response_or_exception, "status", None)
+        or getattr(response_or_exception, "code", None)
+    )
     try:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
 
 
-def _response_body(response_or_exception: Any) -> Any:
-    if isinstance(response_or_exception, Mapping):
-        body = response_or_exception.get("body", response_or_exception.get("json"))
-    else:
-        body = getattr(response_or_exception, "body", None)
+def _sanitize_diagnostic_text(value: Any) -> str:
+    """Return a short diagnostic string with secret-like query values redacted."""
+
+    text = "" if value is None else str(value)
+    text = strip_signature_from_url_or_query(text)
+    text = re.sub(r'(?i)(signature=)[^\s&\\"\']+', r'\1<redacted>', text)
+    for sensitive_key in ("apiKey", "api_key", "X-MBX-APIKEY", "secret"):
+        text = text.replace(f"{sensitive_key}=", f"{sensitive_key}=<redacted>")
+    return text
+
+
+def _parse_response_body(body: Any) -> tuple[Any, bool, str, str | None]:
     if callable(body):
         try:
             body = body()
         except Exception:  # pragma: no cover - defensive for third-party response objects.
             body = None
+    if body is None:
+        return None, False, "missing", None
     if isinstance(body, (bytes, bytearray)):
         body = body.decode("utf-8", errors="replace")
     if isinstance(body, str):
+        present = bool(body)
+        preview = _sanitize_diagnostic_text(body[:200]) if present else ""
+        if not body:
+            return None, False, "empty", preview
         try:
-            return json.loads(body)
+            return json.loads(body), True, "json", preview
         except json.JSONDecodeError:
-            return {"raw_body_preview": strip_signature_from_url_or_query(body[:200])}
+            return {"raw_body_preview": preview}, True, "non_json", preview
+    return body, True, "already_parsed", _sanitize_diagnostic_text(json.dumps(body, sort_keys=True)[:200])
+
+
+def _response_body_details(response_or_exception: Any) -> tuple[Any, bool, str, str | None]:
+    if isinstance(response_or_exception, HTTPError):
+        try:
+            raw_body = response_or_exception.read()
+        except Exception:  # pragma: no cover - defensive for unusual HTTPError file handles.
+            raw_body = None
+        return _parse_response_body(raw_body)
+    if isinstance(response_or_exception, Mapping):
+        body = response_or_exception.get("body", response_or_exception.get("json"))
+    else:
+        body = getattr(response_or_exception, "body", None)
+    return _parse_response_body(body)
+
+
+def _response_body(response_or_exception: Any) -> Any:
+    body, _present, _parse_status, _preview = _response_body_details(response_or_exception)
     return body
 
 
-def classify_binance_signed_error(code: Any, msg: Any) -> str:
+def classify_binance_signed_error(code: Any, msg: Any, http_status: Any = None) -> str:
     """Classify a Binance signed read-only error without exposing request secrets."""
 
     try:
@@ -362,15 +400,21 @@ def classify_binance_signed_error(code: Any, msg: Any) -> str:
     except (TypeError, ValueError):
         numeric_code = None
     message = str(msg or "").lower()
-    if numeric_code in {-2014, -2015} or "api-key" in message or "api key" in message or "permission" in message:
+    if numeric_code == -2015 or "invalid api-key" in message or "permission" in message or "permissions" in message or "ip" in message:
         return "INVALID_KEY_OR_PERMISSION"
     if numeric_code == -1021 or "timestamp" in message or "recvwindow" in message:
         return "TIMESTAMP_DRIFT"
-    if numeric_code in {-1022, -1100} or "signature" in message:
+    if numeric_code == -1022 or "signature" in message:
         return "INVALID_SIGNATURE"
     if numeric_code in {-2010, -2011} or "not authorized" in message or "unauthorized" in message:
         return "PERMISSION_DENIED"
-    if numeric_code is not None or msg:
+    try:
+        status_code = int(http_status) if http_status is not None else None
+    except (TypeError, ValueError):
+        status_code = None
+    if status_code == 401 and numeric_code is None and not msg:
+        return "UNAUTHORIZED_NO_BODY"
+    if numeric_code is not None or msg or status_code is not None:
         return "UNKNOWN_REMOTE_ERROR"
     return "UNKNOWN_LOCAL_ERROR"
 
@@ -378,14 +422,18 @@ def classify_binance_signed_error(code: Any, msg: Any) -> str:
 def sanitize_signed_error_response(response_or_exception: Any) -> dict[str, Any]:
     """Extract safe diagnostic fields from a Binance response or exception."""
 
-    body = _response_body(response_or_exception)
+    body, body_present, parse_status, body_preview = _response_body_details(response_or_exception)
     code = body.get("code") if isinstance(body, Mapping) else None
     msg = body.get("msg") if isinstance(body, Mapping) else None
+    http_status = _response_status_code(response_or_exception)
     diagnostic: dict[str, Any] = {
-        "http_status": _response_status_code(response_or_exception),
+        "http_status": http_status,
         "binance_code": code,
-        "binance_msg": strip_signature_from_url_or_query(msg) if msg is not None else None,
-        "category": classify_binance_signed_error(code, msg),
+        "binance_msg": _sanitize_diagnostic_text(msg) if msg is not None else None,
+        "category": classify_binance_signed_error(code, msg, http_status),
+        "raw_error_body_present": body_present,
+        "sanitized_error_body_preview": body_preview,
+        "http_error_body_parse_status": parse_status,
     }
     if isinstance(response_or_exception, BaseException):
         diagnostic["exception_type"] = type(response_or_exception).__name__
