@@ -11,6 +11,14 @@ from binance_testnet_adapter import (
     BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY,
     BINANCE_TESTNET_LIVE_ENDPOINT_REJECTED,
     BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD,
+    BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE,
+    BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION,
+    BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION,
+    BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE,
+    BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE,
+    BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH,
+    BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED,
+    BINANCE_TESTNET_ORDER_PREVIEW_VALID,
     BINANCE_TESTNET_PUBLIC_PING_OK,
     BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING,
     BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED,
@@ -28,6 +36,22 @@ from binance_testnet_adapter import (
     strip_signature_from_url_or_query,
     validate_binance_testnet_config,
 )
+
+
+MOCK_EXCHANGE_INFO = {
+    "symbols": [
+        {
+            "symbol": "BTCUSDT",
+            "quantityPrecision": 3,
+            "pricePrecision": 2,
+            "filters": [
+                {"filterType": "LOT_SIZE", "minQty": "0.001", "stepSize": "0.001"},
+                {"filterType": "PRICE_FILTER", "tickSize": "0.10"},
+                {"filterType": "MIN_NOTIONAL", "notional": "5"},
+            ],
+        }
+    ]
+}
 
 
 class RecordingHttpClient:
@@ -528,6 +552,112 @@ def test_place_order_preview_does_not_call_network():
     assert result["status"] == BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY
     assert result["would_place_order"] is False
     assert http_client.calls == []
+
+def preview_adapter(env=None, http_client=None):
+    config = load_binance_testnet_config(
+        env={
+            "BROKER_MODE": "testnet",
+            "TESTNET_ORDER_ALLOWLIST": "BTCUSDT",
+            "TESTNET_MAX_NOTIONAL_USDT": "25",
+            "TESTNET_DEFAULT_LEVERAGE": "5",
+            **(env or {}),
+        },
+        dotenv_path="/does/not/exist",
+    )
+    return BinanceTestnetAdapter(config=config, http_client=http_client)
+
+
+def test_valid_btcusdt_order_preview_passes_with_mocked_exchange_info():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "MARKET", "quantity": "0.001", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+        balance_info=[{"asset": "USDT", "availableBalance": "100"}],
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_VALID
+    assert result["would_place_order"] is False
+
+
+def test_order_preview_symbol_not_in_allowlist_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "ETHUSDT", "side": "BUY", "type": "MARKET", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED
+
+
+def test_order_preview_notional_above_config_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "MARKET", "notional_usdt": "26"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH
+
+
+def test_order_preview_invalid_side_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "HOLD", "type": "MARKET", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE
+
+
+def test_order_preview_invalid_type_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "ICEBERG", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE
+
+
+def test_order_preview_quantity_precision_violation_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "MARKET", "quantity": "0.0001", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION
+
+
+def test_order_preview_price_precision_violation_fails_for_limit():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "LIMIT", "quantity": "0.001", "price": "100.123", "notional_usdt": "10"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION
+
+
+def test_order_preview_insufficient_balance_fails():
+    result = preview_adapter().validate_order_preview(
+        {"symbol": "BTCUSDT", "side": "BUY", "type": "MARKET", "quantity": "0.001", "notional_usdt": "10", "leverage": "1"},
+        exchange_info=MOCK_EXCHANGE_INFO,
+        balance_info=[{"asset": "USDT", "availableBalance": "1"}],
+    )
+    assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE
+
+
+def test_order_preview_does_not_call_order_endpoint_or_expose_secrets(tmp_path):
+    raw_secret = "raw-secret-value"
+    http_client = RecordingHttpClient()
+    dotenv_path = write_dotenv(
+        tmp_path,
+        f"BROKER_MODE=testnet\nBINANCE_TESTNET_API_KEY={raw_secret}\nBINANCE_TESTNET_API_SECRET={raw_secret}\nTESTNET_ORDER_ALLOWLIST=BTCUSDT\n",
+    )
+    report_path = tmp_path / "reports" / "binance_testnet_audit.json"
+
+    run_binance_testnet_audit(
+        dotenv_path=dotenv_path,
+        report_path=str(report_path),
+        http_client=http_client,
+        run_public_checks=True,
+        run_order_preview=True,
+    )
+
+    called_urls = [url for url, _kwargs in http_client.calls]
+    assert not any("/order" in url.lower() for url in called_urls)
+    report_text = report_path.read_text(encoding="utf-8")
+    assert raw_secret not in report_text
+    assert "signature=" not in report_text
 
 def test_place_testnet_order_is_blocked_in_this_pr():
     config = load_binance_testnet_config(env={"BROKER_MODE": "testnet", "ALLOW_TESTNET_ORDER": "true"}, dotenv_path="/does/not/exist")

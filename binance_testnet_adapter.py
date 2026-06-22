@@ -39,6 +39,17 @@ BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED = "BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCK
 BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING = "BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING"
 BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED = "BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED"
 BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY = "BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY"
+BINANCE_TESTNET_ORDER_PREVIEW_VALID = "BINANCE_TESTNET_ORDER_PREVIEW_VALID"
+BINANCE_TESTNET_ORDER_PREVIEW_INVALID = "BINANCE_TESTNET_ORDER_PREVIEW_INVALID"
+BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED = "BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED"
+BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH = "BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH"
+BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_LOW = "BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_LOW"
+BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION = "BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION"
+BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION = "BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION"
+BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE = "BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE"
+BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE = "BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE"
+BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE = "BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE"
+BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT = "BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT"
 
 USD_M_FUTURES_TESTNET = "USD_M_FUTURES_TESTNET"
 DEFAULT_REST_BASE_URL = "https://demo-fapi.binance.com"
@@ -94,6 +105,7 @@ class BinanceTestnetConfig:
     signed_read_only_enabled: bool = False
     max_notional_usdt: Optional[float] = 25.0
     max_orders_per_day: Optional[int] = None
+    order_allowlist: tuple[str, ...] = ()
     default_leverage: Optional[int] = None
     dry_run: bool = True
     env_found: bool = False
@@ -116,6 +128,7 @@ class BinanceTestnetAuditResult:
     max_notional_usdt: Optional[float]
     max_orders_per_day: Optional[int]
     default_leverage: Optional[int]
+    order_allowlist: tuple[str, ...]
     public_ping_status: str
     exchange_info_status: str
     order_placement_status: str
@@ -134,6 +147,11 @@ class BinanceTestnetAuditResult:
     position_read_diagnostic: dict[str, Any] | None = None
     signed_read_only_error_categories: list[str] | None = None
     signed_read_only_recommendation: str = ""
+    order_preview_enabled: bool = False
+    order_preview_status: str = BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT
+    order_preview_request_sanitized: dict[str, Any] | None = None
+    order_preview_findings: list[str] | None = None
+    order_preview_recommendation: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -240,6 +258,8 @@ def load_binance_testnet_config(env: Optional[Mapping[str, Any]] = None, dotenv_
     order_placement_enabled = bool(allow_testnet_order and not dry_run)
     allow_auto_testnet_order = _as_bool(values.get("ALLOW_AUTO_TESTNET_ORDER"), False)
 
+    allowlist = tuple(symbol.strip().upper() for symbol in str(values.get("TESTNET_ORDER_ALLOWLIST", "BTCUSDT")).split(",") if symbol.strip())
+
     return BinanceTestnetConfig(
         enabled=enabled,
         broker_mode=broker_mode,
@@ -255,6 +275,7 @@ def load_binance_testnet_config(env: Optional[Mapping[str, Any]] = None, dotenv_
         signed_read_only_enabled=_as_bool(values.get("BINANCE_TESTNET_SIGNED_READ_ONLY_ENABLED"), False),
         max_notional_usdt=_as_optional_float(values.get("TESTNET_MAX_NOTIONAL_USDT"), 25.0),
         max_orders_per_day=_as_optional_int(values.get("TESTNET_MAX_ORDERS_PER_DAY"), None),
+        order_allowlist=allowlist,
         default_leverage=_as_optional_int(values.get("TESTNET_DEFAULT_LEVERAGE"), None),
         dry_run=dry_run,
         env_found=any(key in values for key in (DEFAULT_API_KEY_ENV, DEFAULT_API_SECRET_ENV, "BINANCE_FUTURES_TESTNET_BASE_URL")),
@@ -394,6 +415,72 @@ def _response_body(response_or_exception: Any) -> Any:
     return body
 
 
+def _response_payload(value: Any) -> Any:
+    if isinstance(value, Mapping) and "response" in value:
+        value = value["response"]
+    if isinstance(value, Mapping) and ("body" in value or "json" in value):
+        return _response_body(value)
+    return value
+
+
+def _decimal_places(value: Any) -> int:
+    text = str(value)
+    if "e" in text.lower():
+        text = f"{float(text):.16f}".rstrip("0")
+    if "." not in text:
+        return 0
+    return len(text.rstrip("0").split(".", 1)[1])
+
+
+def _symbol_exchange_rules(exchange_info: Any, symbol: str) -> dict[str, Any]:
+    payload = _response_payload(exchange_info) or {}
+    symbols = payload.get("symbols", []) if isinstance(payload, Mapping) else []
+    for item in symbols:
+        if isinstance(item, Mapping) and str(item.get("symbol", "")).upper() == symbol:
+            filters = {str(f.get("filterType")): f for f in item.get("filters", []) if isinstance(f, Mapping)}
+            return {
+                "quantity_precision": item.get("quantityPrecision"),
+                "price_precision": item.get("pricePrecision"),
+                "min_qty": filters.get("LOT_SIZE", {}).get("minQty"),
+                "step_size": filters.get("LOT_SIZE", {}).get("stepSize"),
+                "tick_size": filters.get("PRICE_FILTER", {}).get("tickSize"),
+                "min_notional": filters.get("MIN_NOTIONAL", {}).get("notional"),
+            }
+    return {}
+
+
+def _available_usdt(balance_info: Any) -> Optional[float]:
+    payload = _response_payload(balance_info)
+    rows = payload if isinstance(payload, list) else payload.get("assets", []) if isinstance(payload, Mapping) else []
+    for row in rows:
+        if isinstance(row, Mapping) and str(row.get("asset", "")).upper() == "USDT":
+            for key in ("availableBalance", "availableWalletBalance", "balance", "walletBalance"):
+                if row.get(key) is not None:
+                    try:
+                        return float(row[key])
+                    except (TypeError, ValueError):
+                        return None
+    return None
+
+
+def _sanitize_order_request(order_request: Mapping[str, Any]) -> dict[str, Any]:
+    sensitive = {"api_key", "apikey", "api_secret", "secret", "signature", "x-mbx-apikey"}
+    return {key: ("<redacted>" if str(key).lower() in sensitive else value) for key, value in order_request.items()}
+
+
+def _notional_from_request(order_request: Mapping[str, Any]) -> Optional[float]:
+    for key in ("notional_usdt", "notional", "quoteOrderQty"):
+        if order_request.get(key) is not None:
+            try:
+                return float(order_request[key])
+            except (TypeError, ValueError):
+                return None
+    try:
+        return float(order_request.get("quantity")) * float(order_request.get("price"))
+    except (TypeError, ValueError):
+        return None
+
+
 def classify_binance_signed_error(code: Any, msg: Any, http_status: Any = None) -> str:
     """Classify a Binance signed read-only error without exposing request secrets."""
 
@@ -527,6 +614,7 @@ def validate_binance_testnet_config(config: BinanceTestnetConfig) -> dict[str, A
         "max_notional_usdt": config.max_notional_usdt,
         "max_orders_per_day": config.max_orders_per_day,
         "default_leverage": config.default_leverage,
+        "order_allowlist": list(config.order_allowlist),
         "findings": findings,
         "recommendation": "keep_disabled_paper_only" if findings else "public_testnet_connectivity_check_only",
     }
@@ -640,6 +728,117 @@ class BinanceTestnetAdapter:
     def signed_position_read_only(self) -> dict[str, Any]:
         return self._signed_read_only_get("/fapi/v2/positionRisk")
 
+    def validate_order_preview(
+        self,
+        order_request: Mapping[str, Any],
+        exchange_info: Any = None,
+        balance_info: Any = None,
+        position_info: Any = None,
+    ) -> dict[str, Any]:
+        """Locally validate a hypothetical futures testnet order without sending one."""
+
+        _ = position_info  # Reserved for future local reduceOnly/positionSide exposure checks.
+        findings = [BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT]
+        sanitized = _sanitize_order_request(order_request)
+        symbol = str(order_request.get("symbol", "")).upper()
+        side = str(order_request.get("side", "")).upper()
+        order_type = str(order_request.get("type", "")).upper()
+        allowed_types = {"MARKET", "LIMIT", "STOP", "STOP_MARKET", "TAKE_PROFIT", "TAKE_PROFIT_MARKET"}
+
+        def invalid(status: str, finding: str | None = None) -> dict[str, Any]:
+            if finding:
+                findings.append(finding)
+            return {
+                "ok": False,
+                "status": status,
+                "order_request_sanitized": sanitized,
+                "findings": findings,
+                "recommendation": "adjust_preview_request_or_env_limits_no_order_sent",
+                "would_place_order": False,
+            }
+
+        if symbol not in set(self.config.order_allowlist):
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED, "symbol_not_in_TESTNET_ORDER_ALLOWLIST")
+        if side not in {"BUY", "SELL"}:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE, "side_must_be_BUY_or_SELL")
+        if order_type not in allowed_types:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE, "type_not_supported_for_preview")
+        if order_request.get("reduceOnly") is not None and str(order_request.get("reduceOnly")).lower() not in {"true", "false", "1", "0"}:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID, "reduceOnly_must_be_boolean_like")
+        if order_request.get("positionSide") is not None and str(order_request.get("positionSide")).upper() not in {"BOTH", "LONG", "SHORT"}:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID, "positionSide_must_be_BOTH_LONG_or_SHORT")
+
+        leverage = order_request.get("leverage", self.config.default_leverage)
+        try:
+            if leverage is not None and (int(leverage) < 1 or int(leverage) > 125):
+                return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID, "leverage_outside_1_to_125")
+        except (TypeError, ValueError):
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID, "leverage_must_be_integer")
+
+        rules = _symbol_exchange_rules(exchange_info, symbol)
+        try:
+            quantity = float(order_request.get("quantity")) if order_request.get("quantity") is not None else None
+        except (TypeError, ValueError):
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION, "quantity_must_be_numeric")
+        if quantity is not None and rules.get("quantity_precision") is not None:
+            if _decimal_places(order_request.get("quantity")) > int(rules["quantity_precision"]):
+                return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION, "quantity_precision_exceeds_exchangeInfo")
+        if quantity is not None and rules.get("min_qty") is not None and quantity < float(rules["min_qty"]):
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION, "quantity_below_exchangeInfo_minQty")
+
+        if order_type == "LIMIT":
+            if order_request.get("price") is None:
+                return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION, "limit_price_required")
+            try:
+                float(order_request.get("price"))
+            except (TypeError, ValueError):
+                return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION, "price_must_be_numeric")
+            if rules.get("price_precision") is not None and _decimal_places(order_request.get("price")) > int(rules["price_precision"]):
+                return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INVALID_PRICE_PRECISION, "price_precision_exceeds_exchangeInfo")
+
+        notional = _notional_from_request(order_request)
+        if notional is None or notional <= 0:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_LOW, "notional_must_be_positive")
+        if self.config.max_notional_usdt is not None and notional > self.config.max_notional_usdt:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH, "notional_exceeds_TESTNET_MAX_NOTIONAL_USDT")
+        if rules.get("min_notional") is not None and notional < float(rules["min_notional"]):
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_LOW, "notional_below_exchangeInfo_MIN_NOTIONAL")
+
+        available = _available_usdt(balance_info)
+        lev = int(leverage) if leverage is not None else 1
+        required_margin = notional / max(lev, 1)
+        if available is not None and available < required_margin:
+            return invalid(BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE, "available_usdt_below_preview_required_margin")
+
+        if self.config.max_orders_per_day is not None:
+            findings.append("max_orders_per_day_config_present_placeholder_not_incremented")
+        return {
+            "ok": True,
+            "status": BINANCE_TESTNET_ORDER_PREVIEW_VALID,
+            "order_request_sanitized": sanitized,
+            "findings": findings,
+            "recommendation": "preview_valid_only_no_order_sent",
+            "would_place_order": False,
+            "notional_usdt": notional,
+            "required_margin_usdt": required_margin,
+        }
+
+    def build_order_preview_from_signal(
+        self,
+        signal_or_prediction: Mapping[str, Any],
+        exchange_info: Any = None,
+        balance_info: Any = None,
+        position_info: Any = None,
+    ) -> dict[str, Any]:
+        request = {
+            "symbol": str(signal_or_prediction.get("symbol", "BTCUSDT")).upper(),
+            "side": str(signal_or_prediction.get("side", "BUY")).upper(),
+            "type": str(signal_or_prediction.get("type", "MARKET")).upper(),
+            "notional_usdt": min(float(self.config.max_notional_usdt or 25.0), float(signal_or_prediction.get("notional_usdt", self.config.max_notional_usdt or 25.0))),
+            "leverage": signal_or_prediction.get("leverage", self.config.default_leverage or 1),
+        }
+        return self.validate_order_preview(request, exchange_info, balance_info, position_info)
+
     def place_order_preview(self, order_request: Mapping[str, Any]) -> dict[str, Any]:
         validation = validate_binance_testnet_config(self.config)
         if not validation["ok"]:
@@ -662,12 +861,37 @@ class BinanceTestnetAdapter:
         }
 
 
+def validate_order_preview(
+    order_request: Mapping[str, Any],
+    exchange_info: Any = None,
+    balance_info: Any = None,
+    position_info: Any = None,
+    config: Optional[BinanceTestnetConfig] = None,
+) -> dict[str, Any]:
+    return BinanceTestnetAdapter(config=config or load_binance_testnet_config()).validate_order_preview(
+        order_request, exchange_info, balance_info, position_info
+    )
+
+
+def build_order_preview_from_signal(
+    signal_or_prediction: Mapping[str, Any],
+    exchange_info: Any = None,
+    balance_info: Any = None,
+    position_info: Any = None,
+    config: Optional[BinanceTestnetConfig] = None,
+) -> dict[str, Any]:
+    return BinanceTestnetAdapter(config=config or load_binance_testnet_config()).build_order_preview_from_signal(
+        signal_or_prediction, exchange_info, balance_info, position_info
+    )
+
+
 def run_binance_testnet_audit(
     dotenv_path: str = ".env",
     report_path: str = "reports/binance_testnet_audit.json",
     http_client: Optional[HttpClient] = None,
     run_public_checks: bool = True,
     run_signed_read_only: bool = False,
+    run_order_preview: bool = False,
 ) -> BinanceTestnetAuditResult:
     """Run a safe Binance testnet audit and write a masked JSON report."""
 
@@ -729,6 +953,32 @@ def run_binance_testnet_audit(
         signed_findings = statuses
 
     order_status = adapter.place_testnet_order({})["status"]
+    preview_enabled = bool(run_order_preview)
+    preview_status = BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT
+    preview_request: dict[str, Any] | None = None
+    preview_findings: list[str] | None = None
+    preview_recommendation = "order_preview_not_requested"
+    if run_order_preview:
+        exchange_result = adapter.exchange_info("BTCUSDT")
+        balance_payload = balance_read.get("response") if run_signed_read_only and "balance_read" in locals() else None
+        position_payload = position_read.get("response") if run_signed_read_only and "position_read" in locals() else None
+        sample_notional = min(config.max_notional_usdt or 25.0, 25.0)
+        preview = adapter.validate_order_preview(
+            {
+                "symbol": "BTCUSDT",
+                "side": "BUY",
+                "type": "MARKET",
+                "notional_usdt": sample_notional,
+                "leverage": config.default_leverage or 1,
+            },
+            exchange_info=exchange_result,
+            balance_info=balance_payload,
+            position_info=position_payload,
+        )
+        preview_status = preview["status"]
+        preview_request = preview.get("order_request_sanitized")
+        preview_findings = preview.get("findings")
+        preview_recommendation = preview.get("recommendation", "")
     result = BinanceTestnetAuditResult(
         status=validation["status"],
         enabled=validation["enabled"],
@@ -745,6 +995,7 @@ def run_binance_testnet_audit(
         max_notional_usdt=validation["max_notional_usdt"],
         max_orders_per_day=validation["max_orders_per_day"],
         default_leverage=validation["default_leverage"],
+        order_allowlist=tuple(validation["order_allowlist"]),
         public_ping_status=ping_status,
         exchange_info_status=exchange_status,
         order_placement_status=order_status,
@@ -763,6 +1014,11 @@ def run_binance_testnet_audit(
         position_read_diagnostic=position_diagnostic,
         signed_read_only_error_categories=signed_error_categories,
         signed_read_only_recommendation=signed_recommendation,
+        order_preview_enabled=preview_enabled,
+        order_preview_status=preview_status,
+        order_preview_request_sanitized=preview_request,
+        order_preview_findings=preview_findings,
+        order_preview_recommendation=preview_recommendation,
     )
 
     output_path = Path(report_path)

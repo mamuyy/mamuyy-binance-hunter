@@ -75,10 +75,13 @@ if "--ml-prediction-ledger-audit" in sys.argv:
     print("Report: reports/ml_prediction_ledger_audit.json")
     sys.exit(0)
 
-if "--binance-testnet-audit" in sys.argv:
+if "--binance-testnet-audit" in sys.argv or "--binance-testnet-order-preview" in sys.argv:
     from binance_testnet_adapter import run_binance_testnet_audit as _run_binance_testnet_audit
 
-    _result = _run_binance_testnet_audit(run_signed_read_only="--binance-testnet-signed-read-only" in sys.argv)
+    _result = _run_binance_testnet_audit(
+        run_signed_read_only="--binance-testnet-signed-read-only" in sys.argv,
+        run_order_preview="--binance-testnet-order-preview" in sys.argv,
+    )
     _payload = _result.to_dict()
     print("BINANCE TESTNET AUDIT")
     print(f"Status: {_payload.get('status')}")
@@ -90,6 +93,10 @@ if "--binance-testnet-audit" in sys.argv:
     print(f"Public Ping: {_payload.get('public_ping_status')}")
     print(f"Exchange Info: {_payload.get('exchange_info_status')}")
     print(f"Order Placement: {_payload.get('order_placement_status')}")
+    if _payload.get("order_preview_enabled"):
+        print(f"Order Preview: {_payload.get('order_preview_status')}")
+        print(f"Order Preview Request: {_payload.get('order_preview_request_sanitized')}")
+        print(f"Order Preview Findings: {_payload.get('order_preview_findings') or ['none']}")
     print(f"Signed Read Only: {_payload.get('signed_read_only_status')} Enabled: {_payload.get('signed_read_only_enabled')}")
     print(f"Findings: {_payload.get('findings') or ['none']}")
     print("Report: reports/binance_testnet_audit.json")
