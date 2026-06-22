@@ -10,11 +10,17 @@ from binance_testnet_adapter import (
     BINANCE_TESTNET_LIVE_ENDPOINT_REJECTED,
     BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD,
     BINANCE_TESTNET_PUBLIC_PING_OK,
+    BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING,
+    BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED,
+    BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED,
+    BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED,
+    BINANCE_TESTNET_SIGNED_READ_ONLY_OK,
     BinanceTestnetAdapter,
     DEFAULT_REST_BASE_URL,
     load_binance_testnet_config,
     mask_secret,
     run_binance_testnet_audit,
+    sign_query_string,
     validate_binance_testnet_config,
 )
 
@@ -32,6 +38,58 @@ def write_dotenv(tmp_path, content):
     path = tmp_path / ".env"
     path.write_text(content, encoding="utf-8")
     return str(path)
+
+
+
+def test_signed_query_signature_has_expected_hmac_shape():
+    params = {"timestamp": 1234567890}
+    assert sign_query_string(params, "test-secret") == "43b9e569008cebbd1321239fd7e5e5d8a5d11a6a1d466be9ad1771faea4cb280"
+
+
+def test_signed_read_only_disabled_by_default(tmp_path):
+    dotenv_path = write_dotenv(tmp_path, "BROKER_MODE=testnet\nBINANCE_TESTNET_API_KEY=k\nBINANCE_TESTNET_API_SECRET=s\n")
+    report_path = tmp_path / "audit.json"
+    result = run_binance_testnet_audit(dotenv_path=dotenv_path, report_path=str(report_path), http_client=RecordingHttpClient())
+    assert result.signed_read_only_enabled is False
+    assert result.signed_read_only_status == BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+
+
+def test_signed_read_only_credentials_missing_when_enabled():
+    config = load_binance_testnet_config(env={"BROKER_MODE": "testnet"}, dotenv_path="/does/not/exist")
+    config = __import__("dataclasses").replace(config, signed_read_only_enabled=True)
+    result = BinanceTestnetAdapter(config=config, http_client=RecordingHttpClient()).signed_account_read_only()
+    assert result["status"] == BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING
+
+
+def test_signed_read_only_blocks_live_endpoint():
+    config = load_binance_testnet_config(env={"BROKER_MODE": "testnet", "BINANCE_FUTURES_TESTNET_BASE_URL": "https://fapi.binance.com", "BINANCE_TESTNET_API_KEY": "k", "BINANCE_TESTNET_API_SECRET": "s"}, dotenv_path="/does/not/exist")
+    config = __import__("dataclasses").replace(config, signed_read_only_enabled=True)
+    result = BinanceTestnetAdapter(config=config, http_client=RecordingHttpClient()).signed_account_read_only()
+    assert result["status"] == BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED
+
+
+def test_signed_read_only_rejects_order_endpoint_path():
+    config = load_binance_testnet_config(env={"BROKER_MODE": "testnet", "BINANCE_TESTNET_API_KEY": "k", "BINANCE_TESTNET_API_SECRET": "s"}, dotenv_path="/does/not/exist")
+    config = __import__("dataclasses").replace(config, signed_read_only_enabled=True)
+    result = BinanceTestnetAdapter(config=config, http_client=RecordingHttpClient())._signed_read_only_get("/fapi/v1/order")
+    assert result["status"] == BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED
+
+
+def test_signed_account_balance_reads_use_injected_client_and_header_only():
+    raw_key = "raw-api-key"
+    raw_secret = "raw-api-secret"
+    http_client = RecordingHttpClient()
+    config = load_binance_testnet_config(env={"BROKER_MODE": "testnet", "BINANCE_TESTNET_API_KEY": raw_key, "BINANCE_TESTNET_API_SECRET": raw_secret}, dotenv_path="/does/not/exist")
+    config = __import__("dataclasses").replace(config, signed_read_only_enabled=True)
+    adapter = BinanceTestnetAdapter(config=config, http_client=http_client)
+    assert adapter.signed_account_read_only()["status"] == BINANCE_TESTNET_SIGNED_READ_ONLY_OK
+    assert adapter.signed_balance_read_only()["status"] == BINANCE_TESTNET_SIGNED_READ_ONLY_OK
+    assert len(http_client.calls) == 2
+    for url, kwargs in http_client.calls:
+        assert raw_key not in url
+        assert raw_secret not in url
+        assert kwargs["headers"] == {"X-MBX-APIKEY": raw_key}
+        assert "signature=" in url
 
 
 def test_loads_existing_variable_names_from_dotenv_content(tmp_path, monkeypatch):

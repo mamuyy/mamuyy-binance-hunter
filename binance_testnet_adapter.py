@@ -8,12 +8,15 @@ calls are performed in this PR.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import hashlib
+import hmac
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.request import urlopen
 
 
@@ -27,6 +30,12 @@ BINANCE_TESTNET_CREDENTIALS_PRESENT_MASKED = "BINANCE_TESTNET_CREDENTIALS_PRESEN
 BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD = "BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD"
 BINANCE_TESTNET_LIVE_ENDPOINT_REJECTED = "BINANCE_TESTNET_LIVE_ENDPOINT_REJECTED"
 BINANCE_TESTNET_READ_ONLY_ONLY = "BINANCE_TESTNET_READ_ONLY_ONLY"
+BINANCE_TESTNET_SIGNED_READ_ONLY_OK = "BINANCE_TESTNET_SIGNED_READ_ONLY_OK"
+BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED = "BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED"
+BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED = "BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED"
+BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED = "BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED"
+BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING = "BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING"
+BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED = "BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED"
 BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY = "BINANCE_TESTNET_DRY_RUN_PREVIEW_ONLY"
 
 USD_M_FUTURES_TESTNET = "USD_M_FUTURES_TESTNET"
@@ -106,6 +115,13 @@ class BinanceTestnetAuditResult:
     public_ping_status: str
     exchange_info_status: str
     order_placement_status: str
+    signed_read_only_enabled: bool
+    signed_read_only_status: str
+    account_read_status: str
+    balance_read_status: str
+    position_read_status: str
+    signed_endpoint_safety_status: str
+    signed_read_only_findings: list[str]
     findings: list[str]
     recommendation: str
 
@@ -251,6 +267,32 @@ def _is_allowed_testnet_endpoint(url: str) -> bool:
     return scheme in {"https", "http"} and host in _ALLOWED_TESTNET_HOSTS
 
 
+_SIGNED_READ_ONLY_PATHS = {"/fapi/v2/account", "/fapi/v2/balance", "/fapi/v2/positionRisk"}
+_ORDER_PATH_MARKERS = ("/order", "/batchOrders", "/countdownCancelAll")
+
+
+def sign_query_string(params: Mapping[str, Any], api_secret: str) -> str:
+    """Return Binance HMAC SHA256 signature for a query mapping."""
+
+    query = urlencode([(key, value) for key, value in params.items() if value is not None])
+    return hmac.new(api_secret.encode("utf-8"), query.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _is_signed_order_endpoint(path: str) -> bool:
+    normalized = path.split("?", 1)[0]
+    return any(marker.lower() in normalized.lower() for marker in _ORDER_PATH_MARKERS)
+
+
+def _validate_signed_read_only_endpoint(base_url: str, path: str) -> str:
+    url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+    if _is_signed_order_endpoint(path):
+        return BINANCE_TESTNET_SIGNED_ORDER_ENDPOINT_REJECTED
+    if _is_live_endpoint(url) or not _is_allowed_testnet_endpoint(url):
+        return BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED
+    if path.split("?", 1)[0] not in _SIGNED_READ_ONLY_PATHS:
+        return BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED
+    return BINANCE_TESTNET_SIGNED_READ_ONLY_OK
+
 def validate_binance_testnet_config(config: BinanceTestnetConfig) -> dict[str, Any]:
     """Validate scaffold config and return a masked, non-secret status object."""
 
@@ -378,15 +420,37 @@ class BinanceTestnetAdapter:
             "api_secret_masked": mask_secret(self.config.api_secret),
         }
 
-    def signed_account_read_only(self) -> dict[str, Any]:
+    def _signed_read_only_get(self, path: str) -> dict[str, Any]:
         validation = validate_binance_testnet_config(self.config)
-        if not validation["ok"] or not self.config.signed_read_only_enabled or self.http_client is None:
-            return {"ok": False, "status": BINANCE_TESTNET_READ_ONLY_ONLY, "validation": validation}
-        return {
-            "ok": False,
-            "status": BINANCE_TESTNET_READ_ONLY_ONLY,
-            "reason": "signed_account_read_only_requires_future_signature_implementation",
-        }
+        endpoint_status = _validate_signed_read_only_endpoint(self.config.rest_base_url, path)
+        if endpoint_status != BINANCE_TESTNET_SIGNED_READ_ONLY_OK:
+            return {"ok": False, "status": endpoint_status, "response": None}
+        if not self.config.signed_read_only_enabled:
+            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED, "response": None}
+        if not self.config.api_key or not self.config.api_secret:
+            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING, "response": None}
+        if not validation["ok"]:
+            return {"ok": False, "status": validation["status"], "response": None}
+        if self.http_client is None:
+            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED, "response": {"offline": True}}
+
+        params: dict[str, Any] = {"timestamp": int(time.time() * 1000)}
+        params["signature"] = sign_query_string(params, self.config.api_secret)
+        url = f"{self.config.rest_base_url.rstrip('/')}{path}?{urlencode(params)}"
+        try:
+            response = self.http_client.get(url, timeout=10, headers={"X-MBX-APIKEY": self.config.api_key})
+            return {"ok": True, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_OK, "response": response}
+        except Exception as exc:  # pragma: no cover - exercised through CLI/network conditions.
+            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED, "error": type(exc).__name__, "response": None}
+
+    def signed_account_read_only(self) -> dict[str, Any]:
+        return self._signed_read_only_get("/fapi/v2/account")
+
+    def signed_balance_read_only(self) -> dict[str, Any]:
+        return self._signed_read_only_get("/fapi/v2/balance")
+
+    def signed_position_read_only(self) -> dict[str, Any]:
+        return self._signed_read_only_get("/fapi/v2/positionRisk")
 
     def place_order_preview(self, order_request: Mapping[str, Any]) -> dict[str, Any]:
         validation = validate_binance_testnet_config(self.config)
@@ -415,10 +479,11 @@ def run_binance_testnet_audit(
     report_path: str = "reports/binance_testnet_audit.json",
     http_client: Optional[HttpClient] = None,
     run_public_checks: bool = True,
+    run_signed_read_only: bool = False,
 ) -> BinanceTestnetAuditResult:
     """Run a safe Binance testnet audit and write a masked JSON report."""
 
-    config = load_binance_testnet_config(dotenv_path=dotenv_path)
+    config = replace(load_binance_testnet_config(dotenv_path=dotenv_path), signed_read_only_enabled=run_signed_read_only)
     client = http_client if http_client is not None else UrllibHttpClient()
     adapter = BinanceTestnetAdapter(config=config, http_client=client)
     validation = validate_binance_testnet_config(config)
@@ -428,6 +493,27 @@ def run_binance_testnet_audit(
     if run_public_checks and config.enabled and validation["ok"]:
         ping_status = adapter.ping()["status"]
         exchange_status = adapter.exchange_info()["status"]
+
+    signed_findings: list[str] = []
+    account_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+    balance_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+    position_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+    signed_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+    signed_endpoint_safety_status = _validate_signed_read_only_endpoint(config.rest_base_url, "/fapi/v2/account")
+    if run_signed_read_only:
+        account_status = adapter.signed_account_read_only()["status"]
+        balance_status = adapter.signed_balance_read_only()["status"]
+        position_status = adapter.signed_position_read_only()["status"]
+        statuses = [account_status, balance_status, position_status]
+        if signed_endpoint_safety_status != BINANCE_TESTNET_SIGNED_READ_ONLY_OK:
+            signed_status = signed_endpoint_safety_status
+        elif any(status == BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING for status in statuses):
+            signed_status = BINANCE_TESTNET_SIGNED_CREDENTIALS_MISSING
+        elif all(status == BINANCE_TESTNET_SIGNED_READ_ONLY_OK for status in statuses):
+            signed_status = BINANCE_TESTNET_SIGNED_READ_ONLY_OK
+        else:
+            signed_status = BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED
+        signed_findings = statuses
 
     order_status = adapter.place_testnet_order({})["status"]
     result = BinanceTestnetAuditResult(
@@ -449,6 +535,13 @@ def run_binance_testnet_audit(
         public_ping_status=ping_status,
         exchange_info_status=exchange_status,
         order_placement_status=order_status,
+        signed_read_only_enabled=run_signed_read_only,
+        signed_read_only_status=signed_status,
+        account_read_status=account_status,
+        balance_read_status=balance_status,
+        position_read_status=position_status,
+        signed_endpoint_safety_status=signed_endpoint_safety_status,
+        signed_read_only_findings=signed_findings,
         findings=validation["findings"],
         recommendation=validation["recommendation"],
     )
