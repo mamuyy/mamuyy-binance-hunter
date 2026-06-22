@@ -265,7 +265,12 @@ SCHEMAS = {
             status TEXT,
             exit_reason TEXT,
             updated_at TEXT,
-            payload_json TEXT
+            payload_json TEXT,
+            prediction_id TEXT,
+            predicted_probability REAL,
+            model_version TEXT,
+            evaluation_contract TEXT,
+            target_timestamp TEXT
         )
     """,
     "broadcast_events": """
@@ -434,6 +439,11 @@ def _ensure_columns(connection: sqlite3.Connection) -> None:
         "tp2": "REAL",
         "exit_reason": "TEXT",
         "updated_at": "TEXT",
+        "prediction_id": "TEXT",
+        "predicted_probability": "REAL",
+        "model_version": "TEXT",
+        "evaluation_contract": "TEXT",
+        "target_timestamp": "TEXT",
     }
     for column, column_type in internal_paper_columns.items():
         if column not in internal_paper_existing:
