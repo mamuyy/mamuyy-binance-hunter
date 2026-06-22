@@ -4,7 +4,7 @@ import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Mapping
 
 import pandas as pd
 
@@ -17,6 +17,106 @@ from macro_observer import latest_macro_state
 CLOSED_STATUSES = {"CLOSED", "WIN", "LOSS", "STOP_LOSS", "TAKE_PROFIT"}
 ACTIVE_STATUSES = {"OPEN", "TP1 HIT"}
 LIFECYCLE_REPORT_PATH = "reports/paper_trade_lifecycle.json"
+
+PREDICTION_LINKAGE_FIELDS = (
+    "prediction_id",
+    "predicted_probability",
+    "model_version",
+    "evaluation_contract",
+    "target_timestamp",
+    "source_signal_timestamp",
+    "symbol",
+)
+
+
+def _mapping_value(context: Any, key: str) -> Any:
+    if context is None:
+        return None
+    if isinstance(context, Mapping):
+        return context.get(key)
+    if hasattr(context, "get"):
+        try:
+            return context.get(key)
+        except Exception:
+            return None
+    return getattr(context, key, None)
+
+
+def _dict_context(value: Any) -> Dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if hasattr(value, "to_dict"):
+        try:
+            converted = value.to_dict()
+        except Exception:
+            converted = None
+        if isinstance(converted, Mapping):
+            return dict(converted)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+        return dict(parsed) if isinstance(parsed, Mapping) else {}
+    return {}
+
+
+def extract_prediction_linkage_metadata(signal_or_prediction: Any) -> Dict[str, Any]:
+    """Extract explicitly present ML linkage metadata without synthesizing IDs.
+
+    This is a forward-only carrier for paper trade lifecycle state. It copies
+    only present values from the signal/prediction context and bounded nested
+    payloads; it never fabricates prediction IDs from symbol/time fallbacks.
+    """
+
+    contexts: List[Mapping[str, Any]] = []
+    root = _dict_context(signal_or_prediction)
+    if root:
+        contexts.append(root)
+    elif signal_or_prediction is not None:
+        contexts.append(
+            {field: _mapping_value(signal_or_prediction, field) for field in PREDICTION_LINKAGE_FIELDS}
+        )
+
+    payload = _dict_context(_mapping_value(signal_or_prediction, "payload_json"))
+    if payload:
+        contexts.append(payload)
+
+    for container in (root, payload):
+        for nested_key in ("prediction", "ml", "model"):
+            nested = _dict_context(container.get(nested_key) if container else None)
+            if nested:
+                contexts.append(nested)
+
+    metadata: Dict[str, Any] = {}
+    aliases = {
+        "prediction_id": ("prediction_id", "ml_prediction_id"),
+        "predicted_probability": (
+            "predicted_probability",
+            "prediction_probability",
+            "probability",
+            "win_probability",
+        ),
+        "model_version": ("model_version", "model_id"),
+        "evaluation_contract": ("evaluation_contract", "label_contract"),
+        "target_timestamp": (
+            "target_timestamp",
+            "evaluation_target_timestamp",
+            "label_target_timestamp",
+        ),
+        "source_signal_timestamp": ("source_signal_timestamp", "signal_timestamp", "timestamp"),
+        "symbol": ("symbol",),
+    }
+    for field, keys in aliases.items():
+        for context in contexts:
+            for key in keys:
+                value = context.get(key)
+                if value not in (None, ""):
+                    metadata[field] = value
+                    break
+            if field in metadata:
+                break
+    return metadata
 
 
 def _now() -> str:
@@ -142,6 +242,11 @@ def _ensure_internal_paper_columns(connection: sqlite3.Connection) -> None:
         "tp2": "REAL",
         "exit_reason": "TEXT",
         "updated_at": "TEXT",
+        "prediction_id": "TEXT",
+        "predicted_probability": "REAL",
+        "model_version": "TEXT",
+        "evaluation_contract": "TEXT",
+        "target_timestamp": "TEXT",
     }
     for column, column_type in columns.items():
         if column not in existing:
@@ -173,6 +278,11 @@ def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
             "exit_reason",
             "updated_at",
             "payload_json",
+            "prediction_id",
+            "predicted_probability",
+            "model_version",
+            "evaluation_contract",
+            "target_timestamp",
         ]
         placeholders = ", ".join(["?"] * len(fields))
         cursor = connection.execute(
@@ -324,10 +434,13 @@ def run_internal_paper_engine(
             allocation_tier=allocation_tier,
             market=_market_type(symbol),
         )
+        linkage_metadata = extract_prediction_linkage_metadata(signal)
         trade = {
             "timestamp": _now(),
-            "source_signal_timestamp": signal.get("timestamp") or _now(),
-            "symbol": symbol,
+            "source_signal_timestamp": (
+                linkage_metadata.get("source_signal_timestamp") or signal.get("timestamp") or _now()
+            ),
+            "symbol": linkage_metadata.get("symbol") or symbol,
             "market_type": _market_type(symbol),
             "side": "LONG",
             "entry_price": round(price, 8),
@@ -345,6 +458,11 @@ def run_internal_paper_engine(
             "exit_reason": "",
             "updated_at": _now(),
             "payload_json": json.dumps(payload, default=str),
+            "prediction_id": linkage_metadata.get("prediction_id"),
+            "predicted_probability": linkage_metadata.get("predicted_probability"),
+            "model_version": linkage_metadata.get("model_version"),
+            "evaluation_contract": linkage_metadata.get("evaluation_contract"),
+            "target_timestamp": linkage_metadata.get("target_timestamp"),
         }
         if _insert_trade(db_path, trade):
             inserted += 1

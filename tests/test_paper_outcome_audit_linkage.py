@@ -6,6 +6,11 @@ from paper_outcome_audit import (
     validate_prediction_outcome_linkage_fields,
 )
 from ml_metric_reconciliation import readiness
+from internal_paper_engine import (
+    _insert_trade,
+    _update_open_trades,
+    extract_prediction_linkage_metadata,
+)
 
 
 def test_build_linkage_fields_copies_prediction_id_from_prediction_context():
@@ -129,3 +134,194 @@ def test_readiness_governance_remains_locked_when_components_blocked():
     assert report["primary_blocker"] == "BLOCKED_BELOW_BASELINE"
     assert report["execution_allowed"] is False
     assert report["paper_only"] is True
+
+
+def test_extract_prediction_linkage_metadata_copies_direct_prediction_dict():
+    metadata = extract_prediction_linkage_metadata(
+        {
+            "prediction_id": "pred-direct",
+            "predicted_probability": 0.77,
+            "model_version": "model-direct",
+            "evaluation_contract": "contract-direct",
+            "target_timestamp": "2026-06-23T00:00:00Z",
+            "source_signal_timestamp": "2026-06-22T00:00:00Z",
+            "symbol": "BTCUSDT",
+        }
+    )
+
+    assert metadata == {
+        "prediction_id": "pred-direct",
+        "predicted_probability": 0.77,
+        "model_version": "model-direct",
+        "evaluation_contract": "contract-direct",
+        "target_timestamp": "2026-06-23T00:00:00Z",
+        "source_signal_timestamp": "2026-06-22T00:00:00Z",
+        "symbol": "BTCUSDT",
+    }
+
+
+def test_extract_prediction_linkage_metadata_supports_nested_prediction_ml_payload():
+    metadata = extract_prediction_linkage_metadata(
+        {
+            "symbol": "ETHUSDT",
+            "payload_json": {
+                "prediction": {
+                    "prediction_id": "pred-nested",
+                    "probability": 0.81,
+                    "target_timestamp": "2026-06-24T00:00:00Z",
+                },
+                "ml": {
+                    "model_version": "model-nested",
+                    "evaluation_contract": "contract-nested",
+                },
+            },
+        }
+    )
+
+    assert metadata["prediction_id"] == "pred-nested"
+    assert metadata["predicted_probability"] == 0.81
+    assert metadata["model_version"] == "model-nested"
+    assert metadata["evaluation_contract"] == "contract-nested"
+    assert metadata["target_timestamp"] == "2026-06-24T00:00:00Z"
+    assert metadata["symbol"] == "ETHUSDT"
+
+
+def test_extract_prediction_linkage_metadata_does_not_synthesize_prediction_id_when_missing():
+    metadata = extract_prediction_linkage_metadata(
+        {"symbol": "BTCUSDT", "timestamp": "2026-06-22T00:00:00Z"}
+    )
+
+    assert "prediction_id" not in metadata
+    assert metadata["symbol"] == "BTCUSDT"
+    assert metadata["source_signal_timestamp"] == "2026-06-22T00:00:00Z"
+
+
+def test_opened_internal_paper_trade_carries_prediction_metadata(tmp_path):
+    db_path = tmp_path / "paper_open.db"
+    trade = {
+        "timestamp": "2026-06-22T00:00:00Z",
+        "source_signal_timestamp": "2026-06-22T00:00:00Z",
+        "symbol": "BTCUSDT",
+        "market_type": "crypto",
+        "side": "LONG",
+        "entry_price": 100.0,
+        "current_price": 100.0,
+        "sl": 98.0,
+        "tp1": 103.0,
+        "tp2": 105.0,
+        "exit_price": None,
+        "pnl": 0.0,
+        "confidence": 0.8,
+        "regime": "NORMAL",
+        "macro_state": "NORMAL",
+        "allocation_tier": "WATCH",
+        "status": "OPEN",
+        "exit_reason": "",
+        "updated_at": "2026-06-22T00:00:00Z",
+        "payload_json": "{}",
+        "prediction_id": "pred-open",
+        "predicted_probability": 0.84,
+        "model_version": "model-open",
+        "evaluation_contract": "contract-open",
+        "target_timestamp": "2026-06-23T00:00:00Z",
+    }
+
+    assert _insert_trade(str(db_path), trade) is True
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT prediction_id, predicted_probability, model_version, "
+            "evaluation_contract, target_timestamp FROM internal_paper_trades"
+        ).fetchone()
+
+    assert row == (
+        "pred-open",
+        0.84,
+        "model-open",
+        "contract-open",
+        "2026-06-23T00:00:00Z",
+    )
+
+
+def test_closed_outcome_assembly_emits_carried_prediction_metadata(tmp_path):
+    db_path = tmp_path / "paper_close.db"
+    trade = {
+        "timestamp": "2026-06-22T00:00:00Z",
+        "source_signal_timestamp": "2026-06-22T00:00:00Z",
+        "symbol": "BTCUSDT",
+        "market_type": "crypto",
+        "side": "LONG",
+        "entry_price": 100.0,
+        "current_price": 100.0,
+        "sl": 98.0,
+        "tp1": 103.0,
+        "tp2": 105.0,
+        "exit_price": None,
+        "pnl": 0.0,
+        "confidence": 0.8,
+        "regime": "NORMAL",
+        "macro_state": "NORMAL",
+        "allocation_tier": "WATCH",
+        "status": "OPEN",
+        "exit_reason": "",
+        "updated_at": "2026-06-22T00:00:00Z",
+        "payload_json": "{}",
+        "prediction_id": "pred-close",
+        "predicted_probability": 0.86,
+        "model_version": "model-close",
+        "evaluation_contract": "contract-close",
+        "target_timestamp": "2026-06-23T00:00:00Z",
+    }
+    _insert_trade(str(db_path), trade)
+
+    assert _update_open_trades(str(db_path), {"BTCUSDT": 106.0}) == 1
+    report = generate_paper_outcome_audit(
+        db_path=str(db_path),
+        output_path=str(tmp_path / "paper_outcome_audit.json"),
+        write_report=False,
+    )
+
+    row = report["closed_trades"][0]
+    assert row["prediction_id"] == "pred-close"
+    assert row["predicted_probability"] == 0.86
+    assert row["model_version"] == "model-close"
+    assert row["evaluation_contract"] == "contract-close"
+    assert row["target_timestamp"] == "2026-06-23T00:00:00Z"
+    assert row["prediction_outcome_linkage_flags"] == []
+
+
+def test_missing_upstream_prediction_metadata_is_non_fatal(tmp_path):
+    db_path = tmp_path / "paper_missing.db"
+    trade = {
+        "timestamp": "2026-06-22T00:00:00Z",
+        "source_signal_timestamp": "2026-06-22T00:00:00Z",
+        "symbol": "BTCUSDT",
+        "market_type": "crypto",
+        "side": "LONG",
+        "entry_price": 100.0,
+        "current_price": 100.0,
+        "sl": 98.0,
+        "tp1": 103.0,
+        "tp2": 105.0,
+        "exit_price": None,
+        "pnl": 0.0,
+        "confidence": 0.8,
+        "regime": "NORMAL",
+        "macro_state": "NORMAL",
+        "allocation_tier": "WATCH",
+        "status": "OPEN",
+        "exit_reason": "",
+        "updated_at": "2026-06-22T00:00:00Z",
+        "payload_json": "{}",
+    }
+    _insert_trade(str(db_path), trade)
+    _update_open_trades(str(db_path), {"BTCUSDT": 97.0})
+
+    report = generate_paper_outcome_audit(
+        db_path=str(db_path),
+        output_path=str(tmp_path / "paper_outcome_audit.json"),
+        write_report=False,
+    )
+
+    flags = report["closed_trades"][0]["prediction_outcome_linkage_flags"]
+    assert "MISSING_PREDICTION_ID" in flags
+    assert "MISSING_PREDICTED_PROBABILITY" in flags
