@@ -185,8 +185,17 @@ def _as_optional_int(value: Any, default: Optional[int]) -> Optional[int]:
         return default
 
 
+_EXPLICIT_TESTNET_BROKER_MODES = {
+    "testnet",
+    "binance_testnet",
+    "binance_futures_testnet",
+    "binance_futures_testnet_only",
+    "usd_m_futures_testnet",
+}
+
+
 def _is_testnet_broker_mode(value: Any) -> bool:
-    return str(value or "").strip().lower() in {"testnet", "binance_testnet", "futures_testnet", "demo"}
+    return str(value or "").strip().lower() in _EXPLICIT_TESTNET_BROKER_MODES
 
 
 def load_binance_testnet_config(env: Optional[Mapping[str, Any]] = None, dotenv_path: str = ".env") -> BinanceTestnetConfig:
