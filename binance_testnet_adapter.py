@@ -152,6 +152,10 @@ class BinanceTestnetAuditResult:
     order_preview_request_sanitized: dict[str, Any] | None = None
     order_preview_findings: list[str] | None = None
     order_preview_recommendation: str = ""
+    order_preview_sample_selection_status: str = ""
+    order_preview_sample_selection_reason: str = ""
+    order_preview_selected_symbol: str = ""
+    order_preview_selected_min_notional: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -447,6 +451,62 @@ def _symbol_exchange_rules(exchange_info: Any, symbol: str) -> dict[str, Any]:
                 "min_notional": filters.get("MIN_NOTIONAL", {}).get("notional"),
             }
     return {}
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def select_safe_order_preview_sample(config: BinanceTestnetConfig, exchange_info: Any) -> dict[str, Any]:
+    """Select a fail-closed MARKET BUY preview sample without sending an order."""
+
+    max_notional = config.max_notional_usdt
+    allowed_symbols = tuple(symbol.upper() for symbol in config.order_allowlist if symbol)
+    candidates: list[dict[str, Any]] = []
+    inspected: list[dict[str, Any]] = []
+    for symbol in allowed_symbols:
+        rules = _symbol_exchange_rules(exchange_info, symbol)
+        min_notional = _safe_float(rules.get("min_notional"))
+        inspected.append({"symbol": symbol, "min_notional": min_notional})
+        if min_notional is None or max_notional is None:
+            continue
+        if min_notional <= max_notional:
+            candidates.append({"symbol": symbol, "min_notional": min_notional})
+
+    if not candidates:
+        return {
+            "ok": False,
+            "status": BINANCE_TESTNET_ORDER_PREVIEW_INVALID,
+            "reason": "no_allowlisted_symbol_with_min_notional_within_max_notional",
+            "findings": [
+                BINANCE_TESTNET_ORDER_PREVIEW_ONLY_NO_ORDER_SENT,
+                "no_allowlisted_symbol_with_min_notional_within_max_notional",
+            ],
+            "inspected_symbols": inspected,
+        }
+
+    selected = min(candidates, key=lambda item: (float(item["min_notional"]), allowed_symbols.index(item["symbol"])))
+    small_safe_default = 5.0
+    sample_notional = min(float(max_notional), max(float(selected["min_notional"]), small_safe_default))
+    return {
+        "ok": True,
+        "status": BINANCE_TESTNET_ORDER_PREVIEW_VALID,
+        "reason": "selected_lowest_min_notional_allowlisted_symbol_within_TESTNET_MAX_NOTIONAL_USDT",
+        "symbol": selected["symbol"],
+        "min_notional": selected["min_notional"],
+        "notional_usdt": sample_notional,
+        "request": {
+            "symbol": selected["symbol"],
+            "side": "BUY",
+            "type": "MARKET",
+            "notional_usdt": sample_notional,
+            "leverage": config.default_leverage or 1,
+        },
+        "inspected_symbols": inspected,
+    }
 
 
 def _available_usdt(balance_info: Any) -> Optional[float]:
@@ -958,27 +1018,35 @@ def run_binance_testnet_audit(
     preview_request: dict[str, Any] | None = None
     preview_findings: list[str] | None = None
     preview_recommendation = "order_preview_not_requested"
+    preview_selection_status = ""
+    preview_selection_reason = ""
+    preview_selected_symbol = ""
+    preview_selected_min_notional: float | None = None
     if run_order_preview:
-        exchange_result = adapter.exchange_info("BTCUSDT")
+        exchange_result = adapter.exchange_info()
         balance_payload = balance_read.get("response") if run_signed_read_only and "balance_read" in locals() else None
         position_payload = position_read.get("response") if run_signed_read_only and "position_read" in locals() else None
-        sample_notional = min(config.max_notional_usdt or 25.0, 25.0)
-        preview = adapter.validate_order_preview(
-            {
-                "symbol": "BTCUSDT",
-                "side": "BUY",
-                "type": "MARKET",
-                "notional_usdt": sample_notional,
-                "leverage": config.default_leverage or 1,
-            },
-            exchange_info=exchange_result,
-            balance_info=balance_payload,
-            position_info=position_payload,
-        )
-        preview_status = preview["status"]
-        preview_request = preview.get("order_request_sanitized")
-        preview_findings = preview.get("findings")
-        preview_recommendation = preview.get("recommendation", "")
+        selection = select_safe_order_preview_sample(config, exchange_result)
+        preview_selection_status = selection["status"]
+        preview_selection_reason = selection["reason"]
+        preview_selected_symbol = selection.get("symbol", "")
+        preview_selected_min_notional = selection.get("min_notional")
+        if selection["ok"]:
+            preview = adapter.validate_order_preview(
+                selection["request"],
+                exchange_info=exchange_result,
+                balance_info=balance_payload,
+                position_info=position_payload,
+            )
+            preview_status = preview["status"]
+            preview_request = preview.get("order_request_sanitized")
+            preview_findings = preview.get("findings")
+            preview_recommendation = preview.get("recommendation", "")
+        else:
+            preview_status = selection["status"]
+            preview_request = None
+            preview_findings = selection["findings"]
+            preview_recommendation = "adjust_TESTNET_ORDER_ALLOWLIST_or_TESTNET_MAX_NOTIONAL_USDT_no_order_sent"
     result = BinanceTestnetAuditResult(
         status=validation["status"],
         enabled=validation["enabled"],
@@ -1019,6 +1087,10 @@ def run_binance_testnet_audit(
         order_preview_request_sanitized=preview_request,
         order_preview_findings=preview_findings,
         order_preview_recommendation=preview_recommendation,
+        order_preview_sample_selection_status=preview_selection_status,
+        order_preview_sample_selection_reason=preview_selection_reason,
+        order_preview_selected_symbol=preview_selected_symbol,
+        order_preview_selected_min_notional=preview_selected_min_notional,
     )
 
     output_path = Path(report_path)

@@ -16,6 +16,7 @@ from binance_testnet_adapter import (
     BINANCE_TESTNET_ORDER_PREVIEW_INVALID_QUANTITY_PRECISION,
     BINANCE_TESTNET_ORDER_PREVIEW_INVALID_SIDE,
     BINANCE_TESTNET_ORDER_PREVIEW_INVALID_TYPE,
+    BINANCE_TESTNET_ORDER_PREVIEW_INVALID,
     BINANCE_TESTNET_ORDER_PREVIEW_NOTIONAL_TOO_HIGH,
     BINANCE_TESTNET_ORDER_PREVIEW_SYMBOL_NOT_ALLOWED,
     BINANCE_TESTNET_ORDER_PREVIEW_VALID,
@@ -32,6 +33,7 @@ from binance_testnet_adapter import (
     load_binance_testnet_config,
     mask_secret,
     run_binance_testnet_audit,
+    select_safe_order_preview_sample,
     sign_query_string,
     strip_signature_from_url_or_query,
     validate_binance_testnet_config,
@@ -54,12 +56,48 @@ MOCK_EXCHANGE_INFO = {
 }
 
 
+MULTI_SYMBOL_EXCHANGE_INFO = {
+    "symbols": [
+        {
+            "symbol": "BTCUSDT",
+            "quantityPrecision": 3,
+            "pricePrecision": 2,
+            "filters": [{"filterType": "MIN_NOTIONAL", "notional": "50"}],
+        },
+        {
+            "symbol": "ETHUSDT",
+            "quantityPrecision": 3,
+            "pricePrecision": 2,
+            "filters": [{"filterType": "MIN_NOTIONAL", "notional": "20"}],
+        },
+        {
+            "symbol": "HYPEUSDT",
+            "quantityPrecision": 1,
+            "pricePrecision": 4,
+            "filters": [{"filterType": "MIN_NOTIONAL", "notional": "5"}],
+        },
+    ]
+}
+
+
 class RecordingHttpClient:
     def __init__(self):
         self.calls = []
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
+        return {"status_code": 200, "body": {}}
+
+
+class ExchangeInfoHttpClient(RecordingHttpClient):
+    def __init__(self, exchange_info):
+        super().__init__()
+        self.exchange_info = exchange_info
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        if "/fapi/v1/exchangeInfo" in url:
+            return {"status_code": 200, "body": self.exchange_info}
         return {"status_code": 200, "body": {}}
 
 
@@ -634,6 +672,99 @@ def test_order_preview_insufficient_balance_fails():
         balance_info=[{"asset": "USDT", "availableBalance": "1"}],
     )
     assert result["status"] == BINANCE_TESTNET_ORDER_PREVIEW_INSUFFICIENT_BALANCE
+
+
+def test_safe_order_preview_sample_selects_lowest_valid_allowlisted_symbol():
+    adapter = preview_adapter(
+        env={
+            "TESTNET_ORDER_ALLOWLIST": "BTCUSDT,ETHUSDT,HYPEUSDT",
+            "TESTNET_MAX_NOTIONAL_USDT": "25",
+            "TESTNET_DEFAULT_LEVERAGE": "1",
+        }
+    )
+
+    selection = select_safe_order_preview_sample(adapter.config, MULTI_SYMBOL_EXCHANGE_INFO)
+
+    assert selection["ok"] is True
+    assert selection["symbol"] == "HYPEUSDT"
+    assert selection["min_notional"] == 5.0
+    assert selection["request"] == {
+        "symbol": "HYPEUSDT",
+        "side": "BUY",
+        "type": "MARKET",
+        "notional_usdt": 5.0,
+        "leverage": 1,
+    }
+
+
+def test_audit_order_preview_becomes_valid_for_selected_symbol_under_max_notional(tmp_path):
+    http_client = ExchangeInfoHttpClient(MULTI_SYMBOL_EXCHANGE_INFO)
+    dotenv_path = write_dotenv(
+        tmp_path,
+        "\n".join(
+            [
+                "BROKER_MODE=testnet",
+                "TESTNET_ORDER_ALLOWLIST=BTCUSDT,ETHUSDT,HYPEUSDT",
+                "TESTNET_MAX_NOTIONAL_USDT=25",
+                "TESTNET_DEFAULT_LEVERAGE=1",
+            ]
+        ),
+    )
+    report_path = tmp_path / "reports" / "binance_testnet_audit.json"
+
+    result = run_binance_testnet_audit(
+        dotenv_path=dotenv_path,
+        report_path=str(report_path),
+        http_client=http_client,
+        run_public_checks=True,
+        run_order_preview=True,
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert result.order_preview_status == BINANCE_TESTNET_ORDER_PREVIEW_VALID
+    assert report["order_preview_status"] == BINANCE_TESTNET_ORDER_PREVIEW_VALID
+    assert report["order_preview_selected_symbol"] == "HYPEUSDT"
+    assert report["order_preview_selected_min_notional"] == 5.0
+    assert report["order_preview_request_sanitized"]["type"] == "MARKET"
+    assert report["order_preview_request_sanitized"]["side"] == "BUY"
+    assert report["order_placement_status"] == BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD
+    assert not any("/order" in url.lower() for url, _kwargs in http_client.calls)
+
+
+def test_audit_order_preview_fails_closed_when_no_allowlisted_symbol_fits(tmp_path):
+    http_client = ExchangeInfoHttpClient(
+        {
+            "symbols": [
+                {
+                    "symbol": "BTCUSDT",
+                    "filters": [{"filterType": "MIN_NOTIONAL", "notional": "50"}],
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "filters": [{"filterType": "MIN_NOTIONAL", "notional": "30"}],
+                },
+            ]
+        }
+    )
+    dotenv_path = write_dotenv(
+        tmp_path,
+        "BROKER_MODE=testnet\nTESTNET_ORDER_ALLOWLIST=BTCUSDT,ETHUSDT\nTESTNET_MAX_NOTIONAL_USDT=25\n",
+    )
+
+    result = run_binance_testnet_audit(
+        dotenv_path=dotenv_path,
+        report_path=str(tmp_path / "reports" / "binance_testnet_audit.json"),
+        http_client=http_client,
+        run_public_checks=True,
+        run_order_preview=True,
+    )
+
+    assert result.order_preview_status == BINANCE_TESTNET_ORDER_PREVIEW_INVALID
+    assert result.order_preview_sample_selection_status == BINANCE_TESTNET_ORDER_PREVIEW_INVALID
+    assert result.order_preview_sample_selection_reason == "no_allowlisted_symbol_with_min_notional_within_max_notional"
+    assert result.order_preview_findings is not None
+    assert "no_allowlisted_symbol_with_min_notional_within_max_notional" in result.order_preview_findings
+    assert not any("/order" in url.lower() for url, _kwargs in http_client.calls)
 
 
 def test_order_preview_does_not_call_order_endpoint_or_expose_secrets(tmp_path):
