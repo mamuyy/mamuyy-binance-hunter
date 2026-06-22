@@ -1,4 +1,6 @@
 import json
+from io import BytesIO
+from urllib.error import HTTPError
 
 import main
 import pytest
@@ -41,6 +43,18 @@ def write_dotenv(tmp_path, content):
     path.write_text(content, encoding="utf-8")
     return str(path)
 
+
+
+
+class HttpErrorClient:
+    def __init__(self, status_code=401, body=b""):
+        self.status_code = status_code
+        self.body = body
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        raise HTTPError(url, self.status_code, "Unauthorized", {}, BytesIO(self.body))
 
 
 class ErrorHttpClient:
@@ -129,6 +143,81 @@ def test_raw_api_key_and_secret_never_appear_in_signed_audit_report(tmp_path):
     assert report["account_read_diagnostic"]["category"] == "INVALID_KEY_OR_PERMISSION"
     assert report["signed_read_only_error_categories"] == ["INVALID_KEY_OR_PERMISSION"]
     assert "key" in report["signed_read_only_recommendation"]
+
+
+
+def test_http_error_body_invalid_key_is_extracted_and_classified():
+    adapter = BinanceTestnetAdapter(
+        config=signed_config(),
+        http_client=HttpErrorClient(401, b'{"code":-2015,"msg":"Invalid API-key, IP, or permissions for action."}'),
+    )
+
+    result = adapter.signed_account_read_only()
+
+    diagnostic = result["diagnostic"]
+    assert diagnostic["http_status"] == 401
+    assert diagnostic["binance_code"] == -2015
+    assert diagnostic["binance_msg"] == "Invalid API-key, IP, or permissions for action."
+    assert diagnostic["category"] == "INVALID_KEY_OR_PERMISSION"
+    assert diagnostic["raw_error_body_present"] is True
+    assert diagnostic["http_error_body_parse_status"] == "json"
+
+
+def test_http_error_body_timestamp_drift_is_extracted_and_classified():
+    adapter = BinanceTestnetAdapter(
+        config=signed_config(),
+        http_client=HttpErrorClient(400, b'{"code":-1021,"msg":"Timestamp for this request is outside of the recvWindow."}'),
+    )
+
+    diagnostic = adapter.signed_account_read_only()["diagnostic"]
+
+    assert diagnostic["binance_code"] == -1021
+    assert diagnostic["category"] == "TIMESTAMP_DRIFT"
+
+
+def test_http_error_body_invalid_signature_is_extracted_and_classified():
+    adapter = BinanceTestnetAdapter(
+        config=signed_config(),
+        http_client=HttpErrorClient(400, b'{"code":-1022,"msg":"Signature for this request is not valid."}'),
+    )
+
+    diagnostic = adapter.signed_account_read_only()["diagnostic"]
+
+    assert diagnostic["binance_code"] == -1022
+    assert diagnostic["category"] == "INVALID_SIGNATURE"
+    assert "signature=" not in (diagnostic["sanitized_error_body_preview"] or "")
+
+
+def test_http_error_401_empty_body_is_unauthorized_no_body():
+    adapter = BinanceTestnetAdapter(config=signed_config(), http_client=HttpErrorClient(401, b""))
+
+    diagnostic = adapter.signed_account_read_only()["diagnostic"]
+
+    assert diagnostic["http_status"] == 401
+    assert diagnostic["binance_code"] is None
+    assert diagnostic["binance_msg"] is None
+    assert diagnostic["category"] == "UNAUTHORIZED_NO_BODY"
+    assert diagnostic["raw_error_body_present"] is False
+    assert diagnostic["http_error_body_parse_status"] == "empty"
+
+
+def test_http_error_diagnostic_redacts_signature_and_omits_raw_secrets():
+    raw_key = "raw-api-key-value"
+    raw_secret = "raw-api-secret-value"
+    adapter = BinanceTestnetAdapter(
+        config=signed_config(raw_key, raw_secret),
+        http_client=HttpErrorClient(
+            401,
+            b'{"code":-1022,"msg":"Signature for this request is not valid: signature=abcdef"}',
+        ),
+    )
+
+    diagnostic_text = json.dumps(adapter.signed_account_read_only()["diagnostic"])
+
+    assert raw_key not in diagnostic_text
+    assert raw_secret not in diagnostic_text
+    assert "signature=abcdef" not in diagnostic_text
+    assert "signature=%3Credacted%3E" in diagnostic_text or "signature=<redacted>" in diagnostic_text
 
 
 def test_signed_query_signature_has_expected_hmac_shape():
