@@ -16,11 +16,13 @@ from binance_testnet_adapter import (
     BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED,
     BINANCE_TESTNET_SIGNED_READ_ONLY_OK,
     BinanceTestnetAdapter,
+    classify_binance_signed_error,
     DEFAULT_REST_BASE_URL,
     load_binance_testnet_config,
     mask_secret,
     run_binance_testnet_audit,
     sign_query_string,
+    strip_signature_from_url_or_query,
     validate_binance_testnet_config,
 )
 
@@ -39,6 +41,94 @@ def write_dotenv(tmp_path, content):
     path.write_text(content, encoding="utf-8")
     return str(path)
 
+
+
+class ErrorHttpClient:
+    def __init__(self, status_code=400, body=None):
+        self.status_code = status_code
+        self.body = body or {}
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return {"status_code": self.status_code, "body": self.body}
+
+
+def signed_config(raw_key="raw-api-key", raw_secret="raw-api-secret"):
+    config = load_binance_testnet_config(
+        env={"BROKER_MODE": "testnet", "BINANCE_TESTNET_API_KEY": raw_key, "BINANCE_TESTNET_API_SECRET": raw_secret},
+        dotenv_path="/does/not/exist",
+    )
+    return __import__("dataclasses").replace(config, signed_read_only_enabled=True)
+
+
+def test_invalid_key_or_permission_error_is_classified():
+    assert classify_binance_signed_error(-2015, "Invalid API-key, IP, or permissions for action.") == "INVALID_KEY_OR_PERMISSION"
+
+
+def test_timestamp_error_is_classified():
+    assert classify_binance_signed_error(-1021, "Timestamp for this request is outside of the recvWindow.") == "TIMESTAMP_DRIFT"
+
+
+def test_signature_error_is_classified():
+    assert classify_binance_signed_error(-1022, "Signature for this request is not valid.") == "INVALID_SIGNATURE"
+
+
+def test_signed_failure_diagnostic_includes_safe_remote_details():
+    adapter = BinanceTestnetAdapter(
+        config=signed_config(),
+        http_client=ErrorHttpClient(401, {"code": -2015, "msg": "Invalid API-key, IP, or permissions for action."}),
+    )
+
+    result = adapter.signed_account_read_only()
+
+    diagnostic = result["diagnostic"]
+    assert result["status"] == "BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED"
+    assert diagnostic["http_status"] == 401
+    assert diagnostic["binance_code"] == -2015
+    assert diagnostic["binance_msg"] == "Invalid API-key, IP, or permissions for action."
+    assert diagnostic["category"] == "INVALID_KEY_OR_PERMISSION"
+    assert diagnostic["endpoint_path"] == "/fapi/v2/account"
+    assert diagnostic["timestamp_included"] is True
+    assert diagnostic["recvWindow_included"] is False
+    assert isinstance(diagnostic["local_timestamp"], int)
+
+
+def test_diagnostic_output_strips_signature_from_query_and_url():
+    value = "https://demo-fapi.binance.com/fapi/v2/account?timestamp=1&signature=abcdef&symbol=BTCUSDT"
+
+    sanitized = strip_signature_from_url_or_query(value)
+
+    assert "signature=abcdef" not in sanitized
+    assert "signature=%3Credacted%3E" in sanitized or "signature=<redacted>" in sanitized
+    assert "timestamp=1" in sanitized
+
+
+def test_raw_api_key_and_secret_never_appear_in_signed_audit_report(tmp_path):
+    raw_key = "raw-api-key-value"
+    raw_secret = "raw-api-secret-value"
+    dotenv_path = write_dotenv(
+        tmp_path,
+        f"BROKER_MODE=testnet\nBINANCE_TESTNET_API_KEY={raw_key}\nBINANCE_TESTNET_API_SECRET={raw_secret}\n",
+    )
+    report_path = tmp_path / "reports" / "binance_testnet_audit.json"
+
+    run_binance_testnet_audit(
+        dotenv_path=dotenv_path,
+        report_path=str(report_path),
+        http_client=ErrorHttpClient(401, {"code": -2015, "msg": "Invalid API-key, IP, or permissions for action."}),
+        run_public_checks=True,
+        run_signed_read_only=True,
+    )
+
+    report_text = report_path.read_text(encoding="utf-8")
+    report = json.loads(report_text)
+    assert raw_key not in report_text
+    assert raw_secret not in report_text
+    assert "signature=" not in report_text or "abcdef" not in report_text
+    assert report["account_read_diagnostic"]["category"] == "INVALID_KEY_OR_PERMISSION"
+    assert report["signed_read_only_error_categories"] == ["INVALID_KEY_OR_PERMISSION"]
+    assert "key" in report["signed_read_only_recommendation"]
 
 
 def test_signed_query_signature_has_expected_hmac_shape():

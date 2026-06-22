@@ -16,7 +16,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from urllib.request import urlopen
 
 
@@ -124,6 +124,12 @@ class BinanceTestnetAuditResult:
     signed_read_only_findings: list[str]
     findings: list[str]
     recommendation: str
+    signed_read_only_diagnostics: dict[str, Any] | None = None
+    account_read_diagnostic: dict[str, Any] | None = None
+    balance_read_diagnostic: dict[str, Any] | None = None
+    position_read_diagnostic: dict[str, Any] | None = None
+    signed_read_only_error_categories: list[str] | None = None
+    signed_read_only_recommendation: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -293,6 +299,114 @@ def _validate_signed_read_only_endpoint(base_url: str, path: str) -> str:
         return BINANCE_TESTNET_SIGNED_ENDPOINT_BLOCKED
     return BINANCE_TESTNET_SIGNED_READ_ONLY_OK
 
+
+def strip_signature_from_url_or_query(value: Any) -> str:
+    """Return a URL/query string with any signature value redacted."""
+
+    text = "" if value is None else str(value)
+    if not text or "signature=" not in text.lower():
+        return text
+    parsed = urlparse(text)
+    has_url_shape = bool(parsed.scheme or parsed.netloc)
+    query = parsed.query if has_url_shape else text.lstrip("?")
+    pairs = parse_qsl(query, keep_blank_values=True)
+    if not pairs:
+        return text
+    sanitized_query = urlencode(
+        [(key, "<redacted>") if key.lower() == "signature" else (key, val) for key, val in pairs]
+    )
+    if has_url_shape:
+        return urlunparse(parsed._replace(query=sanitized_query))
+    return sanitized_query
+
+
+def _response_status_code(response_or_exception: Any) -> Optional[int]:
+    if isinstance(response_or_exception, Mapping):
+        value = response_or_exception.get("status_code") or response_or_exception.get("status")
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+    value = getattr(response_or_exception, "status_code", None) or getattr(response_or_exception, "status", None)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _response_body(response_or_exception: Any) -> Any:
+    if isinstance(response_or_exception, Mapping):
+        body = response_or_exception.get("body", response_or_exception.get("json"))
+    else:
+        body = getattr(response_or_exception, "body", None)
+    if callable(body):
+        try:
+            body = body()
+        except Exception:  # pragma: no cover - defensive for third-party response objects.
+            body = None
+    if isinstance(body, (bytes, bytearray)):
+        body = body.decode("utf-8", errors="replace")
+    if isinstance(body, str):
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"raw_body_preview": strip_signature_from_url_or_query(body[:200])}
+    return body
+
+
+def classify_binance_signed_error(code: Any, msg: Any) -> str:
+    """Classify a Binance signed read-only error without exposing request secrets."""
+
+    try:
+        numeric_code = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        numeric_code = None
+    message = str(msg or "").lower()
+    if numeric_code in {-2014, -2015} or "api-key" in message or "api key" in message or "permission" in message:
+        return "INVALID_KEY_OR_PERMISSION"
+    if numeric_code == -1021 or "timestamp" in message or "recvwindow" in message:
+        return "TIMESTAMP_DRIFT"
+    if numeric_code in {-1022, -1100} or "signature" in message:
+        return "INVALID_SIGNATURE"
+    if numeric_code in {-2010, -2011} or "not authorized" in message or "unauthorized" in message:
+        return "PERMISSION_DENIED"
+    if numeric_code is not None or msg:
+        return "UNKNOWN_REMOTE_ERROR"
+    return "UNKNOWN_LOCAL_ERROR"
+
+
+def sanitize_signed_error_response(response_or_exception: Any) -> dict[str, Any]:
+    """Extract safe diagnostic fields from a Binance response or exception."""
+
+    body = _response_body(response_or_exception)
+    code = body.get("code") if isinstance(body, Mapping) else None
+    msg = body.get("msg") if isinstance(body, Mapping) else None
+    diagnostic: dict[str, Any] = {
+        "http_status": _response_status_code(response_or_exception),
+        "binance_code": code,
+        "binance_msg": strip_signature_from_url_or_query(msg) if msg is not None else None,
+        "category": classify_binance_signed_error(code, msg),
+    }
+    if isinstance(response_or_exception, BaseException):
+        diagnostic["exception_type"] = type(response_or_exception).__name__
+        diagnostic["exception_message"] = strip_signature_from_url_or_query(str(response_or_exception))[:200]
+    return diagnostic
+
+
+def _signed_read_only_recommendation(categories: list[str]) -> str:
+    category_set = set(categories)
+    if "TIMESTAMP_DRIFT" in category_set:
+        return "check_local_clock_server_time_and_recvWindow"
+    if "INVALID_SIGNATURE" in category_set:
+        return "check_signed_query_construction_and_api_secret_for_usd_m_futures_testnet"
+    if "INVALID_KEY_OR_PERMISSION" in category_set:
+        return "check_key_product_testnet_vs_futures_validity_ip_and_read_permissions"
+    if "PERMISSION_DENIED" in category_set:
+        return "check_api_key_read_permissions_and_ip_restrictions"
+    if categories:
+        return "inspect_sanitized_binance_code_msg_and_endpoint_path"
+    return "signed_read_only_not_run_or_no_errors"
+
 def validate_binance_testnet_config(config: BinanceTestnetConfig) -> dict[str, Any]:
     """Validate scaffold config and return a masked, non-secret status object."""
 
@@ -434,14 +548,34 @@ class BinanceTestnetAdapter:
         if self.http_client is None:
             return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED, "response": {"offline": True}}
 
-        params: dict[str, Any] = {"timestamp": int(time.time() * 1000)}
+        local_timestamp = int(time.time() * 1000)
+        params: dict[str, Any] = {"timestamp": local_timestamp}
         params["signature"] = sign_query_string(params, self.config.api_secret)
         url = f"{self.config.rest_base_url.rstrip('/')}{path}?{urlencode(params)}"
+        diagnostic_base = {
+            "endpoint_path": path.split("?", 1)[0],
+            "timestamp_included": "timestamp" in params,
+            "recvWindow_included": "recvWindow" in params,
+            "local_timestamp": local_timestamp,
+            "sanitized_url_or_query": strip_signature_from_url_or_query(url),
+        }
         try:
             response = self.http_client.get(url, timeout=10, headers={"X-MBX-APIKEY": self.config.api_key})
-            return {"ok": True, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_OK, "response": response}
+            status_code = _response_status_code(response)
+            body = _response_body(response)
+            remote_code = body.get("code") if isinstance(body, Mapping) else None
+            if (status_code is not None and status_code >= 400) or remote_code is not None:
+                diagnostic = {**diagnostic_base, **sanitize_signed_error_response(response)}
+                return {
+                    "ok": False,
+                    "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED,
+                    "response": None,
+                    "diagnostic": diagnostic,
+                }
+            return {"ok": True, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_OK, "response": response, "diagnostic": diagnostic_base}
         except Exception as exc:  # pragma: no cover - exercised through CLI/network conditions.
-            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED, "error": type(exc).__name__, "response": None}
+            diagnostic = {**diagnostic_base, **sanitize_signed_error_response(exc)}
+            return {"ok": False, "status": BINANCE_TESTNET_SIGNED_READ_ONLY_FAILED, "error": type(exc).__name__, "response": None, "diagnostic": diagnostic}
 
     def signed_account_read_only(self) -> dict[str, Any]:
         return self._signed_read_only_get("/fapi/v2/account")
@@ -499,11 +633,36 @@ def run_binance_testnet_audit(
     balance_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
     position_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
     signed_status = BINANCE_TESTNET_SIGNED_READ_ONLY_DISABLED
+    account_diagnostic: dict[str, Any] | None = None
+    balance_diagnostic: dict[str, Any] | None = None
+    position_diagnostic: dict[str, Any] | None = None
+    signed_read_only_diagnostics: dict[str, Any] = {}
+    signed_error_categories: list[str] = []
+    signed_recommendation = "signed_read_only_not_run"
     signed_endpoint_safety_status = _validate_signed_read_only_endpoint(config.rest_base_url, "/fapi/v2/account")
     if run_signed_read_only:
-        account_status = adapter.signed_account_read_only()["status"]
-        balance_status = adapter.signed_balance_read_only()["status"]
-        position_status = adapter.signed_position_read_only()["status"]
+        account_read = adapter.signed_account_read_only()
+        balance_read = adapter.signed_balance_read_only()
+        position_read = adapter.signed_position_read_only()
+        account_status = account_read["status"]
+        balance_status = balance_read["status"]
+        position_status = position_read["status"]
+        account_diagnostic = account_read.get("diagnostic")
+        balance_diagnostic = balance_read.get("diagnostic")
+        position_diagnostic = position_read.get("diagnostic")
+        signed_read_only_diagnostics = {
+            "account": account_diagnostic,
+            "balance": balance_diagnostic,
+            "position": position_diagnostic,
+        }
+        signed_error_categories = sorted(
+            {
+                diagnostic.get("category")
+                for diagnostic in (account_diagnostic, balance_diagnostic, position_diagnostic)
+                if isinstance(diagnostic, Mapping) and diagnostic.get("category")
+            }
+        )
+        signed_recommendation = _signed_read_only_recommendation(signed_error_categories)
         statuses = [account_status, balance_status, position_status]
         if signed_endpoint_safety_status != BINANCE_TESTNET_SIGNED_READ_ONLY_OK:
             signed_status = signed_endpoint_safety_status
@@ -544,6 +703,12 @@ def run_binance_testnet_audit(
         signed_read_only_findings=signed_findings,
         findings=validation["findings"],
         recommendation=validation["recommendation"],
+        signed_read_only_diagnostics=signed_read_only_diagnostics,
+        account_read_diagnostic=account_diagnostic,
+        balance_read_diagnostic=balance_diagnostic,
+        position_read_diagnostic=position_diagnostic,
+        signed_read_only_error_categories=signed_error_categories,
+        signed_read_only_recommendation=signed_recommendation,
     )
 
     output_path = Path(report_path)
