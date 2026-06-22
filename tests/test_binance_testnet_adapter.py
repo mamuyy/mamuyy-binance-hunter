@@ -1,6 +1,7 @@
 import json
 
 import main
+import pytest
 
 from binance_testnet_adapter import (
     BINANCE_TESTNET_CONFIG_VALID,
@@ -124,6 +125,66 @@ def test_live_spot_endpoint_is_rejected():
 
     assert result["ok"] is False
     assert result["status"] == BINANCE_TESTNET_LIVE_ENDPOINT_REJECTED
+
+
+@pytest.mark.parametrize(
+    "broker_mode",
+    [
+        "testnet",
+        "TESTNET",
+        "binance_testnet",
+        "BINANCE_TESTNET",
+        "BINANCE_FUTURES_TESTNET",
+        "BINANCE_FUTURES_TESTNET_ONLY",
+        "USD_M_FUTURES_TESTNET",
+    ],
+)
+def test_explicit_testnet_broker_modes_enable_public_audit(broker_mode):
+    config = load_binance_testnet_config(
+        env={
+            "BROKER_MODE": broker_mode,
+            "BINANCE_TESTNET_API_KEY": "test-key",
+            "BINANCE_TESTNET_API_SECRET": "test-secret",
+            "BINANCE_FUTURES_TESTNET_BASE_URL": "https://demo-fapi.binance.com",
+            "ALLOW_TESTNET_ORDER": "False",
+            "ALLOW_AUTO_TESTNET_ORDER": "False",
+        },
+        dotenv_path="/does/not/exist",
+    )
+
+    validation = validate_binance_testnet_config(config)
+
+    assert config.enabled is True
+    assert validation["status"] == BINANCE_TESTNET_CONFIG_VALID
+    assert validation["enabled"] is True
+
+
+def test_allow_testnet_order_false_blocks_orders_without_disabling_public_audit():
+    secret = "raw-secret-value"
+    config = load_binance_testnet_config(
+        env={
+            "BROKER_MODE": "BINANCE_FUTURES_TESTNET_ONLY",
+            "BINANCE_TESTNET_API_KEY": secret,
+            "BINANCE_TESTNET_API_SECRET": secret,
+            "BINANCE_FUTURES_TESTNET_BASE_URL": "https://demo-fapi.binance.com",
+            "ALLOW_TESTNET_ORDER": "False",
+            "ALLOW_AUTO_TESTNET_ORDER": "False",
+        },
+        dotenv_path="/does/not/exist",
+    )
+    adapter = BinanceTestnetAdapter(config=config, http_client=RecordingHttpClient())
+
+    validation = validate_binance_testnet_config(config)
+    order = adapter.place_testnet_order({"symbol": "BTCUSDT", "side": "BUY"})
+    ping = adapter.ping()
+    report_text = json.dumps(validation)
+
+    assert validation["status"] == BINANCE_TESTNET_CONFIG_VALID
+    assert validation["enabled"] is True
+    assert order["status"] == BINANCE_TESTNET_ORDER_BLOCKED_BY_GUARD
+    assert ping["status"] == BINANCE_TESTNET_PUBLIC_PING_OK
+    assert validation["api_key_masked"] == mask_secret(secret)
+    assert secret not in report_text
 
 
 def test_default_mode_is_fail_closed_and_no_order():
