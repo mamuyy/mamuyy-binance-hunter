@@ -16,6 +16,8 @@ from macro_observer import latest_macro_state
 
 CLOSED_STATUSES = {"CLOSED", "WIN", "LOSS", "STOP_LOSS", "TAKE_PROFIT"}
 ACTIVE_STATUSES = {"OPEN", "TP1 HIT"}
+MAX_CONCURRENT_PER_SYMBOL = 3
+MAX_CONCURRENT_GLOBAL = 20
 LIFECYCLE_REPORT_PATH = "reports/paper_trade_lifecycle.json"
 
 PREDICTION_LINKAGE_FIELDS = (
@@ -253,6 +255,25 @@ def _ensure_internal_paper_columns(connection: sqlite3.Connection) -> None:
             connection.execute(f"ALTER TABLE internal_paper_trades ADD COLUMN {column} {column_type}")
 
 
+def _active_count(db_path: str, symbol: str | None = None) -> int:
+    """Count active (OPEN / TP1 HIT) positions, optionally filtered by symbol."""
+    placeholders = ", ".join("?" * len(ACTIVE_STATUSES))
+    params: list = list(ACTIVE_STATUSES)
+    where = f"status IN ({placeholders})"
+    if symbol is not None:
+        where += " AND symbol = ?"
+        params.append(symbol)
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM internal_paper_trades WHERE {where}",
+                params,
+            ).fetchone()
+            return int(row[0]) if row else 0
+    except Exception:
+        return 0
+
+
 def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
     init_db(db_path)
     with sqlite3.connect(db_path) as connection:
@@ -464,6 +485,22 @@ def run_internal_paper_engine(
             "evaluation_contract": linkage_metadata.get("evaluation_contract"),
             "target_timestamp": linkage_metadata.get("target_timestamp"),
         }
+        sym_count = _active_count(db_path, symbol)
+        if sym_count >= MAX_CONCURRENT_PER_SYMBOL:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "POLICY_BLOCK per-symbol symbol=%s active=%d limit=%d — skipping",
+                symbol, sym_count, MAX_CONCURRENT_PER_SYMBOL,
+            )
+            continue
+        global_count = _active_count(db_path)
+        if global_count >= MAX_CONCURRENT_GLOBAL:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "POLICY_BLOCK global active=%d limit=%d — skipping",
+                global_count, MAX_CONCURRENT_GLOBAL,
+            )
+            continue
         if _insert_trade(db_path, trade):
             inserted += 1
             generated.append(trade)
