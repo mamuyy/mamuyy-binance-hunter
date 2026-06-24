@@ -194,15 +194,16 @@ def run_shadow_live(db_path: str = "mamuyy_hunter.db", chart_dir: str = "charts"
         )
     _insert_rows(db_path, rows)
     shadow = pd.concat([shadow, pd.DataFrame(rows)], ignore_index=True)
-    pnl = pd.to_numeric(shadow.get("pnl_percent", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    shadow_window = shadow.tail(500)
+    pnl = pd.to_numeric(shadow_window.get("pnl_percent", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     equity = pnl.cumsum()
     drawdown = equity - equity.cummax() if not equity.empty else pd.Series(dtype=float)
     execution_drift = pd.to_numeric(shadow.get("execution_drift", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     prediction_drift = pd.to_numeric(shadow.get("prediction_drift", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     regime_drift = pd.to_numeric(shadow.get("regime_drift", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
-    exposure = pd.to_numeric(shadow.get("exposure", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    exposure = pd.to_numeric(shadow_window.get("exposure", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
     cumulative_pnl_pct = float(equity.iloc[-1]) if not equity.empty else 0.0
-    cumulative_exposure_pct = float(exposure.sum() * 100) if len(exposure) else 0.0
+    cumulative_exposure_pct = float(exposure.mean() * 100) if len(exposure) else 0.0
 
     # Live metrics should reflect currently active lifecycle-governed shadows only.
     active_positions = active_shadow_positions(db_path=db_path)

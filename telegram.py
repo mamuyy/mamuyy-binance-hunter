@@ -252,7 +252,7 @@ def format_shadow_message(result: Dict[str, Any]) -> str:
         "👻 SHADOW LIVE ENGINE\n\n"
         f"Live PnL (Rolling Active): {result.get('rolling_live_pnl_pct', result.get('live_pnl', 0))}%\n"
         f"Cumulative Shadow PnL: {result.get('cumulative_shadow_pnl_pct', 0)}%\n"
-        f"Live Winrate: {result.get('live_winrate', 0)}%\n"
+        f"Shadow Winrate (last 500): {result.get('live_winrate', 0)}%\n"
         f"Execution Drift: {result.get('execution_drift', 0)}%\n"
         f"Current Regime: {result.get('current_regime', 'UNKNOWN')}\n"
         f"Shadow Exposure (Rolling Active): {result.get('rolling_live_exposure_pct', result.get('live_exposure', 0))}%\n"
