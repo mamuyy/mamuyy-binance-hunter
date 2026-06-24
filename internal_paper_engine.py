@@ -171,6 +171,20 @@ def _macro_state(regime: str) -> str:
     return "NORMAL"
 
 
+def _is_recent_iso_timestamp(value: str | None, max_age_hours: float = 4.0) -> bool:
+    """Return True only if value is a parseable ISO timestamp within max_age_hours of now."""
+    if not value:
+        return False
+    try:
+        normalized = str(value).strip().replace("Z", "+00:00")
+        ts = datetime.fromisoformat(normalized)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ts).total_seconds() < max_age_hours * 3600
+    except Exception:
+        return False
+
+
 def _market_type(symbol: str) -> str:
     text = str(symbol or "").upper()
     if text.endswith("USDT"):
@@ -423,8 +437,10 @@ def run_internal_paper_engine(
     allocations = _read_allocations(allocation_path)
     latest_prices = _latest_prices_from_signals(signals)
     naturally_closed = _update_open_trades(db_path, latest_prices)
+    # Macro observer is optional. If stale, fall back to regime-derived macro_state.
     real_macro = latest_macro_state("logs/macro_observer.csv")
     real_macro_state = str(real_macro.get("macro_state") or "UNKNOWN")
+    _macro_csv_fresh = _is_recent_iso_timestamp(real_macro.get("timestamp"), max_age_hours=4.0)
     cross_market = latest_cross_market_state("logs/cross_market_intelligence.csv")
     candidates = _latest_signal_candidates(signals, allocations).head(max_new_trades)
     inserted = 0
@@ -438,7 +454,7 @@ def run_internal_paper_engine(
             continue
         confidence = _score_from_signal(signal)
         regime = str(signal.get("regime_name") or "UNKNOWN")
-        macro_state = real_macro_state if real_macro_state != "UNKNOWN" else _macro_state(regime)
+        macro_state = real_macro_state if (real_macro_state != "UNKNOWN" and _macro_csv_fresh) else _macro_state(regime)
         confidence = _macro_adjusted_confidence(confidence, macro_state)
         confidence = _cross_market_adjusted_confidence(confidence, cross_market)
         allocation_tier = str(signal.get("allocation_tier") or "WATCH").upper()
