@@ -292,7 +292,10 @@ def allocate_opportunities(
     db_path: str = "mamuyy_hunter.db",
     output_path: str = "logs/opportunity_allocation.csv",
     logs_dir: str = "logs",
-    max_active_shadow_positions: int = 10,
+    # Raised from 10 → 100 on 2026-06-24: shadow_trades has no CLOSED lifecycle
+    # status so active count is always >> 10. Real guards are MAX_CONCURRENT_GLOBAL
+    # and MAX_CONCURRENT_PER_SYMBOL in internal_paper_engine.py.
+    max_active_shadow_positions: int = 100,
     correlation_threshold: float = 0.85,
 ) -> Dict[str, Any]:
     signals = _read_table(db_path, "signals", limit=2000)
