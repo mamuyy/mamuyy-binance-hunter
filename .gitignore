@@ -36,3 +36,11 @@ regime_audit.sql
 .venv_phase4_research/
 orchestrator_log.csv.*
 reports/
+*.db-wal
+*.db-shm
+*.db-journal
+reports/
+hunter_api.py
+hunter_backups/
+*.tmp
+*.gz
