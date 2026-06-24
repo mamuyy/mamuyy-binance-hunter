@@ -320,3 +320,55 @@ Rules: do not pull over uncommitted operator changes; rerun readiness after code
 ---
 
 _End of Operator Runbook. Review monthly or after any emergency procedure._
+
+---
+
+## 11. Known Behaviors & Design Notes (added 2026-06-24)
+
+### Broadcast Router — CLI-only, not orchestrator-driven
+`broadcast_router.py`'s `broadcast_test()` is invoked only via:
+```
+python main.py --broadcast_test
+```
+It is NOT registered as an orchestrator engine callback. In PAPER_ONLY mode
+this is intentional — the broadcast system is a proposal layer only.
+The 10 rows in `broadcast_events` are from a single manual test on 2026-05-19.
+Zero automatic broadcasts is expected behavior, not a bug.
+
+### Signal Volume Post-Retrain (2026-06-23)
+After the June 23 retrain, signal volume dropped from ~9,600/day to ~15/day.
+The new model is more selective (avg score 85–90 vs ~25 before), surfacing
+only high-confidence signals. This is expected behavior from a larger, more
+general dataset. Monitor weekly — if volume stays below 50/day for >30 days,
+consider reviewing scanner score thresholds.
+
+### MAX_SHADOW_EXPOSURE_CAP — Review Pending
+The `MAX_SHADOW_EXPOSURE_CAP` (currently 20/10) was set when shadow cumulative
+exposure was inflated (457,266%). After the 2026-06-24 shadow engine fix
+(exposure now correctly shows ~8.80%), this cap may be overly conservative
+and could be causing excessive AVOID tier assignments in the opportunity
+allocator. Do NOT change yet — observe for 7 days post-fix before deciding.
+Scheduled review: 2026-07-01.
+
+### Two ML Accuracy Metrics — Expected Difference
+Two accuracy figures exist and are both correct:
+- Operational accuracy (0.3281): from ml_engine.py, updated every ~30 min,
+  evaluates production model on live paper data. This is what Telegram shows.
+- Retrain accuracy (0.3379): from retrain_model.py, written once per retrain,
+  evaluates candidate model on held-out historical_outcomes split.
+Gap of ~0.005 is normal (distribution shift between training and live data).
+
+### Shadow Live Metrics — Windowed to Last 500 Rows (fixed 2026-06-24)
+Prior to fix, cumulative shadow metrics were unbounded (87,539% PnL,
+457,266% exposure, 94.42% winrate) due to accumulation over all 54,567 rows
+since May 15 with no reset. Fixed in commit 85965bc — all metrics now
+windowed to last 500 rows. Winrate remaining at 100% on last 500 rows is
+expected due to signal filter survivorship bias (scanner only surfaces
+high-score signals; synthetic pnl formula guarantees positive when score > 60).
+
+### Market Regime Duplicate Fixed (2026-06-24)
+Three identical Market Regime Telegram messages per cycle were caused by
+three orchestrator engine lambdas (scanner, regime, flow) all pointing to
+the same run_once() function which contained the regime send call.
+Fixed in commit df64a46 — 60-second cooldown guard added. One message per
+cycle now.
