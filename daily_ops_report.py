@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List
@@ -213,7 +214,7 @@ def _warnings(report: Dict[str, Any]) -> List[str]:
     if str(report.get("cross_market_state")).upper() in {"CROSS_MARKET_STRESS", "SAFE_HAVEN_ROTATION"}:
         warnings.append(f"cross-market stress active: {report.get('cross_market_state')}")
     if _num(report.get("internal_paper_max_drawdown")) < -10:
-        warnings.append(f"paper drawdown warning: {report.get('internal_paper_max_drawdown')}%")
+        warnings.append(f"paper drawdown warning: {report.get('internal_paper_max_drawdown')} pts")
     if str(report.get("latest_guardian_status")).upper() == "HALT":
         warnings.append("health guardian status HALT")
     if str(report.get("latest_telegram_send_status")).upper() == "FAILED":
@@ -356,23 +357,112 @@ def _markdown(report: Dict[str, Any]) -> str:
     )
 
 
+def _enrich_report(report: Dict[str, Any], db_path: str) -> None:
+    """Load extra fields (model, trade breakdown, disk, WAL) into report in-place."""
+    na = "N/A"
+
+    # model_output.json — operational accuracy
+    try:
+        with open("model_output.json", encoding="utf-8") as f:
+            mo = json.load(f)
+        report["op_accuracy"] = f"{mo.get('accuracy', 0.0):.4f}"
+    except Exception:
+        report["op_accuracy"] = na
+
+    # model_registry.json — retrain accuracy + version
+    try:
+        with open("model_registry.json", encoding="utf-8") as f:
+            reg = json.load(f)
+        prod = reg.get("production") or {}
+        report["model_version"] = prod.get("version", na)
+        report["retrain_accuracy"] = f"{prod.get('accuracy', 0.0):.4f}"
+    except Exception:
+        report["model_version"] = na
+        report["retrain_accuracy"] = na
+
+    # trade breakdown from internal_paper_trades (read-only)
+    try:
+        uri = f"file:{db_path}?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=10) as conn:
+            rows = conn.execute(
+                "SELECT status, exit_reason, COUNT(*) FROM internal_paper_trades"
+                " GROUP BY status, exit_reason"
+            ).fetchall()
+        total = active = tp1 = closed = expired = 0
+        for status, reason, cnt in rows:
+            total += cnt
+            s = (status or "").strip().upper()
+            r = (reason or "").strip().upper()
+            if s == "OPEN":
+                active += cnt
+            elif s == "TP1 HIT":
+                tp1 += cnt
+            elif s == "CLOSED":
+                closed += cnt
+                if r == "EXPIRED_ORPHANED":
+                    expired += cnt
+        report["trade_total"] = total
+        report["trade_active"] = active
+        report["trade_tp1"] = tp1
+        report["trade_closed"] = closed
+        report["trade_expired_orphaned"] = expired
+    except Exception:
+        for k in ("trade_total", "trade_active", "trade_tp1", "trade_closed", "trade_expired_orphaned"):
+            report[k] = na
+
+    # disk usage
+    try:
+        total_b, used_b, _ = shutil.disk_usage("/")
+        report["disk_pct"] = f"{used_b / total_b * 100:.1f}%"
+    except Exception:
+        report["disk_pct"] = na
+
+    # WAL mode
+    try:
+        uri = f"file:{db_path}?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=10) as conn:
+            jm = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        report["wal_status"] = "ENABLED" if str(jm).lower() == "wal" else f"OFF ({jm})"
+    except Exception:
+        report["wal_status"] = na
+
+
 def _telegram_message(report: Dict[str, Any]) -> str:
     warnings = report.get("top_warning_reasons") or ["none"]
+    na = "N/A"
+
+    def _v(key: str) -> str:
+        val = report.get(key, na)
+        return str(val) if val is not None else na
+
     return "\n".join(
         [
             "MAMUYY HUNTER DAILY OPS",
             "PAPER_ONLY",
             "",
-            f"Runtime: {report.get('runtime_status')} ({report.get('heartbeat_source')}, {report.get('heartbeat_age_minutes')}m)",
-            f"Macro: {report.get('macro_state')} risk={report.get('macro_risk_score')}",
-            f"Cross: {report.get('cross_market_state')} stress={report.get('cross_market_stress_score')}",
-            f"Paper: trades={report.get('internal_paper_trade_count')} pnl={report.get('internal_paper_total_pnl')} dd={report.get('internal_paper_max_drawdown')}",
-            f"Broadcast: routed={report.get('broadcast_accepted_count')} rejected={report.get('broadcast_rejected_count')}",
-            f"Telegram: {report.get('latest_telegram_send_status')}",
-            f"Guardian: {report.get('latest_guardian_status')} via {report.get('latest_guardian_source')}",
-            f"Incidents: {len(report.get('incident_log', []))}",
+            f"Model: {_v('model_version')}",
+            "",
+            "ML:",
+            f"  Operational Accuracy: {_v('op_accuracy')}",
+            f"  Retrain Accuracy:     {_v('retrain_accuracy')}",
+            "",
+            "Paper Trading:",
+            f"  Total:           {_v('trade_total')}",
+            f"  Active:          {_v('trade_active')}",
+            f"  TP1 HIT:         {_v('trade_tp1')}",
+            f"  Closed:          {_v('trade_closed')}",
+            f"  Expired Orphaned:{_v('trade_expired_orphaned')}",
+            f"  PnL:             {_v('internal_paper_total_pnl')}",
+            f"  Peak Drawdown:   {_v('internal_paper_max_drawdown')} pts",
+            "",
+            "System:",
+            f"  WAL:     {_v('wal_status')}",
+            f"  Disk:    {_v('disk_pct')}",
+            f"  Guardian:{_v('latest_guardian_status')} via {_v('latest_guardian_source')}",
+            f"  Runtime: {_v('runtime_status')} ({_v('heartbeat_source')}, {_v('heartbeat_age_minutes')}m)",
+            "",
             f"Warnings: {' | '.join(map(str, warnings[:3]))}",
-            f"Next: {report.get('recommended_next_action')}",
+            f"Next: {_v('recommended_next_action')}",
         ]
     )
 
@@ -479,6 +569,7 @@ def generate_daily_ops_report(
     report["regime_summary"] = _regime_summary(report)
     report["warning_reason_aggregation"] = _warning_reason_aggregation(report, report.get("incident_log", []))
     report["recommended_next_action"] = _recommended_action(warning_reasons, report)
+    _enrich_report(report, db_path)
 
     os.makedirs(os.path.dirname(markdown_path) or ".", exist_ok=True)
     markdown = _markdown(report)
