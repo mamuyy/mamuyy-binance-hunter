@@ -358,6 +358,7 @@ from database import (
     insert_regime_log,
     insert_runtime_heartbeat,
     insert_signal,
+    insert_signal_candidate,
     insert_walkforward_rows,
 )
 from flow_engine import AdvancedFlowEngine, apply_flow_to_signal, log_flow
@@ -1290,6 +1291,16 @@ def run_once(paper: bool = False) -> List[Dict[str, Any]]:
         for signal in signals
         if signal["score"] >= config.alert_score_threshold
     ]
+
+    # Observability-only: capture pre-alert candidates (score >= 50 and < threshold).
+    # SAFETY: does NOT touch official signals table, Telegram, or paper engine.
+    _candidate_min = 50
+    for _cand in signals:
+        if _candidate_min <= _cand["score"] < config.alert_score_threshold:
+            try:
+                insert_signal_candidate(_cand, config.alert_score_threshold, database_url=database_url())
+            except Exception as _ce:
+                print(f"Candidate capture error (non-fatal): {_ce}")
 
     print(f"Scan selesai. Symbols valid: {len(signals)} | Alerts: {len(alerts)}")
 

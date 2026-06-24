@@ -50,6 +50,36 @@ SCHEMAS = {
             data_source TEXT DEFAULT 'LEGACY_UNKNOWN'
         )
     """,
+    # Research-only table. Never read by paper engine, Telegram, or dashboard.
+    # Stores pre-alert scanner candidates (score >= 50 and < alert threshold).
+    "signal_candidates": """
+        CREATE TABLE IF NOT EXISTS signal_candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            score REAL,
+            raw_score REAL,
+            base_score REAL,
+            calculated_score REAL,
+            shadow_score REAL,
+            regime_name TEXT,
+            regime_model TEXT,
+            regime_model_adjustment REAL,
+            flow_adjustment REAL,
+            breakout INTEGER,
+            liquidity_sweep INTEGER,
+            volume_spike REAL,
+            squeeze_probability REAL,
+            pressure_score REAL,
+            taker_buy_ratio REAL,
+            funding_warning TEXT,
+            whale_activity TEXT,
+            price REAL,
+            is_alert INTEGER DEFAULT 0,
+            threshold_at_capture INTEGER,
+            data_source TEXT DEFAULT 'PREFILTER_CANDIDATE'
+        )
+    """,
     "paper_trades": """
         CREATE TABLE IF NOT EXISTS paper_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -486,6 +516,23 @@ def insert_signal(signal: Dict[str, Any], database_url: str = "") -> None:
     row = dict(signal)
     row.setdefault("data_source", "LIVE_SCANNER")
     insert_row("signals", row, database_url)
+
+
+def insert_signal_candidate(
+    signal: Dict[str, Any],
+    threshold: int,
+    database_url: str = "",
+) -> None:
+    """Write a pre-alert candidate (score >= 50 and < threshold) to the
+    research-only signal_candidates table.  Never touches the official
+    signals table, Telegram, or the paper engine."""
+    row = dict(signal)
+    row["is_alert"] = 0
+    row["threshold_at_capture"] = threshold
+    row.setdefault("data_source", "PREFILTER_CANDIDATE")
+    # raw_score mirrors base_score when available
+    row.setdefault("raw_score", row.get("base_score"))
+    insert_row("signal_candidates", row, database_url)
 
 
 def insert_paper_trade(trade: Dict[str, Any], database_url: str = "") -> None:
