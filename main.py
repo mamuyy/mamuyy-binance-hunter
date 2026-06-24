@@ -431,6 +431,11 @@ from tracker import (
 )
 from walkforward import run_walkforward_validation
 
+# Dedup guard: prevent duplicate Market Regime Telegram sends when multiple
+# orchestrator engines (scanner/regime/flow) all call run_once() in one cycle.
+_last_regime_send_ts: float = 0.0
+_REGIME_SEND_COOLDOWN_S: float = 60.0
+
 
 def database_url() -> str:
     return config.database_url or config.database_path
@@ -1229,7 +1234,11 @@ def run_once(paper: bool = False) -> List[Dict[str, Any]]:
         insert_regime_log(regime, database_url=database_url())
         regime_message = format_market_regime_message(regime)
         print(regime_message)
-        send_message_if_enabled(regime_message)
+        global _last_regime_send_ts
+        _now_ts = time.monotonic()
+        if _now_ts - _last_regime_send_ts > _REGIME_SEND_COOLDOWN_S:
+            send_message_if_enabled(regime_message)
+            _last_regime_send_ts = _now_ts
     except Exception as exc:
         print(f"Gagal mendeteksi market regime: {exc}")
         regime = {"regime_name": "UNKNOWN", "regime_score": 0}
