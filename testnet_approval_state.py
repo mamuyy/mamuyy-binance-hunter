@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 APPROVAL_FILE = "testnet_telegram_approval.json"
-APPROVAL_TTL_SECONDS = 300  # 5 minutes to approve
+APPROVAL_TTL_SECONDS = 900  # 15 minutes to approve
 APPROVAL_STATUS_PENDING = "PENDING"
 APPROVAL_STATUS_APPROVED = "APPROVED"
 APPROVAL_STATUS_REJECTED = "REJECTED"

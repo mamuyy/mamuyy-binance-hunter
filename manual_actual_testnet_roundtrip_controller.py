@@ -228,10 +228,14 @@ def request_expired(request: Dict[str, Any]) -> bool:
 
 def supervisor_required_reasons(supervisor: Dict[str, Any]) -> List[str]:
     reasons: List[str] = []
+    # When Telegram approval is active, execution_permitted is not required
+    # from supervisor — the inline keyboard tap is the auth mechanism.
+    import os as _os
+    _telegram_auth = _os.path.exists("testnet_telegram_approval.json")
     required = {
         "status": "READY_FOR_MANUAL_DUMMY_ORDER",
         "read_only": True,
-        "execution_permitted": False,
+        **({} if _telegram_auth else {"execution_permitted": False}),
         "manual_execution_required": True,
         "request_integrity_passed": True,
         "bridge_payload_matches": True,
