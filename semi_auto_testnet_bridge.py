@@ -449,6 +449,29 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     write_json(RESULT_PATH, result)
     if args.telegram_preview:
         write_json(TELEGRAM_PREVIEW_PATH, build_telegram_preview(result))
+    # --- Telegram approval proposal (non-fatal) ---
+    if status == "WOULD_ORDER":
+        try:
+            from telegram_bot import send_approval_request
+            from dotenv import load_dotenv
+            load_dotenv()
+            proposal = {
+                "symbol": inputs.get("symbol", "UNKNOWN"),
+                "side": inputs.get("side", "LONG"),
+                "score": inputs.get("signal_score", 0),
+                "confidence": "HIGH" if (inputs.get("signal_score") or 0) >= 85
+                              else "MEDIUM",
+                "notional_usdt": round(
+                    float(os.getenv("TESTNET_ORDER_QUANTITY", "0.013"))
+                    * float(inputs.get("price") or 0), 2
+                ),
+                "regime": inputs.get("regime_name", "UNKNOWN"),
+            }
+            send_approval_request(proposal)
+            print("[BRIDGE] Telegram approval proposal sent.")
+        except Exception as _tg_err:
+            print(f"[BRIDGE] Telegram proposal failed (non-fatal): {_tg_err}")
+    # --- End Telegram proposal ---
     print(f"SEMI_AUTO_TESTNET_BRIDGE: {status}")
     return result
 
