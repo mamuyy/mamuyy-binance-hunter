@@ -200,6 +200,22 @@ def handle_callback(update: dict) -> None:
 # Polling thread
 # ---------------------------------------------------------------------------
 
+def _drain_pending_updates() -> None:
+    """Advance _last_update_id past all already-queued updates so stale
+    callbacks from previous sessions do not trigger approval state changes.
+    Uses timeout=0 for an instant non-blocking fetch.
+    """
+    global _last_update_id
+    result = _get("getUpdates", {"offset": _last_update_id + 1, "timeout": 0,
+                                  "allowed_updates": ["callback_query"]})
+    if result and result.get("ok"):
+        updates = result.get("result", [])
+        if updates:
+            _last_update_id = max(u.get("update_id", 0) for u in updates)
+            logger.info("Drained %d stale update(s); offset now %d",
+                        len(updates), _last_update_id)
+
+
 def _poll_loop() -> None:
     global _last_update_id
     logger.info("Telegram callback polling started")
@@ -230,6 +246,7 @@ def start_bot_polling() -> None:
     if _polling_thread and _polling_thread.is_alive():
         logger.warning("Polling thread already running")
         return
+    _drain_pending_updates()  # skip stale callbacks from previous sessions
     _polling_thread = threading.Thread(target=_poll_loop, daemon=True, name="tg-approval-poller")
     _polling_thread.start()
     logger.info("Bot polling thread started (tid=%s)", _polling_thread.ident)
