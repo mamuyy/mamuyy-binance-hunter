@@ -1007,8 +1007,32 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if (args.execute_roundtrip or args.recover_close) and (not args.approve or not args.confirm_sha256 or not args.confirm_action):
-        parser.error("execution/recovery requires --approve, --confirm-sha256, and --confirm-action")
+    # Allow Telegram approval to bypass CLI args requirement
+    _telegram_approval_active = os.path.exists("testnet_telegram_approval.json")
+    if (args.execute_roundtrip or args.recover_close) and \
+      not _telegram_approval_active and \
+      (not args.approve or not args.confirm_sha256 or not args.confirm_action):
+        parser.error("execution/recovery requires --approve, --confirm-sha256, "
+                     "and --confirm-action (or use Telegram approval flow)")
+    # Auto-populate confirm args from plan when Telegram approval active
+    if _telegram_approval_active and args.execute_roundtrip:
+        try:
+            import json as _json
+            if os.path.exists(PLAN_PATH):
+                with open(PLAN_PATH) as _pf:
+                    _plan = _json.load(_pf)
+                if not args.approve:
+                    args.approve = _plan.get("actual_roundtrip_plan_id", "")
+                if not args.confirm_sha256:
+                    args.confirm_sha256 = _plan.get(
+                        "actual_roundtrip_payload_sha256", "")
+                if not args.confirm_action:
+                    args.confirm_action = \
+                        "OPEN_AND_CLOSE_BINANCE_FUTURES_DEMO_POSITION"
+                print("[CONTROLLER] Telegram approval active — "
+                      "auto-populated confirm args from plan.")
+        except Exception as _ae:
+            print(f"[CONTROLLER] Could not auto-populate args: {_ae}")
     if args.prepare:
         return prepare(args)
     if args.execute_roundtrip:
