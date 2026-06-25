@@ -811,6 +811,39 @@ def execute_roundtrip(args: argparse.Namespace) -> int:
             print("BLOCKED")
             return 1
         plan = latest_plan
+        # === TELEGRAM APPROVAL GATE ===
+        try:
+            from testnet_approval_state import (
+                is_approval_pending, is_approval_approved,
+                wait_for_approval, clear_approval
+            )
+            from telegram_bot import start_bot_polling, stop_bot_polling
+            start_bot_polling()
+            print("[CONTROLLER] Waiting for Telegram approval (max 4 minutes)...")
+            print("[CONTROLLER] Check your Telegram — tap APPROVE or REJECT.")
+            verdict = wait_for_approval(timeout_seconds=240, poll_interval=3)
+            stop_bot_polling()
+            clear_approval()
+            if verdict != "APPROVED":
+                print(f"[CONTROLLER] Approval {verdict} — aborting execution.")
+                result.update({"state": BLOCKED, "status": "BLOCKED",
+                               "blocked_reasons": [f"Telegram approval {verdict}"],
+                               "next_action": "No order sent; re-prepare plan to retry."})
+                write_outputs(result, {"state": BLOCKED}, "telegram approval aborted")
+                return 0
+            print("[CONTROLLER] Approved via Telegram — proceeding to execute.")
+        except ImportError as _imp_err:
+            print(f"[CONTROLLER] Telegram approval module missing: {_imp_err}")
+            print("[CONTROLLER] Falling back to CLI approval (legacy mode).")
+        except Exception as _appr_err:
+            print(f"[CONTROLLER] Telegram approval error: {_appr_err}")
+            print("[CONTROLLER] Aborting for safety.")
+            result.update({"state": BLOCKED, "status": "BLOCKED",
+                           "blocked_reasons": [f"Telegram approval exception: {_appr_err}"],
+                           "next_action": "No order sent; check telegram_bot.py logs."})
+            write_outputs(result, {"state": BLOCKED}, "telegram approval error")
+            return 1
+        # === END TELEGRAM APPROVAL GATE ===
         persist_plan_and_state(plan, ENTRY_INTENT_RECORDED, {"execution_started": True, "consumed": True, "entry_intent_recorded_at": utc_now()}, "entry intent")
         payload = plan.get("actual_roundtrip_payload", {})
         command = [sys.executable, "binance_testnet_executor.py", "--symbol", payload.get("symbol"), "--side", payload.get("entry_side"), "--quantity", payload.get("entry_quantity"), "--order-type", "MARKET", "--send"]
