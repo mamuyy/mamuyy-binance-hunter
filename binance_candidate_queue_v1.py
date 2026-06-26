@@ -19,6 +19,7 @@ SNAPSHOT_PATH = Path("tmp/mamuyy_hunter_candidate_queue_snapshot.db")
 MIN_SCORE = 85
 MAX_CANDIDATES = 20
 MAX_SIGNAL_AGE_HOURS = 72
+CANDIDATE_MAX_AGE_MINUTES = int(os.getenv("CANDIDATE_MAX_AGE_MINUTES", "180"))
 CANDIDATE_SOURCE = "LIVE_SCANNER"
 EXCHANGE_INFO_CACHE_PATH = Path("reports/binance_futures_exchange_info_cache.json")
 
@@ -81,6 +82,19 @@ def fetch_candidates(db_path: Path = DB_PATH, exchange_info: dict | None = None)
             diagnostics["rejection_reasons"][validation.reason] = diagnostics["rejection_reasons"].get(validation.reason, 0) + 1
             diagnostics["rejected_symbols"].append(validation.as_dict())
             continue
+        signal_ts = None
+        try:
+            signal_ts = datetime.fromisoformat(str(row["timestamp"]))
+            if signal_ts.tzinfo is None:
+                signal_ts = signal_ts.replace(tzinfo=timezone.utc)
+        except Exception:
+            signal_ts = None
+        if signal_ts is not None:
+            age_minutes = (datetime.now(timezone.utc) - signal_ts).total_seconds() / 60
+            if age_minutes > CANDIDATE_MAX_AGE_MINUTES:
+                diagnostics.setdefault("freshness_filtered", 0)
+                diagnostics["freshness_filtered"] += 1
+                continue
         candidates.append({"rank": len(candidates)+1, "symbol": symbol, "timestamp": row["timestamp"], "score": row["score"], "price": row["price"], "regime_name": row["regime_name"], "pressure_score": row["pressure_score"], "oi_expansion_rate": row["oi_expansion_rate"], "taker_delta": row["taker_delta"], "squeeze_probability": row["squeeze_probability"], "whale_activity": row["whale_activity"], "squeeze_risk": row["squeeze_risk"], "funding_warning": row["funding_warning"], "data_source": CANDIDATE_SOURCE, "symbol_validation": validation.as_dict(), "status": "PROPOSAL_ONLY", "execution_allowed": False})
         if len(candidates) >= MAX_CANDIDATES: break
     return candidates, diagnostics
