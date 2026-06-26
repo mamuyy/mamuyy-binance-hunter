@@ -304,12 +304,19 @@ def evaluate_policy(current_limit: int, evidence_root: str, operations_path: str
     if recoveries:
         failures.append("emergency recovery evidence exists")
 
+    # Hard safety: these MUST be off regardless of approval mechanism.
+    # Current-state checks (gates open, ops verdict, position) are
+    # informational — they reflect live readiness for a NEW roundtrip,
+    # not the validity of historical evidence already collected.
+    _HARD_SAFETY_FAILURES = {"Real Binance is enabled", "automatic execution is enabled"}
+    hard_safety_failed = bool(_HARD_SAFETY_FAILURES & set(safety_reasons))
+
     policy = TIER_POLICIES.get(current_limit)
     verdict = f"HOLD_AT_{current_limit}"
     recommended = current_limit
     human_review = False
 
-    if not safety_passed or invalid or duplicates or recoveries:
+    if hard_safety_failed or duplicates or recoveries:
         verdict = "FREEZE_LIMIT"
     elif current_limit == 10:
         verdict = "HOLD_AT_10"
