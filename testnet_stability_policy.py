@@ -267,7 +267,14 @@ def inspect_current_safety(path: str) -> Tuple[bool, List[str], Optional[Dict[st
     result = read_json(path)
     if not result:
         return False, ["operations supervisor result unavailable"], None
-    checks = [
+    # Hard safety: these block historical evidence evaluation regardless of context.
+    hard_checks = [
+        (result.get("real_binance_enabled") is False, "Real Binance is enabled"),
+        (result.get("allow_auto_testnet_order") is False, "automatic execution is enabled"),
+    ]
+    # Soft state: reflects current session/live readiness, not historical evidence validity.
+    # Kept for informational display but does NOT affect safety_passed.
+    soft_checks = [
         (result.get("verdict") == "SAFE_IDLE", "operations verdict is not SAFE_IDLE"),
         (result.get("final_flat_live_verified") is True, "final flat state not verified"),
         (is_zero(result.get("symbol_position_amt")), "symbol position is not zero"),
@@ -275,12 +282,13 @@ def inspect_current_safety(path: str) -> Tuple[bool, List[str], Optional[Dict[st
         (not result.get("other_nonzero_positions"), "other non-zero positions exist"),
         (result.get("execution_halt_active") is False, "execution HALT is active"),
         (result.get("execution_lock_active") is False, "execution lock is active"),
-        (result.get("real_binance_enabled") is False, "Real Binance is enabled"),
-        (result.get("allow_auto_testnet_order") is False, "automatic execution is enabled"),
         (result.get("allow_testnet_order") is False, "Testnet gate is enabled"),
         (result.get("allow_manual_actual_roundtrip") is False, "manual roundtrip gate is enabled"),
     ]
-    reasons = [reason for passed, reason in checks if not passed]
+    reasons = [reason for passed, reason in hard_checks if not passed]
+    soft_warnings = [reason for passed, reason in soft_checks if not passed]
+    # Attach soft warnings to result dict for downstream reporting
+    result["_soft_safety_warnings"] = soft_warnings
     return not reasons, reasons, result
 
 
@@ -304,19 +312,13 @@ def evaluate_policy(current_limit: int, evidence_root: str, operations_path: str
     if recoveries:
         failures.append("emergency recovery evidence exists")
 
-    # Hard safety: these MUST be off regardless of approval mechanism.
-    # Current-state checks (gates open, ops verdict, position) are
-    # informational — they reflect live readiness for a NEW roundtrip,
-    # not the validity of historical evidence already collected.
-    _HARD_SAFETY_FAILURES = {"Real Binance is enabled", "automatic execution is enabled"}
-    hard_safety_failed = bool(_HARD_SAFETY_FAILURES & set(safety_reasons))
-
     policy = TIER_POLICIES.get(current_limit)
     verdict = f"HOLD_AT_{current_limit}"
     recommended = current_limit
     human_review = False
 
-    if hard_safety_failed or duplicates or recoveries:
+    # safety_passed now reflects hard safety only (real_binance, auto_exec).
+    if not safety_passed or duplicates or recoveries:
         verdict = "FREEZE_LIMIT"
     elif current_limit == 10:
         verdict = "HOLD_AT_10"
