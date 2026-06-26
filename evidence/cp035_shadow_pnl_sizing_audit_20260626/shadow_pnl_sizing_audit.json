@@ -1,0 +1,146 @@
+{
+  "audit_id": "CP-035",
+  "phase": "Phase 2.5F",
+  "generated_at": "2026-06-26T06:38:54.368605+00:00",
+  "db_path": "mamuyy_hunter.db",
+  "overall_verdict": "FAIL",
+  "checks": [
+    {
+      "check": "table_exists",
+      "result": true,
+      "verdict": "PASS",
+      "note": "found"
+    },
+    {
+      "check": "row_count",
+      "total_rows": 56807,
+      "verdict": "PASS",
+      "note": "56807 rows"
+    },
+    {
+      "check": "lifecycle_coverage",
+      "status_distribution": {
+        "execution simulated": 56807
+      },
+      "only_simulated": true,
+      "issues": [
+        "CRITICAL: semua shadow_trades lifecycle='execution simulated'. Shadow WR 100% adalah artefak log simulasi satu arah, BUKAN edge nyata."
+      ],
+      "verdict": "FAIL",
+      "note": "shadow_trades = observability log, BUKAN outcome tracker"
+    },
+    {
+      "check": "pnl_distribution",
+      "count": 53760,
+      "negative_count": 0,
+      "positive_count": 53760,
+      "min": 0.7461,
+      "max": 2.411,
+      "mean": 1.6958,
+      "median": 1.7579,
+      "std": 0.3844,
+      "anomaly_high_count": 0,
+      "issues": [
+        "CRITICAL: tidak ada pnl negatif dari 53760 records. Semua PnL positif \u2014 konfirmasi shadow = expected fill simulation bukan actual outcome."
+      ],
+      "warnings": [],
+      "verdict": "FAIL",
+      "note": "PnL semua positif \u2014 bukan outcome tracker"
+    },
+    {
+      "check": "sizing_sanity",
+      "count": 56807,
+      "min": 0.01,
+      "max": 0.1,
+      "mean": 0.0839,
+      "std": 0.017,
+      "zero_exposure_count": 0,
+      "anomaly_high_count": 0,
+      "score_exposure_correlation": "r=0.999 (positif)",
+      "issues": [],
+      "warnings": [],
+      "verdict": "PASS",
+      "note": "Exposure range 0.01\u20130.1"
+    },
+    {
+      "check": "temporal_coverage",
+      "first_timestamp": "2026-05-15T10:30:35.157796+00:00",
+      "last_timestamp": "2026-06-26T06:17:58.915048+00:00",
+      "active_days": 43,
+      "warnings": [],
+      "verdict": "PASS",
+      "note": "43 hari aktif"
+    },
+    {
+      "check": "symbol_concentration",
+      "top_10_symbols": [
+        {
+          "symbol": "BNBUSDT",
+          "count": 2346,
+          "pct": 4.1
+        },
+        {
+          "symbol": "BTCUSDT",
+          "count": 2233,
+          "pct": 3.9
+        },
+        {
+          "symbol": "XAUUSDT",
+          "count": 2216,
+          "pct": 3.9
+        },
+        {
+          "symbol": "XRPUSDT",
+          "count": 2042,
+          "pct": 3.6
+        },
+        {
+          "symbol": "1000PEPEUSDT",
+          "count": 1926,
+          "pct": 3.4
+        },
+        {
+          "symbol": "XAGUSDT",
+          "count": 1867,
+          "pct": 3.3
+        },
+        {
+          "symbol": "SOLUSDT",
+          "count": 1858,
+          "pct": 3.3
+        },
+        {
+          "symbol": "HYPEUSDT",
+          "count": 1840,
+          "pct": 3.2
+        },
+        {
+          "symbol": "ZECUSDT",
+          "count": 1824,
+          "pct": 3.2
+        },
+        {
+          "symbol": "CLUSDT",
+          "count": 1808,
+          "pct": 3.2
+        }
+      ],
+      "warnings": [],
+      "verdict": "PASS",
+      "note": "Top: BNBUSDT"
+    }
+  ],
+  "findings": [
+    "shadow_trades = observability log, BUKAN outcome tracker",
+    "Shadow WR 100% = metric salah definisi, bukan edge",
+    "PnL semua positif (min=0.7461%) \u2014 expected fill simulation",
+    "REKOMENDASI: gunakan internal_paper_trades sebagai sumber WR resmi"
+  ],
+  "governance": {
+    "paper_only": true,
+    "read_only_db": true,
+    "shadow_wr_valid": false,
+    "authoritative_wr_source": "internal_paper_trades",
+    "shadow_wr_explanation": "shadow_trades mencatat expected fill simulation, bukan actual TP/SL outcome. WR=100% by design."
+  }
+}
