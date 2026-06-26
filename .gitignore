@@ -44,3 +44,5 @@ hunter_api.py
 hunter_backups/
 *.tmp
 *.gz
+
+runtime/*.lock
