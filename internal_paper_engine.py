@@ -288,8 +288,77 @@ def _active_count(db_path: str, symbol: str | None = None) -> int:
         return 0
 
 
+def _safe_int_env(name: str, default: int) -> int:
+    try:
+        value = os.getenv(name, "")
+        return int(value) if value not in {"", None} else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _log_internal_paper_cap_rejection(
+    *,
+    symbol: str,
+    reason: str,
+    global_active: int,
+    symbol_active: int,
+    global_cap: int,
+    symbol_cap: int,
+) -> None:
+    try:
+        os.makedirs("logs", exist_ok=True)
+        event = {
+            "generated_at": _now(),
+            "event": "internal_paper_trade_rejected",
+            "reason": reason,
+            "symbol": symbol,
+            "global_active": global_active,
+            "symbol_active": symbol_active,
+            "global_cap": global_cap,
+            "symbol_cap": symbol_cap,
+            "active_statuses": list(ACTIVE_STATUSES),
+            "paper_only": True,
+        }
+        with open("logs/internal_paper_cap_rejections.jsonl", "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, sort_keys=True) + "\n")
+    except Exception:
+        return
+
+
 def _insert_trade(db_path: str, trade: Dict[str, Any]) -> bool:
     init_db(db_path)
+
+    symbol = str(trade.get("symbol") or "").strip().upper()
+    status = str(trade.get("status") or "OPEN").strip().upper()
+
+    if status in ACTIVE_STATUSES:
+        global_cap = _safe_int_env("RISK_MAX_OPEN_TRADES", 20)
+        symbol_cap = _safe_int_env("RISK_MAX_OPEN_TRADES_PER_SYMBOL", 3)
+        global_active = _active_count(db_path)
+        symbol_active = _active_count(db_path, symbol) if symbol else 0
+
+        if global_cap > 0 and global_active >= global_cap:
+            _log_internal_paper_cap_rejection(
+                symbol=symbol,
+                reason="GLOBAL_INTERNAL_PAPER_CAP_REACHED",
+                global_active=global_active,
+                symbol_active=symbol_active,
+                global_cap=global_cap,
+                symbol_cap=symbol_cap,
+            )
+            return False
+
+        if symbol_cap > 0 and symbol and symbol_active >= symbol_cap:
+            _log_internal_paper_cap_rejection(
+                symbol=symbol,
+                reason="SYMBOL_INTERNAL_PAPER_CAP_REACHED",
+                global_active=global_active,
+                symbol_active=symbol_active,
+                global_cap=global_cap,
+                symbol_cap=symbol_cap,
+            )
+            return False
+
     with sqlite3.connect(db_path) as connection:
         _ensure_internal_paper_columns(connection)
         fields = [
