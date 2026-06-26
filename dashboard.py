@@ -1397,12 +1397,12 @@ def render_executive_summary_tab(reports: dict[str, dict[str, Any]]) -> None:
     col3.metric("Governance Health", audit.get("governance_health", "UNKNOWN"))
 
     col4, col5, col6, col7 = st.columns(4)
-    col4.metric("Shadow/Paper PnL", _metric_display(pnl))
-    col5.metric("Winrate", _metric_display(winrate, "%" if isinstance(winrate, (int, float)) else ""))
+    col4.metric("Simulation/Paper Event Return", _metric_display(pnl))
+    col5.metric("Official/Readiness Winrate", _metric_display(winrate, "%" if isinstance(winrate, (int, float)) else ""))
     col6.metric("Closed Paper Trades", _paper_trade_progress_display(closed_paper_trades, closed_paper_trade_target))
     col7.metric("Open Paper Trades", _metric_display(open_paper_trades))
 
-    st.caption("Phase 3 readiness progress")
+    st.caption("Phase 3 readiness progress. Shadow metrics are simulation-only; official WR/PnL source is internal_paper_trades.")
     st.progress(readiness_percent / 100.0)
 
     closed_numeric = _metric_int(closed_paper_trades)

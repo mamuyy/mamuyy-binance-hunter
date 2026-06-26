@@ -127,12 +127,39 @@ def _runtime_heartbeat(database_path: str, log_path: str, stale_minutes: int) ->
 
 
 def _pnl_rows(connection: sqlite3.Connection, lookback_hours: int = 24) -> List[float]:
+    """Return official PnL rows for risk/drawdown checks.
+
+    CP-036 governance:
+    - shadow_trades is intentionally excluded.
+    - CP-035 classified shadow_trades as expected-fill observability simulation,
+      not actual TP/SL outcome and not official winrate/PnL source.
+    - Authoritative paper source is internal_paper_trades.
+    """
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).isoformat()
     queries = [
-        ("SELECT pnl_percent AS pnl FROM shadow_trades WHERE timestamp >= ? ORDER BY id ASC", (cutoff,)),
+        (
+            """
+            SELECT pnl AS pnl
+            FROM internal_paper_trades
+            WHERE UPPER(COALESCE(status, '')) = 'CLOSED'
+              AND pnl IS NOT NULL
+              AND COALESCE(updated_at, timestamp) >= ?
+            ORDER BY id ASC
+            """,
+            (cutoff,),
+        ),
+        (
+            """
+            SELECT pnl AS pnl
+            FROM internal_paper_trades
+            WHERE UPPER(COALESCE(status, '')) = 'CLOSED'
+              AND pnl IS NOT NULL
+            ORDER BY id ASC
+            """,
+            (),
+        ),
         ("SELECT pnl_percent AS pnl FROM paper_trades WHERE timestamp >= ? ORDER BY id ASC", (cutoff,)),
         ("SELECT pnl_pct AS pnl FROM historical_outcomes WHERE signal_timestamp >= ? ORDER BY id ASC", (cutoff,)),
-        ("SELECT pnl_percent AS pnl FROM shadow_trades ORDER BY id ASC", ()),
         ("SELECT pnl_percent AS pnl FROM paper_trades ORDER BY id ASC", ()),
         ("SELECT pnl_pct AS pnl FROM historical_outcomes ORDER BY id ASC", ()),
     ]
