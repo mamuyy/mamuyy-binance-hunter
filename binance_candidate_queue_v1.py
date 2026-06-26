@@ -38,7 +38,7 @@ def fetch_exchange_info(base_url: str | None = None, cache_path: Path = EXCHANGE
 
 def fetch_candidates(db_path: Path = DB_PATH, exchange_info: dict | None = None):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=MAX_SIGNAL_AGE_HOURS)).isoformat()
-    diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "rejected_symbol_count": 0, "rejection_reasons": {}, "rejected_symbols": []}
+    diagnostics = {"live_rows_considered": 0, "historical_rows_excluded": 0, "legacy_rows_excluded": 0, "freshness_filtered": 0, "rejected_symbol_count": 0, "rejection_reasons": {}, "rejected_symbols": []}
     exchange_result = None
     exchange_reason = None
     if exchange_info is None:
@@ -109,12 +109,14 @@ def build_report(candidates, diagnostics, db_path: Path = DB_PATH):
             reason = "NO_LIVE_SCANNER_CANDIDATES"
         elif diagnostics.get("exchange_info", {}).get("available") is False:
             reason = diagnostics.get("exchange_info", {}).get("reason") or "EXCHANGE_INFO_UNAVAILABLE"
+        elif diagnostics.get("freshness_filtered", 0) > 0:
+            reason = "NO_FRESH_CANDIDATES"
         elif diagnostics.get("rejected_symbol_count", 0) > 0:
             reason = "SYMBOL_VALIDATION_BLOCKED"
         else:
             reason = "NO_QUALIFYING_LIVE_SCANNER_CANDIDATES"
     interval = operational_kline_interval()
-    return {"batch_id": batch_id, "generated_at": generated_at, "phase": "Phase 9D.1A Candidate Queue", "mode": "READ_ONLY_PROPOSAL", "source_db": str(db_path), "candidate_source": CANDIDATE_SOURCE, "source": CANDIDATE_SOURCE, "status": "OPEN", "lifecycle_status": "OPEN", "interval": interval, "validation_horizons": [24,48,72], "empty_reason": reason, "rules": {"interval": interval, "min_score": MIN_SCORE, "squeeze_risk": "LOW", "funding_warning": "empty_or_null", "excluded_symbols": sorted(DEFAULT_POLICY_DENYLIST), "max_candidates": MAX_CANDIDATES, "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS}, "safety": {"paper_only": True, "real_binance_enabled": False, "testnet_order_enabled": False, "auto_execution_enabled": False, "manual_review_required": True, "writes_to_database": False, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "governance": {"paper_only": True, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "diagnostics": diagnostics, "candidate_count": len(candidates), "candidates": candidates}
+    return {"batch_id": batch_id, "generated_at": generated_at, "phase": "Phase 9D.1A Candidate Queue", "mode": "READ_ONLY_PROPOSAL", "source_db": str(db_path), "candidate_source": CANDIDATE_SOURCE, "source": CANDIDATE_SOURCE, "status": "OPEN", "lifecycle_status": "OPEN", "interval": interval, "validation_horizons": [24,48,72], "empty_reason": reason, "rules": {"interval": interval, "min_score": MIN_SCORE, "squeeze_risk": "LOW", "funding_warning": "empty_or_null", "excluded_symbols": sorted(DEFAULT_POLICY_DENYLIST), "max_candidates": MAX_CANDIDATES, "max_signal_age_hours": MAX_SIGNAL_AGE_HOURS, "max_candidate_age_minutes": CANDIDATE_MAX_AGE_MINUTES}, "safety": {"paper_only": True, "real_binance_enabled": False, "testnet_order_enabled": False, "auto_execution_enabled": False, "manual_review_required": True, "writes_to_database": False, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "governance": {"paper_only": True, "writes_to_broker": False, "execution_allowed": False, "automatic_promotion_allowed": False}, "diagnostics": diagnostics, "candidate_count": len(candidates), "candidates": candidates}
 
 
 def _update_batch_registry(report, batch_path: Path, state_path: Path) -> None:
