@@ -1,0 +1,113 @@
+{
+  "cp_id": "CP-040C",
+  "verdict": "CLASSIFIER_GATE_FROZEN",
+  "phase3_status": "LOCKED",
+  "model_promotion": "HOLD",
+  "paper_only": true,
+  "runtime_changed": false,
+  "execution_changed": false,
+  "registry_changed": false,
+  "evidence_inputs": [
+    {
+      "cp_id": "CP-038D",
+      "name": "multiclass walk-forward",
+      "metric": "avg_accuracy",
+      "value": 0.474,
+      "verdict": "FAIL"
+    },
+    {
+      "cp_id": "CP-040A",
+      "name": "binary walk-forward",
+      "metric": "avg_accuracy",
+      "value": 0.530,
+      "verdict": "FAIL"
+    },
+    {
+      "cp_id": "CP-040B0",
+      "name": "source drift",
+      "finding": "source drift confirmed",
+      "verdict": "FAIL"
+    },
+    {
+      "cp_id": "CP-040B1",
+      "name": "source-aware window sensitivity",
+      "finding": "no robust classifier edge",
+      "dataset_rows": 1043,
+      "mixed_additive_best": {
+        "window": "500/100",
+        "accuracy": 0.530,
+        "baseline": 0.582
+      },
+      "historical_only_best": {
+        "window": "300/70",
+        "accuracy": 0.486,
+        "baseline": 0.614
+      },
+      "ipt_only_best": {
+        "window": "300/70",
+        "accuracy": 0.564,
+        "baseline": 0.579
+      },
+      "best_overall": {
+        "regime": "IPT first70->last30",
+        "accuracy": 0.567,
+        "baseline": 0.530,
+        "valid_splits": 1
+      },
+      "historical_to_ipt": {
+        "accuracy": 0.439,
+        "baseline": 0.572
+      },
+      "verdict": "FAIL"
+    }
+  ],
+  "freeze_rules": {
+    "classifier_promotion_blocked_until_all_true": [
+      {
+        "rule": "source-aware weighted accuracy >= 0.60",
+        "threshold": 0.60
+      },
+      {
+        "rule": "weighted model_vs_baseline_delta >= +0.03",
+        "threshold": 0.03
+      },
+      {
+        "rule": "folds_beating_baseline_rate >= 0.60",
+        "threshold": 0.60
+      },
+      {
+        "rule": "cross-source contradiction does not block interpretation"
+      },
+      {
+        "rule": "IPT/live-like validation has enough rows and folds"
+      },
+      {
+        "rule": "no PAPER_ONLY or governance violation"
+      }
+    ]
+  },
+  "pivot_recommendation": {
+    "move_next_research_toward": [
+      "ranking quality",
+      "EV/profit-weighted scoring",
+      "lifecycle intelligence",
+      "loss avoidance",
+      "candidate evidence ledger",
+      "source-aware IPT/live-like validation"
+    ]
+  },
+  "next_cp": "CP-041",
+  "next_cp_scope": {
+    "title": "Ranking / EV / Lifecycle Pivot Audit",
+    "should_evaluate": [
+      "candidate rank vs realized outcome",
+      "EV score vs pnl_percent",
+      "loss avoidance by score bucket",
+      "lifecycle outcomes by source_artifact",
+      "profit-weighted accuracy",
+      "top-k candidate quality",
+      "calibration by IPT-only rows",
+      "evidence ledger consistency"
+    ]
+  }
+}
