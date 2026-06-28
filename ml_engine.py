@@ -39,14 +39,20 @@ TARGET_LABELS = ["WIN", "LOSS", "TP1 HIT", "TP2 HIT"]
 PROFITABLE_LABELS = {"WIN", "TP1 HIT", "TP2 HIT"}
 PRODUCTION_TARGET_LABELS = ["WIN", "LOSS", "TP1 HIT"]
 PRODUCTION_DATASET_CONTRACT_VERSION = "CP-039.production_universe.v1"
-PRODUCTION_LABEL_MAPPING_VERSION = "CP-039.label_mapping.v1"
+PRODUCTION_LABEL_MAPPING_VERSION = "CP-039D.label_mapping.v2"
 PRODUCTION_LABEL_MAPPING = {
+    # IPT vocabulary
     "TAKE_PROFIT_2": "WIN",
     "TAKE_PROFIT_1": "TP1 HIT",
     "STOP_LOSS": "LOSS",
     "EXPIRED_ORPHANED": "EXCLUDE",
+    # CP-039D: historical_outcomes vocabulary
+    "TP2": "WIN",
+    "TP1": "TP1 HIT",
+    "SL": "LOSS",
+    "HOLDING_PERIOD": "EXCLUDE",
 }
-PRODUCTION_EXCLUDED_OUTCOMES = {"OPEN", "UNKNOWN", "EXECUTION_SIMULATED", "EXPIRED_ORPHANED"}
+PRODUCTION_EXCLUDED_OUTCOMES = {"OPEN", "UNKNOWN", "EXECUTION_SIMULATED", "EXPIRED_ORPHANED", "HOLDING_PERIOD"}
 PRODUCTION_REPORT_PATH = os.path.join("logs", "production_universe_dataset_build_report.json")
 
 
@@ -179,8 +185,8 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
                     raw = paper
                     selected_source = "internal_paper_trades"
             historical_columns = _table_columns(connection, "historical_outcomes")
-            if raw.empty and historical_columns:
-                score_candidates = [_column_expr(historical_columns, "h", "score"), _column_expr(historical_columns, "h", "confidence"), "0"]
+            if historical_columns:
+                score_candidates = [_column_expr(historical_columns, "h", "score"), "0"]
                 score_expr = f"COALESCE({', '.join(score_candidates)})"
                 outcome_exprs = [
                     _column_expr(historical_columns, "h", "exit_reason"),
@@ -210,8 +216,15 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
                 hist = hist[hist["target"] != ""]
                 source_counts["historical_outcomes"] = {"total_rows": hist_total, "eligible_rows": int(len(hist) + sum(hist_excluded.values())), "selected_rows": int(len(hist))}
                 if not hist.empty:
-                    raw = hist
-                    selected_source = "historical_outcomes"
+                    if not raw.empty:
+                        # CP-039D: additive merge - concat IPT + historical, dedupe by timestamp+symbol
+                        combined = pd.concat([raw, hist], ignore_index=True)
+                        combined = combined.drop_duplicates(subset=["timestamp", "symbol"], keep="first")
+                        combined = combined.sort_values("timestamp", ascending=True).reset_index(drop=True)
+                        raw = combined
+                    else:
+                        raw = hist
+                    selected_source = "additive_merge"
     except (sqlite3.Error, pd.errors.DatabaseError):
         raw = pd.DataFrame()
 
@@ -241,6 +254,7 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
         "source_priority": ["internal_paper_trades", "historical_outcomes"],
         "source_priority_used": selected_source,
         "selected_source": selected_source,
+        "merge_mode": "additive",
         "source_row_counts": source_counts,
         "excluded_row_counts_by_reason": excluded_counts,
         "rows": int(len(dataset)),
@@ -326,7 +340,12 @@ def _prepare_dataset(dataset: pd.DataFrame) -> pd.DataFrame:
         dataset[column] = dataset[column].fillna(fallback).replace({"": fallback, "UNKNOWN": fallback}).astype(str)
     if "timestamp" in dataset.columns:
         dataset["timestamp"] = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
-    dataset["target"] = dataset.get("status", "").apply(_status)
+    # CP-039D: preserve target if already set by label mapping; only derive from status if missing
+    if "target" not in dataset.columns or dataset["target"].eq("").all():
+        dataset["target"] = dataset.get("status", pd.Series("", index=dataset.index)).apply(_status)
+    else:
+        mask = dataset["target"].isna() | dataset["target"].eq("")
+        dataset.loc[mask, "target"] = dataset.loc[mask].get("status", pd.Series("", index=dataset.loc[mask].index)).apply(_status)
     keep_columns = [
         column
         for column in ["timestamp", "prediction_timestamp", "feature_timestamp_max", "target_timestamp", "label_timestamp", "outcome_timestamp", "source_artifact", "symbol", "pnl_percent", *NUMERIC_FEATURES, *CATEGORICAL_FEATURES, "target"]
