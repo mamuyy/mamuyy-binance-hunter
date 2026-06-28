@@ -1,0 +1,1044 @@
+timestamp,symbol,source_artifact,score,target,target_binary,profit_value,score_bucket,rank_global,rank_within_source,is_top_1,is_top_3,is_top_5,is_top_10
+2026-05-09 07:29:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,749.0,307.0,False,False,False,False
+2026-05-09 09:44:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,301.0,4.0,False,False,False,False
+2026-05-09 09:59:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,302.0,5.0,False,False,False,False
+2026-05-09 10:14:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,303.0,6.0,False,False,False,False
+2026-05-09 10:44:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,750.0,308.0,False,False,False,False
+2026-05-09 10:59:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,751.0,309.0,False,False,False,False
+2026-05-09 14:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,304.0,7.0,False,False,False,False
+2026-05-09 15:14:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,305.0,8.0,False,False,False,False
+2026-05-09 15:44:59.999000+00:00,LABUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,306.0,9.0,False,False,False,False
+2026-05-09 16:14:59.999000+00:00,BILLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,307.0,10.0,False,False,False,False
+2026-05-09 16:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,308.0,11.0,False,False,False,False
+2026-05-09 16:14:59.999000+00:00,IRYSUSDT,historical_outcomes,100.0,LOSS,LOSS,-2.0,95-100,1.0,1.0,True,True,True,True
+2026-05-09 17:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,752.0,310.0,False,False,False,False
+2026-05-09 19:44:59.999000+00:00,LABUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,309.0,12.0,False,False,False,False
+2026-05-10 00:14:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,310.0,13.0,False,False,False,False
+2026-05-10 00:29:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,311.0,14.0,False,False,False,False
+2026-05-10 02:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,312.0,15.0,False,False,False,False
+2026-05-10 02:59:59.999000+00:00,TONUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,313.0,16.0,False,False,False,False
+2026-05-10 03:29:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,314.0,17.0,False,False,False,False
+2026-05-10 04:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,753.0,311.0,False,False,False,False
+2026-05-10 05:14:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,754.0,312.0,False,False,False,False
+2026-05-10 06:29:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,755.0,313.0,False,False,False,False
+2026-05-10 07:29:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,756.0,314.0,False,False,False,False
+2026-05-10 07:44:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,315.0,18.0,False,False,False,False
+2026-05-10 08:14:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,316.0,19.0,False,False,False,False
+2026-05-10 08:29:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,317.0,20.0,False,False,False,False
+2026-05-10 09:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,757.0,315.0,False,False,False,False
+2026-05-10 09:44:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,318.0,21.0,False,False,False,False
+2026-05-10 10:29:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,758.0,316.0,False,False,False,False
+2026-05-10 11:44:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,319.0,22.0,False,False,False,False
+2026-05-10 12:29:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,759.0,317.0,False,False,False,False
+2026-05-10 13:14:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,760.0,318.0,False,False,False,False
+2026-05-10 13:44:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,320.0,23.0,False,False,False,False
+2026-05-10 14:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,761.0,319.0,False,False,False,False
+2026-05-10 14:14:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,762.0,320.0,False,False,False,False
+2026-05-10 14:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,763.0,321.0,False,False,False,False
+2026-05-10 15:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,764.0,322.0,False,False,False,False
+2026-05-10 15:44:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,765.0,323.0,False,False,False,False
+2026-05-10 15:44:59.999000+00:00,LABUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,766.0,324.0,False,False,False,False
+2026-05-10 15:44:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,767.0,325.0,False,False,False,False
+2026-05-10 15:44:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,768.0,326.0,False,False,False,False
+2026-05-10 15:44:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,769.0,327.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,770.0,328.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,321.0,24.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,1000PEPEUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,322.0,25.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,323.0,26.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,DOGEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,771.0,329.0,False,False,False,False
+2026-05-10 15:59:59.999000+00:00,BZUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,772.0,330.0,False,False,False,False
+2026-05-10 16:14:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,324.0,27.0,False,False,False,False
+2026-05-10 16:14:59.999000+00:00,DOGEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,773.0,331.0,False,False,False,False
+2026-05-10 16:14:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,325.0,28.0,False,False,False,False
+2026-05-10 16:14:59.999000+00:00,AVAXUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,326.0,29.0,False,False,False,False
+2026-05-10 16:29:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,327.0,30.0,False,False,False,False
+2026-05-10 16:29:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,774.0,332.0,False,False,False,False
+2026-05-10 16:29:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,328.0,31.0,False,False,False,False
+2026-05-10 16:29:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,775.0,333.0,False,False,False,False
+2026-05-10 17:14:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,776.0,334.0,False,False,False,False
+2026-05-10 17:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,777.0,335.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,1000PEPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,329.0,32.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,778.0,336.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,330.0,33.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,779.0,337.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,780.0,338.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,781.0,339.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,331.0,34.0,False,False,False,False
+2026-05-10 17:29:59.999000+00:00,SOLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,332.0,35.0,False,False,False,False
+2026-05-10 17:44:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,333.0,36.0,False,False,False,False
+2026-05-10 17:59:59.999000+00:00,ETHUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,782.0,340.0,False,False,False,False
+2026-05-10 17:59:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,783.0,341.0,False,False,False,False
+2026-05-10 17:59:59.999000+00:00,CLUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,334.0,37.0,False,False,False,False
+2026-05-10 18:14:59.999000+00:00,BZUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,784.0,342.0,False,False,False,False
+2026-05-10 18:59:59.999000+00:00,BZUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,785.0,343.0,False,False,False,False
+2026-05-10 22:29:59.999000+00:00,BNBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,335.0,38.0,False,False,False,False
+2026-05-10 22:59:59.999000+00:00,DOGEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,786.0,344.0,False,False,False,False
+2026-05-10 23:14:59.999000+00:00,BTCUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,787.0,345.0,False,False,False,False
+2026-05-10 23:29:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,788.0,346.0,False,False,False,False
+2026-05-11 00:14:59.999000+00:00,SNDKUSDT,historical_outcomes,95.0,TP1 HIT,WIN,3.0,95-100,107.0,3.0,False,False,False,False
+2026-05-11 01:14:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,789.0,347.0,False,False,False,False
+2026-05-11 02:29:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,790.0,348.0,False,False,False,False
+2026-05-11 04:29:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,336.0,39.0,False,False,False,False
+2026-05-11 05:59:59.999000+00:00,UBUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,791.0,349.0,False,False,False,False
+2026-05-11 06:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,792.0,350.0,False,False,False,False
+2026-05-11 06:29:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,337.0,40.0,False,False,False,False
+2026-05-11 08:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,793.0,351.0,False,False,False,False
+2026-05-11 08:14:59.999000+00:00,CRCLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,338.0,41.0,False,False,False,False
+2026-05-11 08:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,339.0,42.0,False,False,False,False
+2026-05-11 08:29:59.999000+00:00,LABUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,340.0,43.0,False,False,False,False
+2026-05-11 08:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,794.0,352.0,False,False,False,False
+2026-05-11 09:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,795.0,353.0,False,False,False,False
+2026-05-11 09:59:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,796.0,354.0,False,False,False,False
+2026-05-11 09:59:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,341.0,44.0,False,False,False,False
+2026-05-11 10:44:59.999000+00:00,CRCLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,342.0,45.0,False,False,False,False
+2026-05-11 11:44:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,343.0,46.0,False,False,False,False
+2026-05-11 12:29:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,344.0,47.0,False,False,False,False
+2026-05-11 13:44:59.999000+00:00,SNDKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,345.0,48.0,False,False,False,False
+2026-05-11 15:14:59.999000+00:00,LABUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,346.0,49.0,False,False,False,False
+2026-05-11 15:59:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,347.0,50.0,False,False,False,False
+2026-05-11 18:44:59.999000+00:00,LABUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,797.0,355.0,False,False,False,False
+2026-05-11 18:59:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,348.0,51.0,False,False,False,False
+2026-05-11 19:59:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,798.0,356.0,False,False,False,False
+2026-05-11 23:44:59.999000+00:00,BNBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,799.0,357.0,False,False,False,False
+2026-05-12 00:14:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,800.0,358.0,False,False,False,False
+2026-05-12 01:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,349.0,52.0,False,False,False,False
+2026-05-12 08:14:59.999000+00:00,IRYSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,801.0,359.0,False,False,False,False
+2026-05-12 09:14:59.999000+00:00,CRCLUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,802.0,360.0,False,False,False,False
+2026-05-12 09:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,803.0,361.0,False,False,False,False
+2026-05-12 09:29:59.999000+00:00,CRCLUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,804.0,362.0,False,False,False,False
+2026-05-12 09:59:59.999000+00:00,CRCLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,805.0,363.0,False,False,False,False
+2026-05-12 10:14:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,806.0,364.0,False,False,False,False
+2026-05-12 10:14:59.999000+00:00,CRCLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,350.0,53.0,False,False,False,False
+2026-05-12 10:44:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,807.0,365.0,False,False,False,False
+2026-05-12 12:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,808.0,366.0,False,False,False,False
+2026-05-12 12:44:59.999000+00:00,MUUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,351.0,54.0,False,False,False,False
+2026-05-12 13:44:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,809.0,367.0,False,False,False,False
+2026-05-12 13:44:59.999000+00:00,SNDKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,352.0,55.0,False,False,False,False
+2026-05-12 13:44:59.999000+00:00,MUUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,353.0,56.0,False,False,False,False
+2026-05-12 14:29:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,354.0,57.0,False,False,False,False
+2026-05-12 14:44:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,355.0,58.0,False,False,False,False
+2026-05-12 14:44:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,356.0,59.0,False,False,False,False
+2026-05-12 15:14:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,810.0,368.0,False,False,False,False
+2026-05-12 22:14:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,357.0,60.0,False,False,False,False
+2026-05-12 22:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,358.0,61.0,False,False,False,False
+2026-05-12 23:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,811.0,369.0,False,False,False,False
+2026-05-12 23:59:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,359.0,62.0,False,False,False,False
+2026-05-13 00:29:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,360.0,63.0,False,False,False,False
+2026-05-13 01:14:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,361.0,64.0,False,False,False,False
+2026-05-13 01:29:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,362.0,65.0,False,False,False,False
+2026-05-13 01:59:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,363.0,66.0,False,False,False,False
+2026-05-13 02:29:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,364.0,67.0,False,False,False,False
+2026-05-13 03:14:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,365.0,68.0,False,False,False,False
+2026-05-13 03:29:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,366.0,69.0,False,False,False,False
+2026-05-13 05:14:59.999000+00:00,LABUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,812.0,370.0,False,False,False,False
+2026-05-13 05:59:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,367.0,70.0,False,False,False,False
+2026-05-13 07:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,813.0,371.0,False,False,False,False
+2026-05-13 07:29:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,814.0,372.0,False,False,False,False
+2026-05-13 07:59:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,815.0,373.0,False,False,False,False
+2026-05-13 08:14:59.999000+00:00,SNDKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,368.0,71.0,False,False,False,False
+2026-05-13 08:14:59.999000+00:00,CRCLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,369.0,72.0,False,False,False,False
+2026-05-13 08:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,370.0,73.0,False,False,False,False
+2026-05-13 08:29:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,371.0,74.0,False,False,False,False
+2026-05-13 08:44:59.999000+00:00,ETHUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,372.0,75.0,False,False,False,False
+2026-05-13 08:44:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,373.0,76.0,False,False,False,False
+2026-05-13 08:59:59.999000+00:00,LABUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,374.0,77.0,False,False,False,False
+2026-05-13 08:59:59.999000+00:00,UBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,375.0,78.0,False,False,False,False
+2026-05-13 09:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,376.0,79.0,False,False,False,False
+2026-05-13 09:14:59.999000+00:00,LINKUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,816.0,374.0,False,False,False,False
+2026-05-13 09:14:59.999000+00:00,ETHUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,377.0,80.0,False,False,False,False
+2026-05-13 09:29:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,378.0,81.0,False,False,False,False
+2026-05-13 09:29:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,817.0,375.0,False,False,False,False
+2026-05-13 09:44:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,379.0,82.0,False,False,False,False
+2026-05-13 09:44:59.999000+00:00,1000PEPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,380.0,83.0,False,False,False,False
+2026-05-13 09:44:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,381.0,84.0,False,False,False,False
+2026-05-13 09:44:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,818.0,376.0,False,False,False,False
+2026-05-13 09:44:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,382.0,85.0,False,False,False,False
+2026-05-13 10:14:59.999000+00:00,LABUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,819.0,377.0,False,False,False,False
+2026-05-13 10:14:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,820.0,378.0,False,False,False,False
+2026-05-13 12:44:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,383.0,86.0,False,False,False,False
+2026-05-13 13:14:59.999000+00:00,SNDKUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,821.0,379.0,False,False,False,False
+2026-05-13 13:59:59.999000+00:00,SNDKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,384.0,87.0,False,False,False,False
+2026-05-13 15:44:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,385.0,88.0,False,False,False,False
+2026-05-13 23:59:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,822.0,380.0,False,False,False,False
+2026-05-14 00:14:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,386.0,89.0,False,False,False,False
+2026-05-14 00:29:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,387.0,90.0,False,False,False,False
+2026-05-14 00:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,823.0,381.0,False,False,False,False
+2026-05-14 00:44:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,388.0,91.0,False,False,False,False
+2026-05-14 00:44:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,389.0,92.0,False,False,False,False
+2026-05-14 00:59:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,390.0,93.0,False,False,False,False
+2026-05-14 00:59:59.999000+00:00,IRYSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,824.0,382.0,False,False,False,False
+2026-05-14 05:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,825.0,383.0,False,False,False,False
+2026-05-14 08:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,826.0,384.0,False,False,False,False
+2026-05-14 08:59:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,827.0,385.0,False,False,False,False
+2026-05-14 09:29:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,828.0,386.0,False,False,False,False
+2026-05-14 10:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,391.0,94.0,False,False,False,False
+2026-05-14 10:29:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,392.0,95.0,False,False,False,False
+2026-05-14 11:44:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,393.0,96.0,False,False,False,False
+2026-05-14 12:14:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,394.0,97.0,False,False,False,False
+2026-05-14 12:44:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,395.0,98.0,False,False,False,False
+2026-05-14 13:14:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,829.0,387.0,False,False,False,False
+2026-05-14 13:14:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,396.0,99.0,False,False,False,False
+2026-05-14 13:14:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,397.0,100.0,False,False,False,False
+2026-05-14 13:14:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,398.0,101.0,False,False,False,False
+2026-05-14 13:29:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,830.0,388.0,False,False,False,False
+2026-05-14 13:29:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,399.0,102.0,False,False,False,False
+2026-05-14 13:44:59.999000+00:00,SNDKUSDT,historical_outcomes,80.0,LOSS,LOSS,-2.0,80-84,644.0,306.0,False,False,False,False
+2026-05-14 13:44:59.999000+00:00,MUUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,400.0,103.0,False,False,False,False
+2026-05-14 14:29:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,401.0,104.0,False,False,False,False
+2026-05-14 14:44:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,831.0,389.0,False,False,False,False
+2026-05-14 14:44:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,402.0,105.0,False,False,False,False
+2026-05-14 14:44:59.999000+00:00,LINKUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,832.0,390.0,False,False,False,False
+2026-05-14 14:59:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,833.0,391.0,False,False,False,False
+2026-05-14 14:59:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,403.0,106.0,False,False,False,False
+2026-05-14 14:59:59.999000+00:00,IRYSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,834.0,392.0,False,False,False,False
+2026-05-14 16:14:59.999000+00:00,LINKUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,835.0,393.0,False,False,False,False
+2026-05-14 16:14:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,836.0,394.0,False,False,False,False
+2026-05-14 16:14:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,837.0,395.0,False,False,False,False
+2026-05-14 17:14:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,838.0,396.0,False,False,False,False
+2026-05-14 18:29:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,839.0,397.0,False,False,False,False
+2026-05-14 18:29:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,840.0,398.0,False,False,False,False
+2026-05-14 18:29:59.999000+00:00,WLDUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,841.0,399.0,False,False,False,False
+2026-05-14 18:59:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,404.0,107.0,False,False,False,False
+2026-05-14 19:14:59.999000+00:00,WLDUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,842.0,400.0,False,False,False,False
+2026-05-14 22:14:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,843.0,401.0,False,False,False,False
+2026-05-15 00:14:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,405.0,108.0,False,False,False,False
+2026-05-15 00:29:59.999000+00:00,CGPTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,844.0,402.0,False,False,False,False
+2026-05-15 00:44:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,845.0,403.0,False,False,False,False
+2026-05-15 00:59:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,406.0,109.0,False,False,False,False
+2026-05-15 00:59:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,846.0,404.0,False,False,False,False
+2026-05-15 01:14:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,847.0,405.0,False,False,False,False
+2026-05-15 01:29:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,848.0,406.0,False,False,False,False
+2026-05-15 01:44:59.999000+00:00,LINKUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,849.0,407.0,False,False,False,False
+2026-05-15 01:44:59.999000+00:00,ETHUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,850.0,408.0,False,False,False,False
+2026-05-15 01:44:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,407.0,110.0,False,False,False,False
+2026-05-15 02:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,851.0,409.0,False,False,False,False
+2026-05-15 02:29:59.999000+00:00,MUUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,408.0,111.0,False,False,False,False
+2026-05-15 02:44:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,409.0,112.0,False,False,False,False
+2026-05-15 02:59:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,410.0,113.0,False,False,False,False
+2026-05-15 03:29:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,411.0,114.0,False,False,False,False
+2026-05-15 06:14:59.999000+00:00,XAGUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,852.0,410.0,False,False,False,False
+2026-05-15 06:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,412.0,115.0,False,False,False,False
+2026-05-15 06:14:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,413.0,116.0,False,False,False,False
+2026-05-15 06:29:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,414.0,117.0,False,False,False,False
+2026-05-15 07:14:59.999000+00:00,AIGENSYNUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,853.0,411.0,False,False,False,False
+2026-05-15 07:29:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,854.0,412.0,False,False,False,False
+2026-05-15 07:29:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,855.0,413.0,False,False,False,False
+2026-05-15 07:44:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,856.0,414.0,False,False,False,False
+2026-05-15 07:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,857.0,415.0,False,False,False,False
+2026-05-15 08:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,858.0,416.0,False,False,False,False
+2026-05-15 08:44:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,415.0,118.0,False,False,False,False
+2026-05-15 08:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,416.0,119.0,False,False,False,False
+2026-05-15 09:14:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,417.0,120.0,False,False,False,False
+2026-05-15 09:59:59.999000+00:00,CLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,859.0,417.0,False,False,False,False
+2026-05-15 10:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,860.0,418.0,False,False,False,False
+2026-05-15 11:29:59.999000+00:00,PLAYUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,418.0,121.0,False,False,False,False
+2026-05-15 11:44:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,419.0,122.0,False,False,False,False
+2026-05-15 11:44:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,861.0,419.0,False,False,False,False
+2026-05-15 11:59:59.999000+00:00,IRYSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,420.0,123.0,False,False,False,False
+2026-05-15 13:14:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,421.0,124.0,False,False,False,False
+2026-05-15 14:14:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,862.0,420.0,False,False,False,False
+2026-05-15 14:59:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,422.0,125.0,False,False,False,False
+2026-05-15 14:59:59.999000+00:00,CGPTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,423.0,126.0,False,False,False,False
+2026-05-15 15:59:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,424.0,127.0,False,False,False,False
+2026-05-15 17:59:59.999000+00:00,STORJUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,425.0,128.0,False,False,False,False
+2026-05-15 21:14:59.999000+00:00,LABUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,426.0,129.0,False,False,False,False
+2026-05-15 21:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,863.0,421.0,False,False,False,False
+2026-05-15 21:59:59.999000+00:00,UBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,427.0,130.0,False,False,False,False
+2026-05-16 00:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,864.0,422.0,False,False,False,False
+2026-05-16 00:29:59.999000+00:00,PLAYUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,865.0,423.0,False,False,False,False
+2026-05-16 00:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,866.0,424.0,False,False,False,False
+2026-05-16 02:14:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,867.0,425.0,False,False,False,False
+2026-05-16 04:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,868.0,426.0,False,False,False,False
+2026-05-16 06:59:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,869.0,427.0,False,False,False,False
+2026-05-16 06:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,870.0,428.0,False,False,False,False
+2026-05-16 07:14:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,871.0,429.0,False,False,False,False
+2026-05-16 07:29:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,872.0,430.0,False,False,False,False
+2026-05-16 07:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,428.0,131.0,False,False,False,False
+2026-05-16 07:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,873.0,431.0,False,False,False,False
+2026-05-16 08:14:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,429.0,132.0,False,False,False,False
+2026-05-16 08:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,430.0,133.0,False,False,False,False
+2026-05-16 08:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,431.0,134.0,False,False,False,False
+2026-05-16 16:14:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,432.0,135.0,False,False,False,False
+2026-05-16 16:44:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,874.0,432.0,False,False,False,False
+2026-05-16 16:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,433.0,136.0,False,False,False,False
+2026-05-16 20:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,875.0,433.0,False,False,False,False
+2026-05-16 22:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,876.0,434.0,False,False,False,False
+2026-05-16 22:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,877.0,435.0,False,False,False,False
+2026-05-17 00:14:59.999000+00:00,INUSDT,historical_outcomes,100.0,LOSS,LOSS,-2.0,95-100,2.0,2.0,False,True,True,True
+2026-05-17 01:44:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,434.0,137.0,False,False,False,False
+2026-05-17 01:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,878.0,436.0,False,False,False,False
+2026-05-17 03:29:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,435.0,138.0,False,False,False,False
+2026-05-17 04:29:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,879.0,437.0,False,False,False,False
+2026-05-17 05:14:59.999000+00:00,ONDOUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,436.0,139.0,False,False,False,False
+2026-05-17 09:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,437.0,140.0,False,False,False,False
+2026-05-17 09:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,438.0,141.0,False,False,False,False
+2026-05-17 09:59:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,439.0,142.0,False,False,False,False
+2026-05-17 10:29:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,440.0,143.0,False,False,False,False
+2026-05-17 10:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,880.0,438.0,False,False,False,False
+2026-05-17 10:59:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,441.0,144.0,False,False,False,False
+2026-05-17 11:14:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,442.0,145.0,False,False,False,False
+2026-05-17 11:29:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,443.0,146.0,False,False,False,False
+2026-05-17 12:14:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,444.0,147.0,False,False,False,False
+2026-05-17 12:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,445.0,148.0,False,False,False,False
+2026-05-17 13:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,446.0,149.0,False,False,False,False
+2026-05-17 13:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,447.0,150.0,False,False,False,False
+2026-05-17 14:14:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,448.0,151.0,False,False,False,False
+2026-05-17 14:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,881.0,439.0,False,False,False,False
+2026-05-17 14:59:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,449.0,152.0,False,False,False,False
+2026-05-17 15:14:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,450.0,153.0,False,False,False,False
+2026-05-17 15:59:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,882.0,440.0,False,False,False,False
+2026-05-17 18:59:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,451.0,154.0,False,False,False,False
+2026-05-17 18:59:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,452.0,155.0,False,False,False,False
+2026-05-17 18:59:59.999000+00:00,BILLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,453.0,156.0,False,False,False,False
+2026-05-17 19:44:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,454.0,157.0,False,False,False,False
+2026-05-17 19:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,883.0,441.0,False,False,False,False
+2026-05-17 19:59:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,884.0,442.0,False,False,False,False
+2026-05-17 19:59:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,885.0,443.0,False,False,False,False
+2026-05-17 19:59:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,886.0,444.0,False,False,False,False
+2026-05-17 19:59:59.999000+00:00,SOLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,887.0,445.0,False,False,False,False
+2026-05-17 19:59:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,888.0,446.0,False,False,False,False
+2026-05-17 20:59:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,455.0,158.0,False,False,False,False
+2026-05-17 21:14:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,456.0,159.0,False,False,False,False
+2026-05-17 21:29:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,889.0,447.0,False,False,False,False
+2026-05-17 21:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,890.0,448.0,False,False,False,False
+2026-05-17 22:14:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,457.0,160.0,False,False,False,False
+2026-05-17 22:29:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,891.0,449.0,False,False,False,False
+2026-05-17 22:44:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,458.0,161.0,False,False,False,False
+2026-05-17 23:29:59.999000+00:00,DOGEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,892.0,450.0,False,False,False,False
+2026-05-18 00:14:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,459.0,162.0,False,False,False,False
+2026-05-18 00:14:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,893.0,451.0,False,False,False,False
+2026-05-18 00:14:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,894.0,452.0,False,False,False,False
+2026-05-18 02:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,460.0,163.0,False,False,False,False
+2026-05-18 03:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,895.0,453.0,False,False,False,False
+2026-05-18 05:14:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,896.0,454.0,False,False,False,False
+2026-05-18 07:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,897.0,455.0,False,False,False,False
+2026-05-18 07:29:59.999000+00:00,TONUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,461.0,164.0,False,False,False,False
+2026-05-18 07:44:59.999000+00:00,BZUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,462.0,165.0,False,False,False,False
+2026-05-18 08:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,463.0,166.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,ETHUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,464.0,167.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,898.0,456.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,465.0,168.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,466.0,169.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,GMTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,899.0,457.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,467.0,170.0,False,False,False,False
+2026-05-18 11:44:59.999000+00:00,LINKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,468.0,171.0,False,False,False,False
+2026-05-18 12:14:59.999000+00:00,ETHUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,469.0,172.0,False,False,False,False
+2026-05-18 12:14:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,900.0,458.0,False,False,False,False
+2026-05-18 12:29:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,470.0,173.0,False,False,False,False
+2026-05-18 12:29:59.999000+00:00,ONDOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,471.0,174.0,False,False,False,False
+2026-05-18 12:44:59.999000+00:00,BTCUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,901.0,459.0,False,False,False,False
+2026-05-18 12:44:59.999000+00:00,ETHUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,902.0,460.0,False,False,False,False
+2026-05-18 12:44:59.999000+00:00,SOLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,903.0,461.0,False,False,False,False
+2026-05-18 12:44:59.999000+00:00,XRPUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,904.0,462.0,False,False,False,False
+2026-05-18 12:44:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,905.0,463.0,False,False,False,False
+2026-05-18 15:44:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,906.0,464.0,False,False,False,False
+2026-05-18 17:29:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,907.0,465.0,False,False,False,False
+2026-05-18 18:29:59.999000+00:00,CLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,908.0,466.0,False,False,False,False
+2026-05-18 19:14:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,472.0,175.0,False,False,False,False
+2026-05-18 19:44:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,909.0,467.0,False,False,False,False
+2026-05-18 21:14:59.999000+00:00,ONDOUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,473.0,176.0,False,False,False,False
+2026-05-18 21:44:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,910.0,468.0,False,False,False,False
+2026-05-18 22:14:59.999000+00:00,XAGUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,911.0,469.0,False,False,False,False
+2026-05-18 23:14:59.999000+00:00,XAGUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,912.0,470.0,False,False,False,False
+2026-05-18 23:44:59.999000+00:00,INUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,474.0,177.0,False,False,False,False
+2026-05-19 00:29:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,913.0,471.0,False,False,False,False
+2026-05-19 04:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,475.0,178.0,False,False,False,False
+2026-05-19 04:59:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,476.0,179.0,False,False,False,False
+2026-05-19 06:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,914.0,472.0,False,False,False,False
+2026-05-19 06:59:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,477.0,180.0,False,False,False,False
+2026-05-19 07:14:59.999000+00:00,TONUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,915.0,473.0,False,False,False,False
+2026-05-19 07:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,478.0,181.0,False,False,False,False
+2026-05-19 07:44:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,916.0,474.0,False,False,False,False
+2026-05-19 07:44:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,917.0,475.0,False,False,False,False
+2026-05-19 07:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,479.0,182.0,False,False,False,False
+2026-05-19 15:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,480.0,183.0,False,False,False,False
+2026-05-19 15:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,481.0,184.0,False,False,False,False
+2026-05-19 16:14:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,482.0,185.0,False,False,False,False
+2026-05-19 16:29:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,483.0,186.0,False,False,False,False
+2026-05-19 16:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,484.0,187.0,False,False,False,False
+2026-05-19 17:44:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,918.0,476.0,False,False,False,False
+2026-05-19 17:59:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,485.0,188.0,False,False,False,False
+2026-05-19 17:59:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,919.0,477.0,False,False,False,False
+2026-05-19 17:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,486.0,189.0,False,False,False,False
+2026-05-19 19:14:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,920.0,478.0,False,False,False,False
+2026-05-19 22:14:59.999000+00:00,INUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,487.0,190.0,False,False,False,False
+2026-05-19 23:14:59.999000+00:00,INUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,488.0,191.0,False,False,False,False
+2026-05-19 23:59:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,921.0,479.0,False,False,False,False
+2026-05-20 02:14:59.999000+00:00,INUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,489.0,192.0,False,False,False,False
+2026-05-20 02:14:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,922.0,480.0,False,False,False,False
+2026-05-20 03:59:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,490.0,193.0,False,False,False,False
+2026-05-20 05:29:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,923.0,481.0,False,False,False,False
+2026-05-20 06:44:59.999000+00:00,CLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,924.0,482.0,False,False,False,False
+2026-05-20 09:14:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,491.0,194.0,False,False,False,False
+2026-05-20 09:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,492.0,195.0,False,False,False,False
+2026-05-20 10:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,925.0,483.0,False,False,False,False
+2026-05-20 10:29:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,493.0,196.0,False,False,False,False
+2026-05-20 10:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,494.0,197.0,False,False,False,False
+2026-05-20 12:59:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,926.0,484.0,False,False,False,False
+2026-05-20 13:29:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,495.0,198.0,False,False,False,False
+2026-05-20 13:44:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,927.0,485.0,False,False,False,False
+2026-05-20 13:59:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,928.0,486.0,False,False,False,False
+2026-05-20 14:14:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,496.0,199.0,False,False,False,False
+2026-05-20 14:29:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,497.0,200.0,False,False,False,False
+2026-05-20 14:29:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,498.0,201.0,False,False,False,False
+2026-05-20 14:29:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,499.0,202.0,False,False,False,False
+2026-05-20 14:44:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,929.0,487.0,False,False,False,False
+2026-05-20 14:44:59.999000+00:00,BZUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,930.0,488.0,False,False,False,False
+2026-05-20 14:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,931.0,489.0,False,False,False,False
+2026-05-20 14:44:59.999000+00:00,TONUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,500.0,203.0,False,False,False,False
+2026-05-20 14:59:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,501.0,204.0,False,False,False,False
+2026-05-20 14:59:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,932.0,490.0,False,False,False,False
+2026-05-20 15:29:59.999000+00:00,BZUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,502.0,205.0,False,False,False,False
+2026-05-20 15:29:59.999000+00:00,CLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,503.0,206.0,False,False,False,False
+2026-05-20 15:29:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,504.0,207.0,False,False,False,False
+2026-05-20 15:29:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,505.0,208.0,False,False,False,False
+2026-05-20 16:14:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,506.0,209.0,False,False,False,False
+2026-05-20 16:14:59.999000+00:00,TONUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,507.0,210.0,False,False,False,False
+2026-05-20 16:29:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,933.0,491.0,False,False,False,False
+2026-05-20 16:44:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,934.0,492.0,False,False,False,False
+2026-05-20 16:44:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,508.0,211.0,False,False,False,False
+2026-05-20 16:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,509.0,212.0,False,False,False,False
+2026-05-20 16:59:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,935.0,493.0,False,False,False,False
+2026-05-20 17:14:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,936.0,494.0,False,False,False,False
+2026-05-20 17:29:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,937.0,495.0,False,False,False,False
+2026-05-20 17:44:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,510.0,213.0,False,False,False,False
+2026-05-20 17:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,511.0,214.0,False,False,False,False
+2026-05-20 17:59:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,938.0,496.0,False,False,False,False
+2026-05-20 18:29:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,939.0,497.0,False,False,False,False
+2026-05-20 19:14:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,940.0,498.0,False,False,False,False
+2026-05-20 19:14:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,512.0,215.0,False,False,False,False
+2026-05-20 19:14:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,513.0,216.0,False,False,False,False
+2026-05-20 19:29:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,941.0,499.0,False,False,False,False
+2026-05-20 21:44:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,942.0,500.0,False,False,False,False
+2026-05-20 22:29:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,943.0,501.0,False,False,False,False
+2026-05-20 22:44:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,944.0,502.0,False,False,False,False
+2026-05-20 23:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,945.0,503.0,False,False,False,False
+2026-05-20 23:29:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,946.0,504.0,False,False,False,False
+2026-05-21 00:14:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,947.0,505.0,False,False,False,False
+2026-05-21 00:14:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,514.0,217.0,False,False,False,False
+2026-05-21 00:29:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,948.0,506.0,False,False,False,False
+2026-05-21 00:44:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,515.0,218.0,False,False,False,False
+2026-05-21 00:59:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,516.0,219.0,False,False,False,False
+2026-05-21 01:14:59.999000+00:00,XAGUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,517.0,220.0,False,False,False,False
+2026-05-21 01:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,949.0,507.0,False,False,False,False
+2026-05-21 01:29:59.999000+00:00,XAGUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,950.0,508.0,False,False,False,False
+2026-05-21 01:59:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,951.0,509.0,False,False,False,False
+2026-05-21 02:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,952.0,510.0,False,False,False,False
+2026-05-21 02:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,953.0,511.0,False,False,False,False
+2026-05-21 02:29:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,954.0,512.0,False,False,False,False
+2026-05-21 03:44:59.999000+00:00,BILLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,518.0,221.0,False,False,False,False
+2026-05-21 04:14:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,955.0,513.0,False,False,False,False
+2026-05-21 04:44:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,519.0,222.0,False,False,False,False
+2026-05-21 04:59:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,956.0,514.0,False,False,False,False
+2026-05-21 05:59:59.999000+00:00,CLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,520.0,223.0,False,False,False,False
+2026-05-21 06:29:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,957.0,515.0,False,False,False,False
+2026-05-21 07:14:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,958.0,516.0,False,False,False,False
+2026-05-21 07:44:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,521.0,224.0,False,False,False,False
+2026-05-21 07:59:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,522.0,225.0,False,False,False,False
+2026-05-21 07:59:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,959.0,517.0,False,False,False,False
+2026-05-21 08:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,960.0,518.0,False,False,False,False
+2026-05-21 08:14:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,523.0,226.0,False,False,False,False
+2026-05-21 08:29:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,961.0,519.0,False,False,False,False
+2026-05-21 09:14:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,962.0,520.0,False,False,False,False
+2026-05-21 09:44:59.999000+00:00,CLUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,963.0,521.0,False,False,False,False
+2026-05-21 09:44:59.999000+00:00,BZUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,964.0,522.0,False,False,False,False
+2026-05-21 12:44:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,965.0,523.0,False,False,False,False
+2026-05-21 12:59:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,966.0,524.0,False,False,False,False
+2026-05-21 12:59:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,967.0,525.0,False,False,False,False
+2026-05-21 13:29:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,524.0,227.0,False,False,False,False
+2026-05-21 13:44:59.999000+00:00,BZUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,968.0,526.0,False,False,False,False
+2026-05-21 13:44:59.999000+00:00,XAGUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,969.0,527.0,False,False,False,False
+2026-05-21 13:59:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,970.0,528.0,False,False,False,False
+2026-05-21 13:59:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,525.0,228.0,False,False,False,False
+2026-05-21 14:14:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,526.0,229.0,False,False,False,False
+2026-05-21 14:29:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,971.0,529.0,False,False,False,False
+2026-05-21 14:44:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,972.0,530.0,False,False,False,False
+2026-05-21 15:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,973.0,531.0,False,False,False,False
+2026-05-21 15:29:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,974.0,532.0,False,False,False,False
+2026-05-21 15:29:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,975.0,533.0,False,False,False,False
+2026-05-21 15:29:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,527.0,230.0,False,False,False,False
+2026-05-21 16:29:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,976.0,534.0,False,False,False,False
+2026-05-21 16:59:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,977.0,535.0,False,False,False,False
+2026-05-21 17:14:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,978.0,536.0,False,False,False,False
+2026-05-21 17:29:59.999000+00:00,SUIUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,528.0,231.0,False,False,False,False
+2026-05-21 17:29:59.999000+00:00,WLDUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,979.0,537.0,False,False,False,False
+2026-05-21 17:59:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,980.0,538.0,False,False,False,False
+2026-05-21 17:59:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,529.0,232.0,False,False,False,False
+2026-05-21 19:59:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,981.0,539.0,False,False,False,False
+2026-05-21 21:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,982.0,540.0,False,False,False,False
+2026-05-22 01:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,983.0,541.0,False,False,False,False
+2026-05-22 02:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,984.0,542.0,False,False,False,False
+2026-05-22 02:44:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,985.0,543.0,False,False,False,False
+2026-05-22 02:59:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,530.0,233.0,False,False,False,False
+2026-05-22 03:29:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,531.0,234.0,False,False,False,False
+2026-05-22 06:14:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,532.0,235.0,False,False,False,False
+2026-05-22 06:14:59.999000+00:00,INUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,986.0,544.0,False,False,False,False
+2026-05-22 06:29:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,987.0,545.0,False,False,False,False
+2026-05-22 07:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,988.0,546.0,False,False,False,False
+2026-05-22 07:44:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,989.0,547.0,False,False,False,False
+2026-05-22 07:44:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,533.0,236.0,False,False,False,False
+2026-05-22 07:59:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,534.0,237.0,False,False,False,False
+2026-05-22 08:29:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,535.0,238.0,False,False,False,False
+2026-05-22 08:29:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,536.0,239.0,False,False,False,False
+2026-05-22 08:44:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,537.0,240.0,False,False,False,False
+2026-05-22 08:44:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,538.0,241.0,False,False,False,False
+2026-05-22 08:44:59.999000+00:00,BZUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,539.0,242.0,False,False,False,False
+2026-05-22 08:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,540.0,243.0,False,False,False,False
+2026-05-22 08:59:59.999000+00:00,ONDOUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,541.0,244.0,False,False,False,False
+2026-05-22 09:14:59.999000+00:00,ONDOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,542.0,245.0,False,False,False,False
+2026-05-22 09:29:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,990.0,548.0,False,False,False,False
+2026-05-22 11:29:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,543.0,246.0,False,False,False,False
+2026-05-22 11:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,544.0,247.0,False,False,False,False
+2026-05-22 11:44:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,991.0,549.0,False,False,False,False
+2026-05-22 11:59:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,545.0,248.0,False,False,False,False
+2026-05-22 12:14:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,546.0,249.0,False,False,False,False
+2026-05-22 12:14:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,547.0,250.0,False,False,False,False
+2026-05-22 12:29:59.999000+00:00,BZUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,548.0,251.0,False,False,False,False
+2026-05-22 12:29:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,992.0,550.0,False,False,False,False
+2026-05-22 12:59:59.999000+00:00,ADAUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,993.0,551.0,False,False,False,False
+2026-05-22 12:59:59.999000+00:00,LINKUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,994.0,552.0,False,False,False,False
+2026-05-22 12:59:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,995.0,553.0,False,False,False,False
+2026-05-22 13:29:59.999000+00:00,BSBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,996.0,554.0,False,False,False,False
+2026-05-22 13:59:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,997.0,555.0,False,False,False,False
+2026-05-22 14:14:59.999000+00:00,GMTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,998.0,556.0,False,False,False,False
+2026-05-22 14:14:59.999000+00:00,ADAUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,549.0,252.0,False,False,False,False
+2026-05-22 14:29:59.999000+00:00,TAOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,999.0,557.0,False,False,False,False
+2026-05-22 15:29:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1000.0,558.0,False,False,False,False
+2026-05-22 15:59:59.999000+00:00,INUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,550.0,253.0,False,False,False,False
+2026-05-22 17:44:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1001.0,559.0,False,False,False,False
+2026-05-22 18:59:59.999000+00:00,DOGEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,551.0,254.0,False,False,False,False
+2026-05-22 19:14:59.999000+00:00,GMTUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1002.0,560.0,False,False,False,False
+2026-05-23 01:29:59.999000+00:00,INUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1003.0,561.0,False,False,False,False
+2026-05-23 02:14:59.999000+00:00,GMTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,552.0,255.0,False,False,False,False
+2026-05-23 03:29:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,553.0,256.0,False,False,False,False
+2026-05-23 06:14:59.999000+00:00,XRPUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,554.0,257.0,False,False,False,False
+2026-05-23 06:29:59.999000+00:00,GMTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,555.0,258.0,False,False,False,False
+2026-05-23 07:14:59.999000+00:00,GMTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,556.0,259.0,False,False,False,False
+2026-05-23 07:59:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,557.0,260.0,False,False,False,False
+2026-05-23 07:59:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,558.0,261.0,False,False,False,False
+2026-05-23 07:59:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1004.0,562.0,False,False,False,False
+2026-05-23 08:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1005.0,563.0,False,False,False,False
+2026-05-23 08:59:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1006.0,564.0,False,False,False,False
+2026-05-23 09:44:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1007.0,565.0,False,False,False,False
+2026-05-23 11:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,559.0,262.0,False,False,False,False
+2026-05-23 11:44:59.999000+00:00,INUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,560.0,263.0,False,False,False,False
+2026-05-23 12:59:59.999000+00:00,BILLUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,561.0,264.0,False,False,False,False
+2026-05-23 13:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1008.0,566.0,False,False,False,False
+2026-05-23 13:14:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1009.0,567.0,False,False,False,False
+2026-05-23 13:14:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,562.0,265.0,False,False,False,False
+2026-05-23 13:14:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1010.0,568.0,False,False,False,False
+2026-05-23 13:29:59.999000+00:00,SUIUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1011.0,569.0,False,False,False,False
+2026-05-23 14:14:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,563.0,266.0,False,False,False,False
+2026-05-23 14:14:59.999000+00:00,WLDUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1012.0,570.0,False,False,False,False
+2026-05-23 14:59:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,564.0,267.0,False,False,False,False
+2026-05-23 14:59:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1013.0,571.0,False,False,False,False
+2026-05-23 14:59:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1014.0,572.0,False,False,False,False
+2026-05-23 15:14:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1015.0,573.0,False,False,False,False
+2026-05-23 15:29:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,565.0,268.0,False,False,False,False
+2026-05-23 16:44:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1016.0,574.0,False,False,False,False
+2026-05-23 16:59:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,566.0,269.0,False,False,False,False
+2026-05-23 18:14:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,1017.0,575.0,False,False,False,False
+2026-05-23 18:29:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,567.0,270.0,False,False,False,False
+2026-05-23 18:29:59.999000+00:00,AVAXUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1018.0,576.0,False,False,False,False
+2026-05-23 18:44:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1019.0,577.0,False,False,False,False
+2026-05-23 20:44:59.999000+00:00,HYPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,568.0,271.0,False,False,False,False
+2026-05-23 20:44:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,569.0,272.0,False,False,False,False
+2026-05-23 20:44:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,570.0,273.0,False,False,False,False
+2026-05-23 20:44:59.999000+00:00,1000PEPEUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,571.0,274.0,False,False,False,False
+2026-05-23 20:44:59.999000+00:00,TAOUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,572.0,275.0,False,False,False,False
+2026-05-23 20:59:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,573.0,276.0,False,False,False,False
+2026-05-23 20:59:59.999000+00:00,GRASSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,574.0,277.0,False,False,False,False
+2026-05-23 20:59:59.999000+00:00,1000PEPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1020.0,578.0,False,False,False,False
+2026-05-23 20:59:59.999000+00:00,LINKUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,575.0,278.0,False,False,False,False
+2026-05-24 01:14:59.999000+00:00,INUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,576.0,279.0,False,False,False,False
+2026-05-24 01:29:59.999000+00:00,ONDOUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1021.0,579.0,False,False,False,False
+2026-05-24 01:29:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,577.0,280.0,False,False,False,False
+2026-05-24 01:29:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1022.0,580.0,False,False,False,False
+2026-05-24 01:44:59.999000+00:00,BSBUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,578.0,281.0,False,False,False,False
+2026-05-24 01:44:59.999000+00:00,INUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,579.0,282.0,False,False,False,False
+2026-05-24 02:14:59.999000+00:00,BEATUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1023.0,581.0,False,False,False,False
+2026-05-24 02:29:59.999000+00:00,BEATUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,580.0,283.0,False,False,False,False
+2026-05-24 04:14:59.999000+00:00,INUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1024.0,582.0,False,False,False,False
+2026-05-24 05:59:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,581.0,284.0,False,False,False,False
+2026-05-24 06:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,582.0,285.0,False,False,False,False
+2026-05-24 07:14:59.999000+00:00,BILLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,583.0,286.0,False,False,False,False
+2026-05-24 07:14:59.999000+00:00,AGTUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,584.0,287.0,False,False,False,False
+2026-05-24 08:14:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,WIN,WIN,5.0,75-79,1025.0,583.0,False,False,False,False
+2026-05-24 08:29:59.999000+00:00,BILLUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1026.0,584.0,False,False,False,False
+2026-05-24 08:29:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,585.0,288.0,False,False,False,False
+2026-05-24 08:44:59.999000+00:00,GENIUSUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,586.0,289.0,False,False,False,False
+2026-05-24 08:44:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1027.0,585.0,False,False,False,False
+2026-05-24 08:44:59.999000+00:00,ASTERUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,587.0,290.0,False,False,False,False
+2026-05-24 09:14:59.999000+00:00,VVVUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,588.0,291.0,False,False,False,False
+2026-05-24 09:29:59.999000+00:00,GRASSUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1028.0,586.0,False,False,False,False
+2026-05-24 09:29:59.999000+00:00,NILUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1029.0,587.0,False,False,False,False
+2026-05-24 09:29:59.999000+00:00,ASTERUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,589.0,292.0,False,False,False,False
+2026-05-24 09:29:59.999000+00:00,VVVUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,590.0,293.0,False,False,False,False
+2026-05-24 09:44:59.999000+00:00,HYPEUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1030.0,588.0,False,False,False,False
+2026-05-24 09:44:59.999000+00:00,VVVUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,591.0,294.0,False,False,False,False
+2026-05-24 10:29:59.999000+00:00,VVVUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,592.0,295.0,False,False,False,False
+2026-05-24 10:59:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1031.0,589.0,False,False,False,False
+2026-05-24 11:29:59.999000+00:00,UBUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1032.0,590.0,False,False,False,False
+2026-05-24 12:14:59.999000+00:00,GENIUSUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1033.0,591.0,False,False,False,False
+2026-05-24 12:44:59.999000+00:00,ZECUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1034.0,592.0,False,False,False,False
+2026-05-24 12:59:59.999000+00:00,ASTERUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1035.0,593.0,False,False,False,False
+2026-05-24 13:44:59.999000+00:00,WLDUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,593.0,296.0,False,False,False,False
+2026-05-24 14:14:59.999000+00:00,BZUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,594.0,297.0,False,False,False,False
+2026-05-24 14:14:59.999000+00:00,CLUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,595.0,298.0,False,False,False,False
+2026-05-24 14:44:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1036.0,594.0,False,False,False,False
+2026-05-24 14:59:59.999000+00:00,NEARUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,596.0,299.0,False,False,False,False
+2026-05-24 15:44:59.999000+00:00,EDENUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,597.0,300.0,False,False,False,False
+2026-05-24 15:59:59.999000+00:00,NILUSDT,historical_outcomes,85.0,WIN,WIN,5.0,85-89,598.0,301.0,False,False,False,False
+2026-05-24 15:59:59.999000+00:00,EDENUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1037.0,595.0,False,False,False,False
+2026-05-24 16:14:59.999000+00:00,NILUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,599.0,302.0,False,False,False,False
+2026-05-24 17:14:59.999000+00:00,ZECUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,600.0,303.0,False,False,False,False
+2026-05-24 17:29:59.999000+00:00,NILUSDT,historical_outcomes,85.0,TP1 HIT,WIN,3.0,85-89,601.0,304.0,False,False,False,False
+2026-05-24 17:44:59.999000+00:00,NILUSDT,historical_outcomes,85.0,LOSS,LOSS,-2.0,85-89,602.0,305.0,False,False,False,False
+2026-05-24 21:14:59.999000+00:00,NEARUSDT,historical_outcomes,75.0,LOSS,LOSS,-2.0,75-79,1038.0,596.0,False,False,False,False
+2026-05-24 21:59:59.999000+00:00,WLDUSDT,historical_outcomes,75.0,TP1 HIT,WIN,3.0,75-79,1039.0,597.0,False,False,False,False
+2026-05-26 11:05:12.445670+00:00,INJUSDT,internal_paper_trades,100.0,WIN,WIN,6.92078,95-100,3.0,1.0,False,True,True,True
+2026-05-26 11:05:30.277854+00:00,INJUSDT,internal_paper_trades,100.0,WIN,WIN,6.864466,95-100,4.0,2.0,False,False,True,True
+2026-05-26 11:05:48.735914+00:00,INJUSDT,internal_paper_trades,100.0,WIN,WIN,6.92078,95-100,5.0,3.0,False,False,True,True
+2026-05-26 14:20:13.099917+00:00,INJUSDT,internal_paper_trades,88.41,WIN,WIN,12.189505,85-89,210.0,207.0,False,False,False,False
+2026-05-26 14:20:33.520084+00:00,INJUSDT,internal_paper_trades,88.45,WIN,WIN,12.207963,85-89,206.0,203.0,False,False,False,False
+2026-05-26 14:20:52.720734+00:00,INJUSDT,internal_paper_trades,88.61,WIN,WIN,12.042057,85-89,194.0,191.0,False,False,False,False
+2026-05-29 14:55:14.241747+00:00,SOXLUSDT,internal_paper_trades,90.69,WIN,WIN,8.194469,90-94,134.0,131.0,False,False,False,False
+2026-05-29 14:55:36.925459+00:00,SOXLUSDT,internal_paper_trades,91.1,WIN,WIN,7.593654,90-94,127.0,124.0,False,False,False,False
+2026-05-29 14:55:58.448514+00:00,SOXLUSDT,internal_paper_trades,91.2,WIN,WIN,7.328761,90-94,125.0,122.0,False,False,False,False
+2026-05-29 16:35:43.661899+00:00,HEIUSDT,internal_paper_trades,79.04,LOSS,LOSS,-14.906924,75-79,671.0,365.0,False,False,False,False
+2026-05-29 16:37:03.200715+00:00,HEIUSDT,internal_paper_trades,79.2,LOSS,LOSS,-15.324352,75-79,665.0,359.0,False,False,False,False
+2026-05-29 16:37:53.700976+00:00,HEIUSDT,internal_paper_trades,79.49,LOSS,LOSS,-15.025716,75-79,652.0,346.0,False,False,False,False
+2026-05-29 16:55:12.196345+00:00,HEIUSDT,internal_paper_trades,78.72,LOSS,LOSS,-19.108904,75-79,675.0,369.0,False,False,False,False
+2026-05-29 16:55:29.454301+00:00,HEIUSDT,internal_paper_trades,78.72,LOSS,LOSS,-18.93881,75-79,676.0,370.0,False,False,False,False
+2026-05-30 10:50:17.335174+00:00,ALLOUSDT,internal_paper_trades,100.0,LOSS,LOSS,-23.141875,95-100,6.0,4.0,False,False,False,True
+2026-05-30 10:51:31.804360+00:00,ALLOUSDT,internal_paper_trades,89.33,LOSS,LOSS,-22.929327,85-89,179.0,176.0,False,False,False,False
+2026-05-30 11:10:18.907347+00:00,ALLOUSDT,internal_paper_trades,76.53,LOSS,LOSS,-21.336725,75-79,714.0,408.0,False,False,False,False
+2026-05-30 11:10:39.578733+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,15.292553,95-100,7.0,5.0,False,False,False,True
+2026-05-30 11:11:41.226918+00:00,ALLOUSDT,internal_paper_trades,88.42,LOSS,LOSS,-21.856826,85-89,209.0,206.0,False,False,False,False
+2026-05-30 11:12:00.463635+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,15.6,95-100,8.0,6.0,False,False,False,True
+2026-05-30 11:12:52.568639+00:00,ALLOUSDT,internal_paper_trades,87.89,LOSS,LOSS,-22.332703,85-89,231.0,228.0,False,False,False,False
+2026-05-30 11:12:57.160365+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,15.446072,95-100,9.0,7.0,False,False,False,True
+2026-05-30 12:11:26.731477+00:00,ALLOUSDT,internal_paper_trades,75.38,LOSS,LOSS,-24.332115,75-79,738.0,432.0,False,False,False,False
+2026-05-30 12:11:30.833836+00:00,HBARUSDT,internal_paper_trades,89.21,LOSS,LOSS,-5.0,85-89,180.0,177.0,False,False,False,False
+2026-05-30 12:11:46.189293+00:00,ALLOUSDT,internal_paper_trades,75.37,LOSS,LOSS,-24.029077,75-79,739.0,433.0,False,False,False,False
+2026-05-30 12:11:49.813572+00:00,HBARUSDT,internal_paper_trades,89.39,LOSS,LOSS,-5.057309,85-89,178.0,175.0,False,False,False,False
+2026-05-30 13:50:12.905222+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,11.189484,95-100,10.0,8.0,False,False,False,True
+2026-05-30 13:50:31.337807+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,11.118231,95-100,11.0,9.0,False,False,False,False
+2026-05-30 13:50:50.312138+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,10.976,95-100,12.0,10.0,False,False,False,False
+2026-05-30 15:50:11.237084+00:00,WLDUSDT,internal_paper_trades,79.2,WIN,WIN,5.241935,75-79,666.0,360.0,False,False,False,False
+2026-05-30 15:50:30.336039+00:00,WLDUSDT,internal_paper_trades,79.38,WIN,WIN,5.454545,75-79,657.0,351.0,False,False,False,False
+2026-05-30 15:50:48.901537+00:00,WLDUSDT,internal_paper_trades,79.49,WIN,WIN,5.363322,75-79,653.0,347.0,False,False,False,False
+2026-05-30 16:10:27.862170+00:00,WLDUSDT,internal_paper_trades,89.87,WIN,WIN,9.50645,85-89,162.0,159.0,False,False,False,False
+2026-05-30 16:11:31.067953+00:00,WLDUSDT,internal_paper_trades,90.23,WIN,WIN,9.660208,90-94,150.0,147.0,False,False,False,False
+2026-05-30 16:11:50.517181+00:00,WLDUSDT,internal_paper_trades,90.59,WIN,WIN,9.322508,90-94,141.0,138.0,False,False,False,False
+2026-05-30 18:50:24.729131+00:00,WLDUSDT,internal_paper_trades,87.74,WIN,WIN,6.606607,85-89,236.0,233.0,False,False,False,False
+2026-05-30 18:51:33.296286+00:00,WLDUSDT,internal_paper_trades,88.03,WIN,WIN,7.133059,85-89,228.0,225.0,False,False,False,False
+2026-05-30 18:51:50.720644+00:00,WLDUSDT,internal_paper_trades,88.13,WIN,WIN,6.869184,85-89,224.0,221.0,False,False,False,False
+2026-05-30 19:10:37.696416+00:00,ASTERUSDT,internal_paper_trades,88.93,LOSS,LOSS,-4.834437,85-89,190.0,187.0,False,False,False,False
+2026-05-30 19:11:57.476208+00:00,ASTERUSDT,internal_paper_trades,89.15,LOSS,LOSS,-5.060782,85-89,183.0,180.0,False,False,False,False
+2026-05-30 19:12:52.218377+00:00,ASTERUSDT,internal_paper_trades,90.62,LOSS,LOSS,-5.048236,90-94,140.0,137.0,False,False,False,False
+2026-05-30 22:50:25.920995+00:00,ALLOUSDT,internal_paper_trades,80.8,WIN,WIN,38.368393,80-84,634.0,329.0,False,False,False,False
+2026-05-30 22:50:43.143853+00:00,ALLOUSDT,internal_paper_trades,80.8,WIN,WIN,38.699389,80-84,635.0,330.0,False,False,False,False
+2026-05-31 00:10:10.125235+00:00,IDUSDT,internal_paper_trades,100.0,WIN,WIN,5.328377,95-100,13.0,11.0,False,False,False,False
+2026-05-31 00:10:29.128419+00:00,IDUSDT,internal_paper_trades,100.0,WIN,WIN,5.879422,95-100,14.0,12.0,False,False,False,False
+2026-05-31 00:10:47.992860+00:00,IDUSDT,internal_paper_trades,100.0,WIN,WIN,6.037924,95-100,15.0,13.0,False,False,False,False
+2026-05-31 00:30:08.027973+00:00,XLMUSDT,internal_paper_trades,90.41,LOSS,LOSS,-11.238214,90-94,146.0,143.0,False,False,False,False
+2026-05-31 00:30:25.733199+00:00,XLMUSDT,internal_paper_trades,90.68,LOSS,LOSS,-11.715556,90-94,135.0,132.0,False,False,False,False
+2026-05-31 00:51:26.656540+00:00,PORTALUSDT,internal_paper_trades,100.0,WIN,WIN,145.100223,95-100,16.0,14.0,False,False,False,False
+2026-05-31 00:51:46.139388+00:00,PORTALUSDT,internal_paper_trades,100.0,WIN,WIN,142.267474,95-100,17.0,15.0,False,False,False,False
+2026-05-31 04:37:53.430187+00:00,HUSDT,internal_paper_trades,75.26,WIN,WIN,66.27928,75-79,742.0,436.0,False,False,False,False
+2026-05-31 08:14:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-14.026344,85-89,603.0,298.0,False,False,False,False
+2026-05-31 12:29:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-14.709518,85-89,604.0,299.0,False,False,False,False
+2026-06-01 00:14:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-15.218536,85-89,605.0,300.0,False,False,False,False
+2026-06-01 00:29:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-16.233091,85-89,606.0,301.0,False,False,False,False
+2026-06-01 01:40:11.668023+00:00,ASTERUSDT,internal_paper_trades,85.4,LOSS,LOSS,-9.160518,85-89,295.0,292.0,False,False,False,False
+2026-06-01 01:40:30.053898+00:00,ASTERUSDT,internal_paper_trades,85.4,LOSS,LOSS,-9.160518,85-89,296.0,293.0,False,False,False,False
+2026-06-01 01:40:47.858083+00:00,ASTERUSDT,internal_paper_trades,85.39,LOSS,LOSS,-9.185804,85-89,297.0,294.0,False,False,False,False
+2026-06-01 03:21:31.474494+00:00,WLDUSDT,internal_paper_trades,87.15,WIN,WIN,20.163767,85-89,255.0,252.0,False,False,False,False
+2026-06-01 03:21:50.024966+00:00,WLDUSDT,internal_paper_trades,87.19,WIN,WIN,20.256082,85-89,254.0,251.0,False,False,False,False
+2026-06-01 06:59:59.999000+00:00,WCTUSDT,internal_paper_trades,75.0,LOSS,LOSS,-12.21374,75-79,1040.0,443.0,False,False,False,False
+2026-06-01 16:59:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-11.748584,85-89,607.0,302.0,False,False,False,False
+2026-06-02 15:15:48.279661+00:00,SKYAIUSDT,internal_paper_trades,83.56,WIN,WIN,153.039128,80-84,627.0,322.0,False,False,False,False
+2026-06-03 05:14:59.999000+00:00,WCTUSDT,internal_paper_trades,75.0,LOSS,LOSS,-6.085942,75-79,1041.0,444.0,False,False,False,False
+2026-06-03 21:55:09.690168+00:00,WLDUSDT,internal_paper_trades,78.37,LOSS,LOSS,-14.462659,75-79,680.0,374.0,False,False,False,False
+2026-06-03 21:55:51.855657+00:00,WLDUSDT,internal_paper_trades,78.41,LOSS,LOSS,-14.587123,75-79,678.0,372.0,False,False,False,False
+2026-06-04 09:15:43.531103+00:00,SOXLUSDT,internal_paper_trades,84.19,LOSS,LOSS,-14.033362,80-84,620.0,315.0,False,False,False,False
+2026-06-04 09:16:11.567823+00:00,SOXLUSDT,internal_paper_trades,84.68,LOSS,LOSS,-14.082661,80-84,619.0,314.0,False,False,False,False
+2026-06-06 04:29:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,WIN,WIN,14.917916,85-89,608.0,303.0,False,False,False,False
+2026-06-06 08:59:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,WIN,WIN,7.333333,85-89,609.0,304.0,False,False,False,False
+2026-06-07 01:35:14.574211+00:00,HUSDT,internal_paper_trades,78.24,WIN,WIN,8.061468,75-79,682.0,376.0,False,False,False,False
+2026-06-07 01:35:34.213388+00:00,HUSDT,internal_paper_trades,78.17,WIN,WIN,8.415834,75-79,684.0,378.0,False,False,False,False
+2026-06-07 01:35:53.737779+00:00,HUSDT,internal_paper_trades,78.41,WIN,WIN,8.105009,75-79,679.0,373.0,False,False,False,False
+2026-06-07 01:55:09.582489+00:00,WLDUSDT,internal_paper_trades,78.89,WIN,WIN,8.247863,75-79,674.0,368.0,False,False,False,False
+2026-06-07 01:55:30.872902+00:00,WLDUSDT,internal_paper_trades,79.01,WIN,WIN,7.879046,75-79,672.0,366.0,False,False,False,False
+2026-06-07 02:55:13.214110+00:00,HUSDT,internal_paper_trades,100.0,WIN,WIN,6.396747,95-100,18.0,16.0,False,False,False,False
+2026-06-07 02:55:31.629064+00:00,HUSDT,internal_paper_trades,100.0,WIN,WIN,7.045013,95-100,19.0,17.0,False,False,False,False
+2026-06-07 02:55:50.013035+00:00,HUSDT,internal_paper_trades,100.0,WIN,WIN,6.534018,95-100,20.0,18.0,False,False,False,False
+2026-06-07 04:15:09.116948+00:00,ALLOUSDT,internal_paper_trades,75.01,WIN,WIN,6.371766,75-79,747.0,441.0,False,False,False,False
+2026-06-07 06:35:49.658488+00:00,ENAUSDT,internal_paper_trades,91.25,LOSS,LOSS,-3.127624,90-94,124.0,121.0,False,False,False,False
+2026-06-07 07:55:13.706186+00:00,HUSDT,internal_paper_trades,79.2,LOSS,LOSS,-66.704164,75-79,667.0,361.0,False,False,False,False
+2026-06-07 07:55:32.577210+00:00,HUSDT,internal_paper_trades,79.29,LOSS,LOSS,-66.734283,75-79,661.0,355.0,False,False,False,False
+2026-06-07 07:55:52.109151+00:00,HUSDT,internal_paper_trades,79.36,WIN,WIN,5.104063,75-79,658.0,352.0,False,False,False,False
+2026-06-07 08:55:16.095775+00:00,BTWUSDT,internal_paper_trades,100.0,WIN,WIN,9.713812,95-100,21.0,19.0,False,False,False,False
+2026-06-07 08:55:43.812006+00:00,BTWUSDT,internal_paper_trades,100.0,WIN,WIN,9.55752,95-100,22.0,20.0,False,False,False,False
+2026-06-07 08:56:12.359477+00:00,BTWUSDT,internal_paper_trades,100.0,WIN,WIN,10.724412,95-100,23.0,21.0,False,False,False,False
+2026-06-07 11:35:14.520104+00:00,HUSDT,internal_paper_trades,85.86,LOSS,LOSS,-67.34433,85-89,289.0,286.0,False,False,False,False
+2026-06-07 11:35:33.162463+00:00,HUSDT,internal_paper_trades,85.94,LOSS,LOSS,-67.340815,85-89,287.0,284.0,False,False,False,False
+2026-06-07 11:55:14.624497+00:00,HUSDT,internal_paper_trades,87.29,LOSS,LOSS,-68.236249,85-89,251.0,248.0,False,False,False,False
+2026-06-07 11:55:34.762477+00:00,HUSDT,internal_paper_trades,78.12,LOSS,LOSS,-68.192957,75-79,685.0,379.0,False,False,False,False
+2026-06-07 11:55:53.936220+00:00,HUSDT,internal_paper_trades,78.19,LOSS,LOSS,-68.213369,75-79,683.0,377.0,False,False,False,False
+2026-06-07 14:55:12.768089+00:00,BEATUSDT,internal_paper_trades,86.98,WIN,WIN,32.579734,85-89,260.0,257.0,False,False,False,False
+2026-06-07 14:55:31.129436+00:00,BEATUSDT,internal_paper_trades,87.05,WIN,WIN,32.652761,85-89,257.0,254.0,False,False,False,False
+2026-06-07 14:55:49.617635+00:00,BEATUSDT,internal_paper_trades,87.12,WIN,WIN,32.852782,85-89,256.0,253.0,False,False,False,False
+2026-06-07 15:20:13.872623+00:00,BEATUSDT,internal_paper_trades,86.89,WIN,WIN,30.898286,85-89,265.0,262.0,False,False,False,False
+2026-06-07 15:20:33.724288+00:00,BEATUSDT,internal_paper_trades,86.93,WIN,WIN,30.765611,85-89,262.0,259.0,False,False,False,False
+2026-06-07 15:20:52.033184+00:00,BEATUSDT,internal_paper_trades,87.0,WIN,WIN,30.604866,85-89,259.0,256.0,False,False,False,False
+2026-06-07 15:40:33.640797+00:00,BEATUSDT,internal_paper_trades,89.01,WIN,WIN,26.826528,85-89,189.0,186.0,False,False,False,False
+2026-06-07 15:40:51.911495+00:00,BEATUSDT,internal_paper_trades,89.07,WIN,WIN,26.644229,85-89,186.0,183.0,False,False,False,False
+2026-06-07 21:25:13.563369+00:00,BTWUSDT,internal_paper_trades,89.93,WIN,WIN,11.599911,85-89,159.0,156.0,False,False,False,False
+2026-06-07 21:25:32.433968+00:00,BTWUSDT,internal_paper_trades,90.04,WIN,WIN,11.63297,90-94,156.0,153.0,False,False,False,False
+2026-06-07 21:25:50.737485+00:00,BTWUSDT,internal_paper_trades,90.22,WIN,WIN,11.001635,90-94,152.0,149.0,False,False,False,False
+2026-06-07 22:14:59.999000+00:00,WCTUSDT,internal_paper_trades,75.0,WIN,WIN,6.528452,75-79,1042.0,445.0,False,False,False,False
+2026-06-07 22:25:12.832775+00:00,BEATUSDT,internal_paper_trades,89.59,WIN,WIN,140.901771,85-89,175.0,172.0,False,False,False,False
+2026-06-07 22:25:38.943553+00:00,BEATUSDT,internal_paper_trades,89.72,WIN,WIN,140.194884,85-89,165.0,162.0,False,False,False,False
+2026-06-07 23:05:48.859711+00:00,BTWUSDT,internal_paper_trades,100.0,WIN,WIN,23.16735,95-100,24.0,22.0,False,False,False,False
+2026-06-07 23:25:10.678254+00:00,ALLOUSDT,internal_paper_trades,100.0,WIN,WIN,13.562183,95-100,25.0,23.0,False,False,False,False
+2026-06-07 23:25:29.637370+00:00,ALLOUSDT,internal_paper_trades,100.0,WIN,WIN,14.744875,95-100,26.0,24.0,False,False,False,False
+2026-06-07 23:25:48.264869+00:00,ALLOUSDT,internal_paper_trades,87.03,WIN,WIN,15.123855,85-89,258.0,255.0,False,False,False,False
+2026-06-08 02:05:46.171489+00:00,ALLOUSDT,internal_paper_trades,77.37,WIN,WIN,12.871003,75-79,694.0,388.0,False,False,False,False
+2026-06-08 03:25:11.426327+00:00,ALLOUSDT,internal_paper_trades,89.67,WIN,WIN,10.90979,85-89,169.0,166.0,False,False,False,False
+2026-06-08 03:25:29.966060+00:00,ALLOUSDT,internal_paper_trades,89.68,WIN,WIN,10.606487,85-89,167.0,164.0,False,False,False,False
+2026-06-08 03:25:48.482419+00:00,ALLOUSDT,internal_paper_trades,89.65,WIN,WIN,10.858651,85-89,172.0,169.0,False,False,False,False
+2026-06-08 04:25:34.374492+00:00,XLMUSDT,internal_paper_trades,79.8,WIN,WIN,16.798429,75-79,648.0,342.0,False,False,False,False
+2026-06-08 04:25:53.697295+00:00,XLMUSDT,internal_paper_trades,79.83,WIN,WIN,16.769029,75-79,647.0,341.0,False,False,False,False
+2026-06-08 07:25:12.365665+00:00,ALLOUSDT,internal_paper_trades,95.17,WIN,WIN,6.561488,95-100,105.0,103.0,False,False,False,False
+2026-06-08 07:25:35.187278+00:00,ALLOUSDT,internal_paper_trades,95.15,WIN,WIN,6.770833,95-100,106.0,104.0,False,False,False,False
+2026-06-08 07:25:55.571288+00:00,ALLOUSDT,internal_paper_trades,95.51,WIN,WIN,8.001941,95-100,104.0,102.0,False,False,False,False
+2026-06-08 08:45:30.516181+00:00,ALLOUSDT,internal_paper_trades,75.94,LOSS,LOSS,-9.359512,75-79,725.0,419.0,False,False,False,False
+2026-06-08 08:45:50.062420+00:00,ALLOUSDT,internal_paper_trades,75.78,LOSS,LOSS,-8.440308,75-79,728.0,422.0,False,False,False,False
+2026-06-08 13:05:15.382283+00:00,SOXLUSDT,internal_paper_trades,88.69,LOSS,LOSS,-6.048426,85-89,193.0,190.0,False,False,False,False
+2026-06-08 13:05:35.151420+00:00,SOXLUSDT,internal_paper_trades,88.34,LOSS,LOSS,-6.379935,85-89,216.0,213.0,False,False,False,False
+2026-06-08 13:05:55.064874+00:00,SOXLUSDT,internal_paper_trades,88.48,LOSS,LOSS,-6.393325,85-89,205.0,202.0,False,False,False,False
+2026-06-08 15:05:13.856611+00:00,SOXLUSDT,internal_paper_trades,83.91,LOSS,LOSS,-2.48601,80-84,623.0,318.0,False,False,False,False
+2026-06-08 15:05:33.777352+00:00,SOXLUSDT,internal_paper_trades,83.94,LOSS,LOSS,-2.628927,80-84,622.0,317.0,False,False,False,False
+2026-06-08 15:05:54.562782+00:00,SOXLUSDT,internal_paper_trades,83.34,LOSS,LOSS,-2.882463,80-84,628.0,323.0,False,False,False,False
+2026-06-08 15:44:59.999000+00:00,WCTUSDT,internal_paper_trades,75.0,WIN,WIN,5.781866,75-79,1043.0,446.0,False,False,False,False
+2026-06-08 16:45:30.327993+00:00,WLDUSDT,internal_paper_trades,85.67,WIN,WIN,7.678642,85-89,291.0,288.0,False,False,False,False
+2026-06-08 17:25:12.590020+00:00,WLDUSDT,internal_paper_trades,88.14,WIN,WIN,6.459797,85-89,222.0,219.0,False,False,False,False
+2026-06-08 17:25:15.453036+00:00,ESPORTSUSDT,internal_paper_trades,75.6,WIN,WIN,12.846348,75-79,734.0,428.0,False,False,False,False
+2026-06-08 17:25:32.592556+00:00,WLDUSDT,internal_paper_trades,79.73,WIN,WIN,5.717054,75-79,649.0,343.0,False,False,False,False
+2026-06-08 17:25:35.645900+00:00,ESPORTSUSDT,internal_paper_trades,76.18,WIN,WIN,10.858806,75-79,721.0,415.0,False,False,False,False
+2026-06-08 17:25:52.498057+00:00,WLDUSDT,internal_paper_trades,89.04,WIN,WIN,5.635167,85-89,187.0,184.0,False,False,False,False
+2026-06-08 17:25:55.952950+00:00,ESPORTSUSDT,internal_paper_trades,76.32,WIN,WIN,11.150029,75-79,719.0,413.0,False,False,False,False
+2026-06-08 18:05:12.041878+00:00,WLDUSDT,internal_paper_trades,87.9,LOSS,LOSS,-5.896488,85-89,230.0,227.0,False,False,False,False
+2026-06-08 18:05:31.205375+00:00,WLDUSDT,internal_paper_trades,87.85,LOSS,LOSS,-6.363804,85-89,232.0,229.0,False,False,False,False
+2026-06-08 18:05:34.019257+00:00,ESPORTSUSDT,internal_paper_trades,87.24,WIN,WIN,320.32563,85-89,253.0,250.0,False,False,False,False
+2026-06-08 18:05:51.260311+00:00,WLDUSDT,internal_paper_trades,88.33,LOSS,LOSS,-6.672777,85-89,217.0,214.0,False,False,False,False
+2026-06-08 18:25:11.781393+00:00,WLDUSDT,internal_paper_trades,89.02,LOSS,LOSS,-8.286795,85-89,188.0,185.0,False,False,False,False
+2026-06-08 18:25:30.736728+00:00,WLDUSDT,internal_paper_trades,89.1,LOSS,LOSS,-8.237203,85-89,184.0,181.0,False,False,False,False
+2026-06-08 18:25:50.855903+00:00,WLDUSDT,internal_paper_trades,89.2,LOSS,LOSS,-8.435252,85-89,182.0,179.0,False,False,False,False
+2026-06-08 20:25:13.354465+00:00,HUSDT,internal_paper_trades,75.32,LOSS,LOSS,-53.453162,75-79,741.0,435.0,False,False,False,False
+2026-06-08 20:25:32.088189+00:00,HUSDT,internal_paper_trades,75.26,LOSS,LOSS,-52.653902,75-79,743.0,437.0,False,False,False,False
+2026-06-08 20:25:50.364329+00:00,HUSDT,internal_paper_trades,75.33,LOSS,LOSS,-52.626591,75-79,740.0,434.0,False,False,False,False
+2026-06-08 21:25:48.743080+00:00,HUSDT,internal_paper_trades,92.08,WIN,WIN,120.142634,90-94,115.0,112.0,False,False,False,False
+2026-06-09 05:45:53.691467+00:00,WLDUSDT,internal_paper_trades,85.78,LOSS,LOSS,-5.892752,85-89,290.0,287.0,False,False,False,False
+2026-06-09 05:45:58.569845+00:00,SKHYNIXUSDT,internal_paper_trades,85.33,LOSS,LOSS,-7.221004,85-89,299.0,296.0,False,False,False,False
+2026-06-09 06:05:11.897444+00:00,MRVLUSDT,internal_paper_trades,98.19,LOSS,LOSS,-12.065814,95-100,101.0,99.0,False,False,False,False
+2026-06-09 06:05:30.249050+00:00,MRVLUSDT,internal_paper_trades,98.26,LOSS,LOSS,-12.106715,95-100,100.0,98.0,False,False,False,False
+2026-06-09 06:05:49.707972+00:00,MRVLUSDT,internal_paper_trades,98.29,LOSS,LOSS,-12.130069,95-100,99.0,97.0,False,False,False,False
+2026-06-09 07:25:10.919029+00:00,WLDUSDT,internal_paper_trades,89.7,LOSS,LOSS,-8.323766,85-89,166.0,163.0,False,False,False,False
+2026-06-09 07:25:30.001317+00:00,WLDUSDT,internal_paper_trades,89.75,LOSS,LOSS,-8.112773,85-89,164.0,161.0,False,False,False,False
+2026-06-09 07:25:48.256964+00:00,WLDUSDT,internal_paper_trades,89.79,LOSS,LOSS,-8.059873,85-89,163.0,160.0,False,False,False,False
+2026-06-09 14:40:12.269591+00:00,SOXLUSDT,internal_paper_trades,76.88,LOSS,LOSS,-3.081918,75-79,708.0,402.0,False,False,False,False
+2026-06-09 14:40:32.282317+00:00,SOXLUSDT,internal_paper_trades,76.89,LOSS,LOSS,-2.954064,75-79,707.0,401.0,False,False,False,False
+2026-06-09 14:40:51.751176+00:00,SOXLUSDT,internal_paper_trades,77.0,LOSS,LOSS,-3.113829,75-79,702.0,396.0,False,False,False,False
+2026-06-10 04:50:34.529045+00:00,SKHYNIXUSDT,internal_paper_trades,85.35,WIN,WIN,13.696286,85-89,298.0,295.0,False,False,False,False
+2026-06-10 04:50:54.508598+00:00,SKHYNIXUSDT,internal_paper_trades,86.67,WIN,WIN,13.626968,85-89,273.0,270.0,False,False,False,False
+2026-06-10 06:29:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,WIN,WIN,7.740352,85-89,610.0,305.0,False,False,False,False
+2026-06-10 12:30:34.137027+00:00,SOXLUSDT,internal_paper_trades,90.14,WIN,WIN,13.326215,90-94,153.0,150.0,False,False,False,False
+2026-06-10 12:30:38.045718+00:00,QQQUSDT,internal_paper_trades,89.4,WIN,WIN,5.964673,85-89,177.0,174.0,False,False,False,False
+2026-06-10 12:30:55.588959+00:00,SOXLUSDT,internal_paper_trades,100.0,WIN,WIN,13.522461,95-100,27.0,25.0,False,False,False,False
+2026-06-10 12:30:56.079186+00:00,MRVLUSDT,internal_paper_trades,82.05,WIN,WIN,5.337365,80-84,631.0,326.0,False,False,False,False
+2026-06-10 12:30:59.454991+00:00,QQQUSDT,internal_paper_trades,91.03,WIN,WIN,6.083861,90-94,129.0,126.0,False,False,False,False
+2026-06-10 12:50:12.250077+00:00,BTWUSDT,internal_paper_trades,79.09,WIN,WIN,86.072038,75-79,669.0,363.0,False,False,False,False
+2026-06-10 12:50:31.530932+00:00,BTWUSDT,internal_paper_trades,88.61,WIN,WIN,88.096521,85-89,195.0,192.0,False,False,False,False
+2026-06-10 13:10:13.320575+00:00,VELVETUSDT,internal_paper_trades,99.66,WIN,WIN,32.19745,95-100,92.0,90.0,False,False,False,False
+2026-06-10 13:10:32.467814+00:00,VELVETUSDT,internal_paper_trades,99.98,WIN,WIN,33.418702,95-100,91.0,89.0,False,False,False,False
+2026-06-10 13:10:50.956513+00:00,VELVETUSDT,internal_paper_trades,100.0,WIN,WIN,33.793989,95-100,28.0,26.0,False,False,False,False
+2026-06-10 13:30:48.525130+00:00,WLDUSDT,internal_paper_trades,86.94,LOSS,LOSS,-7.598843,85-89,261.0,258.0,False,False,False,False
+2026-06-10 13:50:10.874069+00:00,SOXLUSDT,internal_paper_trades,92.27,WIN,WIN,7.515315,90-94,113.0,110.0,False,False,False,False
+2026-06-10 13:50:14.264285+00:00,INTCUSDT,internal_paper_trades,90.71,WIN,WIN,5.946286,90-94,133.0,130.0,False,False,False,False
+2026-06-10 13:50:33.370941+00:00,SOXLUSDT,internal_paper_trades,92.5,WIN,WIN,8.209535,90-94,111.0,108.0,False,False,False,False
+2026-06-10 13:50:37.402288+00:00,INTCUSDT,internal_paper_trades,92.08,WIN,WIN,6.136957,90-94,116.0,113.0,False,False,False,False
+2026-06-10 13:50:59.612595+00:00,INTCUSDT,internal_paper_trades,92.27,WIN,WIN,6.578115,90-94,114.0,111.0,False,False,False,False
+2026-06-10 14:35:11.949553+00:00,MRVLUSDT,internal_paper_trades,88.32,WIN,WIN,11.903274,85-89,218.0,215.0,False,False,False,False
+2026-06-10 14:35:13.618663+00:00,VELVETUSDT,internal_paper_trades,84.9,WIN,WIN,104.061111,80-84,617.0,312.0,False,False,False,False
+2026-06-10 14:35:15.064242+00:00,SKHYNIXUSDT,internal_paper_trades,85.64,WIN,WIN,8.684768,85-89,292.0,289.0,False,False,False,False
+2026-06-10 14:35:35.592863+00:00,MRVLUSDT,internal_paper_trades,88.38,WIN,WIN,12.084514,85-89,213.0,210.0,False,False,False,False
+2026-06-10 14:35:37.222876+00:00,VELVETUSDT,internal_paper_trades,84.95,WIN,WIN,104.224836,80-84,616.0,311.0,False,False,False,False
+2026-06-10 14:35:56.992069+00:00,MRVLUSDT,internal_paper_trades,88.54,WIN,WIN,11.927954,85-89,200.0,197.0,False,False,False,False
+2026-06-10 14:35:58.644325+00:00,VELVETUSDT,internal_paper_trades,85.06,WIN,WIN,103.585466,85-89,300.0,297.0,False,False,False,False
+2026-06-11 06:05:11.957606+00:00,VELVETUSDT,internal_paper_trades,88.39,LOSS,LOSS,-17.261971,85-89,212.0,209.0,False,False,False,False
+2026-06-11 06:05:31.473986+00:00,VELVETUSDT,internal_paper_trades,88.5,LOSS,LOSS,-17.671032,85-89,203.0,200.0,False,False,False,False
+2026-06-11 06:05:51.340730+00:00,VELVETUSDT,internal_paper_trades,88.55,LOSS,LOSS,-17.111862,85-89,199.0,196.0,False,False,False,False
+2026-06-11 06:05:52.498806+00:00,STGUSDT,internal_paper_trades,76.99,WIN,WIN,8.267967,75-79,705.0,399.0,False,False,False,False
+2026-06-11 06:50:30.905199+00:00,STGUSDT,internal_paper_trades,75.58,WIN,WIN,28.889743,75-79,735.0,429.0,False,False,False,False
+2026-06-11 13:50:25.619391+00:00,SOXLUSDT,internal_paper_trades,90.06,WIN,WIN,10.145286,90-94,154.0,151.0,False,False,False,False
+2026-06-11 13:50:52.656032+00:00,SOXLUSDT,internal_paper_trades,90.41,WIN,WIN,9.436834,90-94,147.0,144.0,False,False,False,False
+2026-06-11 13:51:14.779415+00:00,SOXLUSDT,internal_paper_trades,90.74,WIN,WIN,8.923423,90-94,132.0,129.0,False,False,False,False
+2026-06-11 13:51:18.316004+00:00,INTCUSDT,internal_paper_trades,92.6,WIN,WIN,8.232302,90-94,109.0,106.0,False,False,False,False
+2026-06-11 14:40:09.987731+00:00,VELVETUSDT,internal_paper_trades,86.57,LOSS,LOSS,-42.070151,85-89,279.0,276.0,False,False,False,False
+2026-06-11 14:40:13.465561+00:00,STGUSDT,internal_paper_trades,77.3,WIN,WIN,31.517052,75-79,695.0,389.0,False,False,False,False
+2026-06-11 14:40:30.134956+00:00,VELVETUSDT,internal_paper_trades,86.62,LOSS,LOSS,-42.021964,85-89,277.0,274.0,False,False,False,False
+2026-06-11 14:40:33.190717+00:00,STGUSDT,internal_paper_trades,77.39,WIN,WIN,31.646066,75-79,693.0,387.0,False,False,False,False
+2026-06-11 14:40:49.897178+00:00,VELVETUSDT,internal_paper_trades,86.68,LOSS,LOSS,-42.103963,85-89,271.0,268.0,False,False,False,False
+2026-06-11 14:40:53.292429+00:00,STGUSDT,internal_paper_trades,77.57,WIN,WIN,31.388291,75-79,691.0,385.0,False,False,False,False
+2026-06-11 15:05:16.418210+00:00,SPCXUSDT,internal_paper_trades,99.02,WIN,WIN,6.326815,95-100,96.0,94.0,False,False,False,False
+2026-06-11 15:05:35.450136+00:00,SPCXUSDT,internal_paper_trades,99.15,WIN,WIN,6.230341,95-100,94.0,92.0,False,False,False,False
+2026-06-11 15:05:54.840145+00:00,SPCXUSDT,internal_paper_trades,99.03,WIN,WIN,6.378339,95-100,95.0,93.0,False,False,False,False
+2026-06-11 15:55:14.680107+00:00,AIOUSDT,internal_paper_trades,87.56,LOSS,LOSS,-16.738488,85-89,247.0,244.0,False,False,False,False
+2026-06-11 15:55:33.512124+00:00,AIOUSDT,internal_paper_trades,87.48,LOSS,LOSS,-16.491841,85-89,250.0,247.0,False,False,False,False
+2026-06-11 15:55:52.664984+00:00,AIOUSDT,internal_paper_trades,87.74,LOSS,LOSS,-17.16763,85-89,237.0,234.0,False,False,False,False
+2026-06-11 19:30:30.284876+00:00,SOXLUSDT,internal_paper_trades,83.89,WIN,WIN,20.3181,80-84,624.0,319.0,False,False,False,False
+2026-06-11 19:30:52.063412+00:00,SOXLUSDT,internal_paper_trades,84.17,WIN,WIN,20.485441,80-84,621.0,316.0,False,False,False,False
+2026-06-11 19:55:16.003307+00:00,SKHYNIXUSDT,internal_paper_trades,100.0,WIN,WIN,23.268147,95-100,29.0,27.0,False,False,False,False
+2026-06-11 19:55:35.042213+00:00,SKHYNIXUSDT,internal_paper_trades,100.0,WIN,WIN,23.237487,95-100,30.0,28.0,False,False,False,False
+2026-06-11 19:55:53.975574+00:00,SKHYNIXUSDT,internal_paper_trades,100.0,WIN,WIN,23.199586,95-100,31.0,29.0,False,False,False,False
+2026-06-11 23:55:10.994260+00:00,SOXLUSDT,internal_paper_trades,86.14,WIN,WIN,17.393775,85-89,285.0,282.0,False,False,False,False
+2026-06-11 23:55:12.868379+00:00,STGUSDT,internal_paper_trades,76.73,LOSS,LOSS,-4.565669,75-79,710.0,404.0,False,False,False,False
+2026-06-11 23:55:13.564833+00:00,INTCUSDT,internal_paper_trades,86.56,WIN,WIN,7.584696,85-89,280.0,277.0,False,False,False,False
+2026-06-11 23:55:34.126886+00:00,STGUSDT,internal_paper_trades,76.95,LOSS,LOSS,-4.053651,75-79,706.0,400.0,False,False,False,False
+2026-06-11 23:55:34.821144+00:00,INTCUSDT,internal_paper_trades,86.56,WIN,WIN,7.593763,85-89,281.0,278.0,False,False,False,False
+2026-06-11 23:55:54.840136+00:00,INTCUSDT,internal_paper_trades,86.56,WIN,WIN,7.611903,85-89,282.0,279.0,False,False,False,False
+2026-06-12 01:10:13.840173+00:00,HUSDT,internal_paper_trades,90.41,WIN,WIN,12.732882,90-94,148.0,145.0,False,False,False,False
+2026-06-12 01:10:33.244460+00:00,HUSDT,internal_paper_trades,90.57,WIN,WIN,12.590369,90-94,142.0,139.0,False,False,False,False
+2026-06-12 01:10:52.683462+00:00,HUSDT,internal_paper_trades,90.64,WIN,WIN,12.594817,90-94,137.0,134.0,False,False,False,False
+2026-06-12 05:20:12.574549+00:00,HUSDT,internal_paper_trades,88.36,WIN,WIN,7.970905,85-89,215.0,212.0,False,False,False,False
+2026-06-12 05:20:13.111833+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-5.176054,95-100,32.0,30.0,False,False,False,False
+2026-06-12 05:20:13.874124+00:00,INTCUSDT,internal_paper_trades,76.33,WIN,WIN,8.406929,75-79,718.0,412.0,False,False,False,False
+2026-06-12 05:20:34.395096+00:00,HUSDT,internal_paper_trades,88.44,WIN,WIN,8.257996,85-89,207.0,204.0,False,False,False,False
+2026-06-12 05:20:34.999758+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-5.235542,95-100,33.0,31.0,False,False,False,False
+2026-06-12 05:20:35.703847+00:00,INTCUSDT,internal_paper_trades,76.5,WIN,WIN,8.406929,75-79,715.0,409.0,False,False,False,False
+2026-06-12 05:20:55.105818+00:00,HUSDT,internal_paper_trades,88.51,WIN,WIN,7.750473,85-89,201.0,198.0,False,False,False,False
+2026-06-12 05:20:55.563665+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-5.38663,95-100,34.0,32.0,False,False,False,False
+2026-06-12 05:20:56.401498+00:00,INTCUSDT,internal_paper_trades,76.71,WIN,WIN,8.379319,75-79,711.0,405.0,False,False,False,False
+2026-06-12 06:10:13.024774+00:00,HUSDT,internal_paper_trades,88.37,LOSS,LOSS,-2.78654,85-89,214.0,211.0,False,False,False,False
+2026-06-12 06:10:13.491250+00:00,STGUSDT,internal_paper_trades,77.97,LOSS,LOSS,-13.411438,75-79,688.0,382.0,False,False,False,False
+2026-06-12 06:10:33.542559+00:00,STGUSDT,internal_paper_trades,77.98,LOSS,LOSS,-12.684595,75-79,687.0,381.0,False,False,False,False
+2026-06-12 06:10:51.597396+00:00,HUSDT,internal_paper_trades,88.6,LOSS,LOSS,-2.684211,85-89,197.0,194.0,False,False,False,False
+2026-06-12 06:10:52.062807+00:00,STGUSDT,internal_paper_trades,78.04,LOSS,LOSS,-12.752408,75-79,686.0,380.0,False,False,False,False
+2026-06-12 12:10:31.807816+00:00,WLDUSDT,internal_paper_trades,79.98,WIN,WIN,6.424698,75-79,646.0,340.0,False,False,False,False
+2026-06-12 12:10:51.570686+00:00,WLDUSDT,internal_paper_trades,80.09,WIN,WIN,6.491338,80-84,642.0,337.0,False,False,False,False
+2026-06-12 12:35:30.612778+00:00,SPCXUSDT,internal_paper_trades,87.72,LOSS,LOSS,-7.147248,85-89,240.0,237.0,False,False,False,False
+2026-06-12 12:35:49.743197+00:00,SPCXUSDT,internal_paper_trades,87.93,LOSS,LOSS,-7.214653,85-89,229.0,226.0,False,False,False,False
+2026-06-12 13:50:29.133330+00:00,SPCXUSDT,internal_paper_trades,81.71,LOSS,LOSS,-3.311027,80-84,632.0,327.0,False,False,False,False
+2026-06-12 13:50:48.352137+00:00,SPCXUSDT,internal_paper_trades,82.58,LOSS,LOSS,-3.636258,80-84,630.0,325.0,False,False,False,False
+2026-06-12 15:55:09.523340+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,6.698965,95-100,35.0,33.0,False,False,False,False
+2026-06-12 15:55:28.889949+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.122129,95-100,36.0,34.0,False,False,False,False
+2026-06-12 15:55:47.933302+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.175734,95-100,37.0,35.0,False,False,False,False
+2026-06-12 20:05:13.357989+00:00,ESPORTSUSDT,internal_paper_trades,87.68,LOSS,LOSS,-52.543224,85-89,244.0,241.0,False,False,False,False
+2026-06-12 20:05:32.011362+00:00,ESPORTSUSDT,internal_paper_trades,87.71,LOSS,LOSS,-52.426787,85-89,242.0,239.0,False,False,False,False
+2026-06-12 20:05:51.145384+00:00,ESPORTSUSDT,internal_paper_trades,87.78,LOSS,LOSS,-52.755217,85-89,233.0,230.0,False,False,False,False
+2026-06-13 00:40:10.005756+00:00,VELVETUSDT,internal_paper_trades,87.59,LOSS,LOSS,-10.201944,85-89,246.0,243.0,False,False,False,False
+2026-06-13 00:40:28.931916+00:00,VELVETUSDT,internal_paper_trades,87.7,LOSS,LOSS,-9.887286,85-89,243.0,240.0,False,False,False,False
+2026-06-13 00:40:47.451527+00:00,VELVETUSDT,internal_paper_trades,87.77,LOSS,LOSS,-10.254173,85-89,234.0,231.0,False,False,False,False
+2026-06-13 01:05:53.260348+00:00,WLDUSDT,internal_paper_trades,90.43,WIN,WIN,7.478407,90-94,145.0,142.0,False,False,False,False
+2026-06-13 01:55:13.133461+00:00,TRUMPUSDT,internal_paper_trades,91.32,LOSS,LOSS,-13.398554,90-94,122.0,119.0,False,False,False,False
+2026-06-13 01:55:14.226812+00:00,STGUSDT,internal_paper_trades,76.76,LOSS,LOSS,-16.341377,75-79,709.0,403.0,False,False,False,False
+2026-06-13 01:55:33.435065+00:00,TRUMPUSDT,internal_paper_trades,91.35,LOSS,LOSS,-13.324819,90-94,121.0,118.0,False,False,False,False
+2026-06-13 01:55:34.501276+00:00,STGUSDT,internal_paper_trades,76.67,LOSS,LOSS,-15.743388,75-79,712.0,406.0,False,False,False,False
+2026-06-13 01:55:53.706706+00:00,TRUMPUSDT,internal_paper_trades,91.42,LOSS,LOSS,-13.250959,90-94,118.0,115.0,False,False,False,False
+2026-06-13 01:55:54.633757+00:00,STGUSDT,internal_paper_trades,77.0,LOSS,LOSS,-16.058394,75-79,703.0,397.0,False,False,False,False
+2026-06-13 03:10:32.572376+00:00,MRVLUSDT,internal_paper_trades,80.04,WIN,WIN,9.163261,80-84,643.0,338.0,False,False,False,False
+2026-06-13 03:11:25.122392+00:00,MRVLUSDT,internal_paper_trades,79.18,WIN,WIN,9.210243,75-79,668.0,362.0,False,False,False,False
+2026-06-13 03:12:05.098332+00:00,MRVLUSDT,internal_paper_trades,79.28,WIN,WIN,9.269028,75-79,662.0,356.0,False,False,False,False
+2026-06-13 06:30:29.535076+00:00,BEATUSDT,internal_paper_trades,85.6,WIN,WIN,5.060621,85-89,293.0,290.0,False,False,False,False
+2026-06-13 08:10:12.372270+00:00,BEATUSDT,internal_paper_trades,89.54,LOSS,LOSS,-35.085869,85-89,176.0,173.0,False,False,False,False
+2026-06-13 08:10:33.421283+00:00,BEATUSDT,internal_paper_trades,89.62,LOSS,LOSS,-35.078022,85-89,173.0,170.0,False,False,False,False
+2026-06-13 08:10:54.121182+00:00,BEATUSDT,internal_paper_trades,89.68,LOSS,LOSS,-35.191259,85-89,168.0,165.0,False,False,False,False
+2026-06-13 15:40:14.328597+00:00,RIFUSDT,internal_paper_trades,89.91,WIN,WIN,19.110894,85-89,160.0,157.0,False,False,False,False
+2026-06-13 15:40:35.900896+00:00,RIFUSDT,internal_paper_trades,90.0,WIN,WIN,19.636899,90-94,157.0,154.0,False,False,False,False
+2026-06-13 15:40:58.311657+00:00,RIFUSDT,internal_paper_trades,89.21,WIN,WIN,18.936585,85-89,181.0,178.0,False,False,False,False
+2026-06-13 16:05:16.191085+00:00,HUSDT,internal_paper_trades,86.71,WIN,WIN,18.774924,85-89,269.0,266.0,False,False,False,False
+2026-06-13 16:05:35.417970+00:00,HUSDT,internal_paper_trades,86.66,WIN,WIN,19.289194,85-89,274.0,271.0,False,False,False,False
+2026-06-13 16:05:55.224625+00:00,HUSDT,internal_paper_trades,86.68,WIN,WIN,35.666126,85-89,272.0,269.0,False,False,False,False
+2026-06-13 21:55:12.602116+00:00,WLDUSDT,internal_paper_trades,90.48,WIN,WIN,9.843137,90-94,144.0,141.0,False,False,False,False
+2026-06-13 21:55:32.174702+00:00,WLDUSDT,internal_paper_trades,90.55,WIN,WIN,9.821604,90-94,143.0,140.0,False,False,False,False
+2026-06-13 21:55:51.582129+00:00,WLDUSDT,internal_paper_trades,90.64,WIN,WIN,9.800078,90-94,138.0,135.0,False,False,False,False
+2026-06-13 23:10:15.217176+00:00,HUSDT,internal_paper_trades,91.17,WIN,WIN,22.763458,90-94,126.0,123.0,False,False,False,False
+2026-06-13 23:10:35.423853+00:00,HUSDT,internal_paper_trades,91.31,WIN,WIN,22.240993,90-94,123.0,120.0,False,False,False,False
+2026-06-13 23:10:55.651572+00:00,HUSDT,internal_paper_trades,91.41,WIN,WIN,53.809181,90-94,119.0,116.0,False,False,False,False
+2026-06-13 23:35:14.962376+00:00,HUSDT,internal_paper_trades,88.61,WIN,WIN,42.113531,85-89,196.0,193.0,False,False,False,False
+2026-06-13 23:35:33.937707+00:00,HUSDT,internal_paper_trades,88.73,WIN,WIN,42.285472,85-89,191.0,188.0,False,False,False,False
+2026-06-14 03:20:15.079694+00:00,HUSDT,internal_paper_trades,75.67,WIN,WIN,24.592118,75-79,733.0,427.0,False,False,False,False
+2026-06-14 03:20:36.095497+00:00,HUSDT,internal_paper_trades,75.7,WIN,WIN,24.939577,75-79,732.0,426.0,False,False,False,False
+2026-06-14 03:20:56.585561+00:00,HUSDT,internal_paper_trades,75.82,WIN,WIN,25.019268,75-79,727.0,421.0,False,False,False,False
+2026-06-14 04:35:13.632743+00:00,VELVETUSDT,internal_paper_trades,87.55,LOSS,LOSS,-27.855888,85-89,248.0,245.0,False,False,False,False
+2026-06-14 04:35:52.104105+00:00,VELVETUSDT,internal_paper_trades,87.74,LOSS,LOSS,-27.744774,85-89,238.0,235.0,False,False,False,False
+2026-06-14 04:36:29.954430+00:00,VELVETUSDT,internal_paper_trades,88.15,LOSS,LOSS,-29.055952,85-89,221.0,218.0,False,False,False,False
+2026-06-14 05:25:13.961687+00:00,HUSDT,internal_paper_trades,80.0,LOSS,LOSS,-35.138004,80-84,645.0,339.0,False,False,False,False
+2026-06-14 05:25:33.097548+00:00,HUSDT,internal_paper_trades,80.25,LOSS,LOSS,-35.253476,80-84,638.0,333.0,False,False,False,False
+2026-06-14 05:25:51.816624+00:00,HUSDT,internal_paper_trades,80.33,LOSS,LOSS,-35.056653,80-84,637.0,332.0,False,False,False,False
+2026-06-14 10:25:17.744831+00:00,BEATUSDT,internal_paper_trades,75.04,LOSS,LOSS,-16.934952,75-79,746.0,440.0,False,False,False,False
+2026-06-14 21:40:12.694278+00:00,WLDUSDT,internal_paper_trades,91.62,WIN,WIN,9.051976,90-94,117.0,114.0,False,False,False,False
+2026-06-14 21:40:14.318736+00:00,RIFUSDT,internal_paper_trades,100.0,LOSS,LOSS,-17.851876,95-100,38.0,36.0,False,False,False,False
+2026-06-14 21:40:15.010131+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.618709,95-100,39.0,37.0,False,False,False,False
+2026-06-14 21:40:15.950187+00:00,EVAAUSDT,internal_paper_trades,97.85,WIN,WIN,26.735056,95-100,102.0,100.0,False,False,False,False
+2026-06-14 21:40:42.173151+00:00,WLDUSDT,internal_paper_trades,92.37,WIN,WIN,8.818959,90-94,112.0,109.0,False,False,False,False
+2026-06-14 21:40:43.094227+00:00,TRUMPUSDT,internal_paper_trades,90.65,LOSS,LOSS,-6.090373,90-94,136.0,133.0,False,False,False,False
+2026-06-14 21:40:43.793685+00:00,RIFUSDT,internal_paper_trades,100.0,LOSS,LOSS,-17.737304,95-100,40.0,38.0,False,False,False,False
+2026-06-14 21:40:44.488792+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.637473,95-100,41.0,39.0,False,False,False,False
+2026-06-14 21:40:45.409160+00:00,EVAAUSDT,internal_paper_trades,98.36,WIN,WIN,22.544698,95-100,98.0,96.0,False,False,False,False
+2026-06-14 21:41:17.031294+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,8.523828,95-100,42.0,40.0,False,False,False,False
+2026-06-14 21:41:18.300511+00:00,TRUMPUSDT,internal_paper_trades,90.92,LOSS,LOSS,-6.090373,90-94,130.0,127.0,False,False,False,False
+2026-06-14 21:41:19.400729+00:00,RIFUSDT,internal_paper_trades,100.0,LOSS,LOSS,-17.7508,95-100,43.0,41.0,False,False,False,False
+2026-06-14 21:41:20.510069+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.618709,95-100,44.0,42.0,False,False,False,False
+2026-06-14 21:41:21.445035+00:00,EVAAUSDT,internal_paper_trades,98.5,WIN,WIN,21.828585,95-100,97.0,95.0,False,False,False,False
+2026-06-15 00:10:15.228515+00:00,SPCXUSDT,internal_paper_trades,85.55,WIN,WIN,6.750045,85-89,294.0,291.0,False,False,False,False
+2026-06-15 00:10:38.034019+00:00,SPCXUSDT,internal_paper_trades,86.05,WIN,WIN,6.660688,85-89,286.0,283.0,False,False,False,False
+2026-06-15 00:10:59.913109+00:00,SPCXUSDT,internal_paper_trades,86.46,WIN,WIN,6.539656,85-89,283.0,280.0,False,False,False,False
+2026-06-15 01:50:12.946609+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,11.150758,95-100,45.0,43.0,False,False,False,False
+2026-06-15 01:50:31.845210+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,11.150758,95-100,46.0,44.0,False,False,False,False
+2026-06-15 01:50:52.335842+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,11.210282,95-100,47.0,45.0,False,False,False,False
+2026-06-15 03:05:12.911522+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,6.513934,95-100,48.0,46.0,False,False,False,False
+2026-06-15 06:25:14.531864+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.266792,95-100,49.0,47.0,False,False,False,False
+2026-06-15 06:25:35.158060+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.298585,95-100,50.0,48.0,False,False,False,False
+2026-06-15 06:25:55.337136+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.285865,95-100,51.0,49.0,False,False,False,False
+2026-06-15 06:50:15.155215+00:00,SPCXUSDT,internal_paper_trades,87.77,WIN,WIN,7.886731,85-89,235.0,232.0,False,False,False,False
+2026-06-15 06:50:34.587722+00:00,SPCXUSDT,internal_paper_trades,87.72,WIN,WIN,7.924617,85-89,241.0,238.0,False,False,False,False
+2026-06-15 06:50:54.140908+00:00,SPCXUSDT,internal_paper_trades,87.74,WIN,WIN,7.9183,85-89,239.0,236.0,False,False,False,False
+2026-06-15 07:15:51.674995+00:00,SPCXUSDT,internal_paper_trades,86.92,WIN,WIN,7.496794,85-89,264.0,261.0,False,False,False,False
+2026-06-15 07:40:14.213464+00:00,SPCXUSDT,internal_paper_trades,76.65,WIN,WIN,6.743849,75-79,713.0,407.0,False,False,False,False
+2026-06-15 07:40:33.054569+00:00,BEATUSDT,internal_paper_trades,75.01,LOSS,LOSS,-43.083515,75-79,748.0,442.0,False,False,False,False
+2026-06-15 07:40:33.991546+00:00,SPCXUSDT,internal_paper_trades,77.06,WIN,WIN,6.669752,75-79,701.0,395.0,False,False,False,False
+2026-06-15 07:40:53.943555+00:00,BEATUSDT,internal_paper_trades,75.08,LOSS,LOSS,-42.617272,75-79,745.0,439.0,False,False,False,False
+2026-06-15 07:40:54.880845+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,6.583434,95-100,52.0,50.0,False,False,False,False
+2026-06-15 08:05:54.660018+00:00,SPCXUSDT,internal_paper_trades,75.91,WIN,WIN,7.968851,75-79,726.0,420.0,False,False,False,False
+2026-06-15 11:25:12.060251+00:00,WLDUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.235624,95-100,53.0,51.0,False,False,False,False
+2026-06-15 11:25:18.183774+00:00,TRUMPUSDT,internal_paper_trades,90.23,LOSS,LOSS,-5.626851,90-94,151.0,148.0,False,False,False,False
+2026-06-15 11:25:43.470240+00:00,WLDUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.173586,95-100,54.0,52.0,False,False,False,False
+2026-06-15 11:25:49.553325+00:00,TRUMPUSDT,internal_paper_trades,90.28,LOSS,LOSS,-5.580247,90-94,149.0,146.0,False,False,False,False
+2026-06-15 11:26:15.179400+00:00,WLDUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.033708,95-100,55.0,53.0,False,False,False,False
+2026-06-15 11:26:21.251446+00:00,TRUMPUSDT,internal_paper_trades,90.63,LOSS,LOSS,-5.673409,90-94,139.0,136.0,False,False,False,False
+2026-06-15 12:40:20.760725+00:00,HUSDT,internal_paper_trades,99.35,WIN,WIN,5.643001,95-100,93.0,91.0,False,False,False,False
+2026-06-15 12:41:47.631762+00:00,HUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.560831,95-100,56.0,54.0,False,False,False,False
+2026-06-15 13:31:46.732493+00:00,SPCXUSDT,internal_paper_trades,92.54,WIN,WIN,5.867493,90-94,110.0,107.0,False,False,False,False
+2026-06-15 13:32:08.866915+00:00,SOXLUSDT,internal_paper_trades,88.21,LOSS,LOSS,-12.511637,85-89,219.0,216.0,False,False,False,False
+2026-06-15 13:33:10.010435+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,6.558798,95-100,57.0,55.0,False,False,False,False
+2026-06-15 13:55:45.306651+00:00,SOXLUSDT,internal_paper_trades,75.1,LOSS,LOSS,-12.865302,75-79,744.0,438.0,False,False,False,False
+2026-06-15 13:56:34.530822+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.534253,95-100,58.0,56.0,False,False,False,False
+2026-06-15 13:56:55.470270+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.516136,95-100,59.0,57.0,False,False,False,False
+2026-06-15 16:27:44.744290+00:00,SPCXUSDT,internal_paper_trades,88.49,WIN,WIN,5.970066,85-89,204.0,201.0,False,False,False,False
+2026-06-15 16:28:03.581919+00:00,XLMUSDT,internal_paper_trades,88.14,LOSS,LOSS,-3.336926,85-89,223.0,220.0,False,False,False,False
+2026-06-15 16:50:33.506624+00:00,XLMUSDT,internal_paper_trades,87.25,LOSS,LOSS,-3.544848,85-89,252.0,249.0,False,False,False,False
+2026-06-15 16:51:37.494782+00:00,XLMUSDT,internal_paper_trades,87.62,LOSS,LOSS,-3.904509,85-89,245.0,242.0,False,False,False,False
+2026-06-15 16:52:48.473058+00:00,XLMUSDT,internal_paper_trades,88.09,LOSS,LOSS,-3.896271,85-89,226.0,223.0,False,False,False,False
+2026-06-15 17:40:10.376069+00:00,SPCXUSDT,internal_paper_trades,86.93,WIN,WIN,8.036876,85-89,263.0,260.0,False,False,False,False
+2026-06-15 19:47:25.216236+00:00,SPCXUSDT,internal_paper_trades,84.76,WIN,WIN,14.388489,80-84,618.0,313.0,False,False,False,False
+2026-06-15 21:50:12.183898+00:00,WLDUSDT,internal_paper_trades,86.61,WIN,WIN,8.872305,85-89,278.0,275.0,False,False,False,False
+2026-06-15 21:50:31.921738+00:00,WLDUSDT,internal_paper_trades,86.69,WIN,WIN,8.764082,85-89,270.0,267.0,False,False,False,False
+2026-06-15 21:50:51.721417+00:00,WLDUSDT,internal_paper_trades,86.63,WIN,WIN,8.674061,85-89,276.0,273.0,False,False,False,False
+2026-06-15 22:40:10.062484+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,9.278351,95-100,60.0,58.0,False,False,False,False
+2026-06-15 22:40:32.431684+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,9.267307,95-100,61.0,59.0,False,False,False,False
+2026-06-15 22:40:52.822156+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,9.267307,95-100,62.0,60.0,False,False,False,False
+2026-06-15 23:05:10.607804+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.565117,95-100,63.0,61.0,False,False,False,False
+2026-06-15 23:05:29.769392+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.510638,95-100,64.0,62.0,False,False,False,False
+2026-06-15 23:05:48.699070+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,8.543319,95-100,65.0,63.0,False,False,False,False
+2026-06-16 00:14:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-2.699436,85-89,611.0,306.0,False,False,False,False
+2026-06-16 00:20:10.783536+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.91174,95-100,66.0,64.0,False,False,False,False
+2026-06-16 00:20:30.868517+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.91174,95-100,67.0,65.0,False,False,False,False
+2026-06-16 00:20:51.101032+00:00,SPCXUSDT,internal_paper_trades,100.0,WIN,WIN,5.901366,95-100,68.0,66.0,False,False,False,False
+2026-06-16 01:10:13.992797+00:00,SPCXUSDT,internal_paper_trades,76.2,LOSS,LOSS,-3.907367,75-79,720.0,414.0,False,False,False,False
+2026-06-16 01:11:20.257148+00:00,SPCXUSDT,internal_paper_trades,77.0,LOSS,LOSS,-2.663551,75-79,704.0,398.0,False,False,False,False
+2026-06-16 01:11:41.487808+00:00,MRVLUSDT,internal_paper_trades,80.55,WIN,WIN,5.588462,80-84,636.0,331.0,False,False,False,False
+2026-06-16 01:12:30.006628+00:00,SPCXUSDT,internal_paper_trades,78.34,LOSS,LOSS,-3.671846,75-79,681.0,375.0,False,False,False,False
+2026-06-16 01:12:59.167887+00:00,MRVLUSDT,internal_paper_trades,81.04,WIN,WIN,5.493146,80-84,633.0,328.0,False,False,False,False
+2026-06-16 03:40:16.062062+00:00,MRVLUSDT,internal_paper_trades,88.04,LOSS,LOSS,-2.30636,85-89,227.0,224.0,False,False,False,False
+2026-06-16 03:40:36.801494+00:00,MRVLUSDT,internal_paper_trades,88.12,LOSS,LOSS,-2.328696,85-89,225.0,222.0,False,False,False,False
+2026-06-16 03:40:57.732095+00:00,MRVLUSDT,internal_paper_trades,88.17,LOSS,LOSS,-2.36696,85-89,220.0,217.0,False,False,False,False
+2026-06-16 06:10:15.304079+00:00,SOXLUSDT,internal_paper_trades,75.73,LOSS,LOSS,-12.657993,75-79,731.0,425.0,False,False,False,False
+2026-06-16 06:10:34.551444+00:00,SOXLUSDT,internal_paper_trades,75.75,LOSS,LOSS,-12.71964,75-79,730.0,424.0,False,False,False,False
+2026-06-16 06:10:53.594742+00:00,SOXLUSDT,internal_paper_trades,75.77,LOSS,LOSS,-12.726125,75-79,729.0,423.0,False,False,False,False
+2026-06-16 07:25:11.593306+00:00,WLDUSDT,internal_paper_trades,89.66,WIN,WIN,7.201176,85-89,171.0,168.0,False,False,False,False
+2026-06-16 07:25:31.563980+00:00,WLDUSDT,internal_paper_trades,89.89,WIN,WIN,7.096248,85-89,161.0,158.0,False,False,False,False
+2026-06-16 07:25:53.621221+00:00,WLDUSDT,internal_paper_trades,90.06,WIN,WIN,7.534808,90-94,155.0,152.0,False,False,False,False
+2026-06-16 08:40:12.481129+00:00,WLDUSDT,internal_paper_trades,89.09,LOSS,LOSS,-9.053498,85-89,185.0,182.0,False,False,False,False
+2026-06-16 08:40:17.529129+00:00,INTCUSDT,internal_paper_trades,100.0,WIN,WIN,7.952941,95-100,69.0,67.0,False,False,False,False
+2026-06-16 08:40:40.224958+00:00,INTCUSDT,internal_paper_trades,100.0,WIN,WIN,7.800752,95-100,70.0,68.0,False,False,False,False
+2026-06-16 08:40:56.853137+00:00,WLDUSDT,internal_paper_trades,89.61,LOSS,LOSS,-9.108911,85-89,174.0,171.0,False,False,False,False
+2026-06-16 08:41:02.602095+00:00,INTCUSDT,internal_paper_trades,100.0,WIN,WIN,7.817641,95-100,71.0,69.0,False,False,False,False
+2026-06-16 09:05:14.844960+00:00,XLMUSDT,internal_paper_trades,87.52,LOSS,LOSS,-3.724328,85-89,249.0,246.0,False,False,False,False
+2026-06-16 09:05:34.649166+00:00,XLMUSDT,internal_paper_trades,88.51,LOSS,LOSS,-3.634175,85-89,202.0,199.0,False,False,False,False
+2026-06-16 09:05:54.387778+00:00,XLMUSDT,internal_paper_trades,88.72,LOSS,LOSS,-3.612685,85-89,192.0,189.0,False,False,False,False
+2026-06-16 10:20:13.957247+00:00,JTOUSDT,internal_paper_trades,79.33,WIN,WIN,10.210286,75-79,660.0,354.0,False,False,False,False
+2026-06-16 10:20:36.084889+00:00,JTOUSDT,internal_paper_trades,79.62,WIN,WIN,9.544195,75-79,651.0,345.0,False,False,False,False
+2026-06-16 10:20:55.273877+00:00,JTOUSDT,internal_paper_trades,79.69,WIN,WIN,9.723799,75-79,650.0,344.0,False,False,False,False
+2026-06-16 11:10:13.664948+00:00,JTOUSDT,internal_paper_trades,100.0,WIN,WIN,5.30138,95-100,72.0,70.0,False,False,False,False
+2026-06-16 11:10:33.685761+00:00,JTOUSDT,internal_paper_trades,100.0,WIN,WIN,5.697971,95-100,73.0,71.0,False,False,False,False
+2026-06-16 11:10:53.122232+00:00,JTOUSDT,internal_paper_trades,100.0,WIN,WIN,5.403441,95-100,74.0,72.0,False,False,False,False
+2026-06-16 12:25:15.026922+00:00,MRVLUSDT,internal_paper_trades,90.87,LOSS,LOSS,-10.149056,90-94,131.0,128.0,False,False,False,False
+2026-06-16 12:25:35.993791+00:00,MRVLUSDT,internal_paper_trades,91.1,LOSS,LOSS,-10.288719,90-94,128.0,125.0,False,False,False,False
+2026-06-16 12:25:57.433535+00:00,MRVLUSDT,internal_paper_trades,91.4,LOSS,LOSS,-10.202595,90-94,120.0,117.0,False,False,False,False
+2026-06-16 13:40:10.356111+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-12.646111,95-100,75.0,73.0,False,False,False,False
+2026-06-16 13:40:16.475333+00:00,MRVLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.731007,95-100,76.0,74.0,False,False,False,False
+2026-06-16 13:40:16.709106+00:00,SOXLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-13.420791,95-100,77.0,75.0,False,False,False,False
+2026-06-16 13:40:35.707303+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-12.591452,95-100,78.0,76.0,False,False,False,False
+2026-06-16 13:40:40.910746+00:00,MRVLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.75889,95-100,79.0,77.0,False,False,False,False
+2026-06-16 13:40:41.145622+00:00,SOXLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-13.684791,95-100,80.0,78.0,False,False,False,False
+2026-06-16 13:40:59.657174+00:00,SPCXUSDT,internal_paper_trades,100.0,LOSS,LOSS,-12.818051,95-100,81.0,79.0,False,False,False,False
+2026-06-16 13:41:04.972898+00:00,MRVLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.709309,95-100,82.0,80.0,False,False,False,False
+2026-06-16 13:41:05.347284+00:00,SOXLUSDT,internal_paper_trades,100.0,LOSS,LOSS,-13.586377,95-100,83.0,81.0,False,False,False,False
+2026-06-16 14:05:17.036518+00:00,SPCXUSDT,internal_paper_trades,93.34,LOSS,LOSS,-18.33798,90-94,108.0,105.0,False,False,False,False
+2026-06-19 08:14:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,WIN,WIN,5.137135,85-89,612.0,307.0,False,False,False,False
+2026-06-19 15:14:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-4.052443,85-89,613.0,308.0,False,False,False,False
+2026-06-19 16:29:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-11.877395,85-89,614.0,309.0,False,False,False,False
+2026-06-20 00:44:59.999000+00:00,WCTUSDT,internal_paper_trades,85.0,LOSS,LOSS,-10.32306,85-89,615.0,310.0,False,False,False,False
+2026-06-20 06:55:12.854837+00:00,BICOUSDT,internal_paper_trades,77.08,WIN,WIN,44.61165,75-79,700.0,394.0,False,False,False,False
+2026-06-20 06:55:16.102107+00:00,SYNUSDT,internal_paper_trades,88.41,WIN,WIN,9.337849,85-89,211.0,208.0,False,False,False,False
+2026-06-20 06:55:35.568968+00:00,BICOUSDT,internal_paper_trades,77.15,WIN,WIN,44.752187,75-79,699.0,393.0,False,False,False,False
+2026-06-20 06:55:37.920553+00:00,SYNUSDT,internal_paper_trades,88.44,WIN,WIN,9.907594,85-89,208.0,205.0,False,False,False,False
+2026-06-20 06:55:56.628705+00:00,BICOUSDT,internal_paper_trades,77.18,WIN,WIN,44.857768,75-79,697.0,391.0,False,False,False,False
+2026-06-20 06:55:59.805987+00:00,SYNUSDT,internal_paper_trades,88.56,WIN,WIN,9.800791,85-89,198.0,195.0,False,False,False,False
+2026-06-20 16:55:11.889344+00:00,BICOUSDT,internal_paper_trades,79.01,WIN,WIN,28.266954,75-79,673.0,367.0,False,False,False,False
+2026-06-20 16:55:32.647748+00:00,BICOUSDT,internal_paper_trades,79.23,WIN,WIN,28.543689,75-79,664.0,358.0,False,False,False,False
+2026-06-20 16:55:52.510953+00:00,BICOUSDT,internal_paper_trades,79.41,WIN,WIN,28.571429,75-79,656.0,350.0,False,False,False,False
+2026-06-20 17:20:12.234292+00:00,BICOUSDT,internal_paper_trades,77.18,WIN,WIN,5.788352,75-79,698.0,392.0,False,False,False,False
+2026-06-20 17:20:31.727739+00:00,BICOUSDT,internal_paper_trades,77.56,WIN,WIN,5.097901,75-79,692.0,386.0,False,False,False,False
+2026-06-20 17:20:52.195870+00:00,BICOUSDT,internal_paper_trades,77.6,WIN,WIN,6.033102,75-79,689.0,383.0,False,False,False,False
+2026-06-20 18:10:11.723684+00:00,BICOUSDT,internal_paper_trades,79.28,LOSS,LOSS,-8.056395,75-79,663.0,357.0,False,False,False,False
+2026-06-20 18:10:11.973419+00:00,BTWUSDT,internal_paper_trades,85.9,LOSS,LOSS,-50.173581,85-89,288.0,285.0,False,False,False,False
+2026-06-20 18:10:33.812281+00:00,BICOUSDT,internal_paper_trades,79.35,LOSS,LOSS,-8.317992,75-79,659.0,353.0,False,False,False,False
+2026-06-20 18:10:34.047643+00:00,BTWUSDT,internal_paper_trades,86.44,LOSS,LOSS,-50.119644,85-89,284.0,281.0,False,False,False,False
+2026-06-20 18:10:54.373091+00:00,BICOUSDT,internal_paper_trades,79.42,LOSS,LOSS,-8.056395,75-79,655.0,349.0,False,False,False,False
+2026-06-20 18:10:54.613711+00:00,BTWUSDT,internal_paper_trades,86.65,LOSS,LOSS,-49.859687,85-89,275.0,272.0,False,False,False,False
+2026-06-20 21:30:35.616400+00:00,ALICEUSDT,internal_paper_trades,75.4,WIN,WIN,16.529894,75-79,737.0,431.0,False,False,False,False
+2026-06-20 21:30:55.072676+00:00,ALICEUSDT,internal_paper_trades,75.48,WIN,WIN,15.514236,75-79,736.0,430.0,False,False,False,False
+2026-06-20 23:10:16.114060+00:00,SKHYNIXUSDT,internal_paper_trades,86.81,LOSS,LOSS,-7.610499,85-89,266.0,263.0,False,False,False,False
+2026-06-20 23:10:35.638120+00:00,SKHYNIXUSDT,internal_paper_trades,86.8,LOSS,LOSS,-7.601338,85-89,267.0,264.0,False,False,False,False
+2026-06-20 23:10:55.480777+00:00,SKHYNIXUSDT,internal_paper_trades,86.8,LOSS,LOSS,-7.601338,85-89,268.0,265.0,False,False,False,False
+2026-06-20 23:35:35.608330+00:00,SKHYNIXUSDT,internal_paper_trades,76.12,LOSS,LOSS,-7.847577,75-79,722.0,416.0,False,False,False,False
+2026-06-20 23:35:55.050317+00:00,SKHYNIXUSDT,internal_paper_trades,76.47,LOSS,LOSS,-7.898392,75-79,716.0,410.0,False,False,False,False
+2026-06-21 06:40:17.391638+00:00,SKHYNIXUSDT,internal_paper_trades,75.96,LOSS,LOSS,-8.225903,75-79,724.0,418.0,False,False,False,False
+2026-06-21 06:41:02.901042+00:00,SKHYNIXUSDT,internal_paper_trades,76.0,LOSS,LOSS,-8.213056,75-79,723.0,417.0,False,False,False,False
+2026-06-21 10:49:16.420076+00:00,SYNUSDT,internal_paper_trades,89.67,WIN,WIN,32.535764,85-89,170.0,167.0,False,False,False,False
+2026-06-21 10:49:35.869600+00:00,SYNUSDT,internal_paper_trades,89.96,WIN,WIN,32.35982,85-89,158.0,155.0,False,False,False,False
+2026-06-21 11:55:13.403913+00:00,WLDUSDT,internal_paper_trades,80.11,WIN,WIN,8.371079,80-84,641.0,336.0,False,False,False,False
+2026-06-21 11:55:34.700641+00:00,WLDUSDT,internal_paper_trades,80.16,WIN,WIN,8.334731,80-84,640.0,335.0,False,False,False,False
+2026-06-21 11:55:55.302804+00:00,WLDUSDT,internal_paper_trades,80.2,WIN,WIN,8.262108,80-84,639.0,334.0,False,False,False,False
+2026-06-21 14:25:34.527613+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,5.006502,95-100,84.0,82.0,False,False,False,False
+2026-06-21 14:25:54.972095+00:00,WLDUSDT,internal_paper_trades,100.0,WIN,WIN,5.04065,95-100,85.0,83.0,False,False,False,False
+2026-06-21 16:05:15.464111+00:00,RESOLVUSDT,internal_paper_trades,83.24,LOSS,LOSS,-11.568323,80-84,629.0,324.0,False,False,False,False
+2026-06-21 16:05:36.104715+00:00,RESOLVUSDT,internal_paper_trades,83.59,LOSS,LOSS,-10.314961,80-84,626.0,321.0,False,False,False,False
+2026-06-21 16:05:55.914822+00:00,RESOLVUSDT,internal_paper_trades,83.86,LOSS,LOSS,-10.067114,80-84,625.0,320.0,False,False,False,False
+2026-06-21 18:35:34.901559+00:00,SPCXUSDT,internal_paper_trades,76.43,LOSS,LOSS,-13.705947,75-79,717.0,411.0,False,False,False,False
+2026-06-22 01:40:17.532675+00:00,SYNUSDT,internal_paper_trades,100.0,WIN,WIN,27.374755,95-100,86.0,84.0,False,False,False,False
+2026-06-22 01:40:38.074545+00:00,SYNUSDT,internal_paper_trades,100.0,WIN,WIN,27.047111,95-100,87.0,85.0,False,False,False,False
+2026-06-22 01:40:58.269263+00:00,SYNUSDT,internal_paper_trades,100.0,WIN,WIN,27.380839,95-100,88.0,86.0,False,False,False,False
+2026-06-22 13:50:16.197298+00:00,INTCUSDT,internal_paper_trades,96.84,LOSS,LOSS,-3.504317,95-100,103.0,101.0,False,False,False,False
+2026-06-22 13:50:17.134883+00:00,MRVLUSDT,internal_paper_trades,78.63,LOSS,LOSS,-10.998097,75-79,677.0,371.0,False,False,False,False
+2026-06-22 13:50:39.633331+00:00,INTCUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.546305,95-100,89.0,87.0,False,False,False,False
+2026-06-22 13:50:40.567113+00:00,MRVLUSDT,internal_paper_trades,79.06,LOSS,LOSS,-10.933806,75-79,670.0,364.0,False,False,False,False
+2026-06-22 13:51:04.498771+00:00,INTCUSDT,internal_paper_trades,100.0,LOSS,LOSS,-3.371113,95-100,90.0,88.0,False,False,False,False
+2026-06-22 13:51:05.470229+00:00,MRVLUSDT,internal_paper_trades,79.43,LOSS,LOSS,-10.872351,75-79,654.0,348.0,False,False,False,False
+2026-06-22 18:05:15.020689+00:00,REUSDT,internal_paper_trades,77.27,LOSS,LOSS,-36.317219,75-79,696.0,390.0,False,False,False,False
+2026-06-22 18:05:35.736930+00:00,REUSDT,internal_paper_trades,77.59,LOSS,LOSS,-36.524093,75-79,690.0,384.0,False,False,False,False
