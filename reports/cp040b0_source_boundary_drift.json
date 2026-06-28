@@ -1,0 +1,324 @@
+{
+  "cp_id": "CP-040B0",
+  "generated_at": "2026-06-28T14:45:03.749594+00:00",
+  "sandbox": true,
+  "read_only": true,
+  "dataset_overview": {
+    "total_rows": 1043,
+    "source_artifact_distribution": {
+      "historical_outcomes": 597,
+      "internal_paper_trades": 446
+    },
+    "original_target_distribution": {
+      "LOSS": 554,
+      "WIN": 299,
+      "TP1 HIT": 190
+    },
+    "binary_target_distribution": {
+      "LOSS": 554,
+      "WIN": 489
+    },
+    "timestamp_min": "2026-05-09T07:29:59.999000+00:00",
+    "timestamp_max": "2026-06-22T18:05:35.736930+00:00"
+  },
+  "source_level_label_distribution": {
+    "historical_outcomes": {
+      "rows": 597,
+      "original_label_distribution": {
+        "LOSS": 363,
+        "TP1 HIT": 190,
+        "WIN": 44
+      },
+      "binary_label_distribution": {
+        "LOSS": 363,
+        "WIN": 234
+      },
+      "loss_rate": 0.60804,
+      "win_non_loss_rate": 0.39196,
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00"
+    },
+    "internal_paper_trades": {
+      "rows": 446,
+      "original_label_distribution": {
+        "WIN": 255,
+        "LOSS": 191
+      },
+      "binary_label_distribution": {
+        "WIN": 255,
+        "LOSS": 191
+      },
+      "loss_rate": 0.428251,
+      "win_non_loss_rate": 0.571749,
+      "timestamp_min": "2026-05-26T11:05:12.445670+00:00",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00"
+    }
+  },
+  "source_boundary_audit": {
+    "source_transition_count": 1,
+    "first_transition_index": 597,
+    "source_before": "historical_outcomes",
+    "source_after": "internal_paper_trades",
+    "timestamp_before": "2026-05-24T21:59:59.999000+00:00",
+    "timestamp_after": "2026-05-26T11:05:12.445670+00:00"
+  },
+  "fold_source_drift": [
+    {
+      "fold_id": 1,
+      "train_index_start": 0,
+      "train_index_end": 499,
+      "test_index_start": 500,
+      "test_index_end": 599,
+      "train_source_distribution": {
+        "historical_outcomes": 500
+      },
+      "test_source_distribution": {
+        "historical_outcomes": 97,
+        "internal_paper_trades": 3
+      },
+      "train_original_target_distribution": {
+        "LOSS": 306,
+        "TP1 HIT": 157,
+        "WIN": 37
+      },
+      "test_original_target_distribution": {
+        "LOSS": 57,
+        "TP1 HIT": 33,
+        "WIN": 10
+      },
+      "train_binary_target_distribution": {
+        "LOSS": 306,
+        "WIN": 194
+      },
+      "test_binary_target_distribution": {
+        "LOSS": 57,
+        "WIN": 43
+      },
+      "majority_baseline_accuracy_binary_test": 0.57,
+      "recomputed_binary_model_accuracy": 0.45,
+      "model_vs_baseline_delta": -0.12,
+      "train_timestamp_min": "2026-05-09T07:29:59.999000+00:00",
+      "train_timestamp_max": "2026-05-22T13:29:59.999000+00:00",
+      "test_timestamp_min": "2026-05-22T13:59:59.999000+00:00",
+      "test_timestamp_max": "2026-05-26T11:05:48.735914+00:00",
+      "boundary_crossed": true
+    },
+    {
+      "fold_id": 2,
+      "train_index_start": 100,
+      "train_index_end": 599,
+      "test_index_start": 600,
+      "test_index_end": 699,
+      "train_source_distribution": {
+        "historical_outcomes": 497,
+        "internal_paper_trades": 3
+      },
+      "test_source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "train_original_target_distribution": {
+        "LOSS": 311,
+        "TP1 HIT": 152,
+        "WIN": 37
+      },
+      "test_original_target_distribution": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "train_binary_target_distribution": {
+        "LOSS": 311,
+        "WIN": 189
+      },
+      "test_binary_target_distribution": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "majority_baseline_accuracy_binary_test": 0.59,
+      "recomputed_binary_model_accuracy": 0.62,
+      "model_vs_baseline_delta": 0.03,
+      "train_timestamp_min": "2026-05-11T23:44:59.999000+00:00",
+      "train_timestamp_max": "2026-05-26T11:05:48.735914+00:00",
+      "test_timestamp_min": "2026-05-26T14:20:13.099917+00:00",
+      "test_timestamp_max": "2026-06-07T22:14:59.999000+00:00",
+      "boundary_crossed": true
+    },
+    {
+      "fold_id": 3,
+      "train_index_start": 200,
+      "train_index_end": 699,
+      "test_index_start": 700,
+      "test_index_end": 799,
+      "train_source_distribution": {
+        "historical_outcomes": 397,
+        "internal_paper_trades": 103
+      },
+      "test_source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "train_original_target_distribution": {
+        "LOSS": 286,
+        "TP1 HIT": 124,
+        "WIN": 90
+      },
+      "test_original_target_distribution": {
+        "WIN": 62,
+        "LOSS": 38
+      },
+      "train_binary_target_distribution": {
+        "LOSS": 286,
+        "WIN": 214
+      },
+      "test_binary_target_distribution": {
+        "WIN": 62,
+        "LOSS": 38
+      },
+      "majority_baseline_accuracy_binary_test": 0.62,
+      "recomputed_binary_model_accuracy": 0.43,
+      "model_vs_baseline_delta": -0.19,
+      "train_timestamp_min": "2026-05-14T19:14:59.999000+00:00",
+      "train_timestamp_max": "2026-06-07T22:14:59.999000+00:00",
+      "test_timestamp_min": "2026-06-07T22:25:12.832775+00:00",
+      "test_timestamp_max": "2026-06-11T15:55:52.664984+00:00",
+      "boundary_crossed": true
+    },
+    {
+      "fold_id": 4,
+      "train_index_start": 300,
+      "train_index_end": 799,
+      "test_index_start": 800,
+      "test_index_end": 899,
+      "train_source_distribution": {
+        "historical_outcomes": 297,
+        "internal_paper_trades": 203
+      },
+      "test_source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "train_original_target_distribution": {
+        "LOSS": 262,
+        "WIN": 144,
+        "TP1 HIT": 94
+      },
+      "test_original_target_distribution": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "train_binary_target_distribution": {
+        "LOSS": 262,
+        "WIN": 238
+      },
+      "test_binary_target_distribution": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "majority_baseline_accuracy_binary_test": 0.59,
+      "recomputed_binary_model_accuracy": 0.54,
+      "model_vs_baseline_delta": -0.05,
+      "train_timestamp_min": "2026-05-17T21:29:59.999000+00:00",
+      "train_timestamp_max": "2026-06-11T15:55:52.664984+00:00",
+      "test_timestamp_min": "2026-06-11T19:30:30.284876+00:00",
+      "test_timestamp_max": "2026-06-15T01:50:31.845210+00:00",
+      "boundary_crossed": true
+    },
+    {
+      "fold_id": 5,
+      "train_index_start": 400,
+      "train_index_end": 899,
+      "test_index_start": 900,
+      "test_index_end": 999,
+      "train_source_distribution": {
+        "internal_paper_trades": 303,
+        "historical_outcomes": 197
+      },
+      "test_source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "train_original_target_distribution": {
+        "LOSS": 239,
+        "WIN": 197,
+        "TP1 HIT": 64
+      },
+      "test_original_target_distribution": {
+        "WIN": 54,
+        "LOSS": 46
+      },
+      "train_binary_target_distribution": {
+        "WIN": 261,
+        "LOSS": 239
+      },
+      "test_binary_target_distribution": {
+        "WIN": 54,
+        "LOSS": 46
+      },
+      "majority_baseline_accuracy_binary_test": 0.54,
+      "recomputed_binary_model_accuracy": 0.61,
+      "model_vs_baseline_delta": 0.07,
+      "train_timestamp_min": "2026-05-20T17:14:59.999000+00:00",
+      "train_timestamp_max": "2026-06-15T01:50:31.845210+00:00",
+      "test_timestamp_min": "2026-06-15T01:50:52.335842+00:00",
+      "test_timestamp_max": "2026-06-20T06:55:59.805987+00:00",
+      "boundary_crossed": true
+    }
+  ],
+  "per_source_binary_model_sanity": {
+    "historical_train_ipt_test": {
+      "train_source": "historical_outcomes",
+      "test_source": "internal_paper_trades",
+      "train_rows": 597,
+      "test_rows": 446,
+      "status": "OK",
+      "majority_baseline_accuracy": 0.571749,
+      "model_accuracy": 0.439462,
+      "model_vs_baseline_delta": -0.132287
+    },
+    "ipt_train_historical_test": {
+      "train_source": "internal_paper_trades",
+      "test_source": "historical_outcomes",
+      "train_rows": 446,
+      "test_rows": 597,
+      "status": "OK",
+      "majority_baseline_accuracy": 0.60804,
+      "model_accuracy": 0.606365,
+      "model_vs_baseline_delta": -0.001675
+    },
+    "historical_internal_walkforward": {
+      "source": "historical_outcomes",
+      "rows": 597,
+      "status": "SKIPPED",
+      "reason": "insufficient_rows_or_classes"
+    },
+    "ipt_internal_walkforward": {
+      "source": "internal_paper_trades",
+      "rows": 446,
+      "status": "SKIPPED",
+      "reason": "insufficient_rows_or_classes"
+    }
+  },
+  "verdict": "FAIL",
+  "verdict_logic_evidence": {
+    "dataset_empty": false,
+    "historical_vs_ipt_loss_rate_abs_delta": 0.179789,
+    "loss_rate_fail_threshold_abs_delta": 0.2,
+    "cross_source_failures": [
+      {
+        "train_source": "historical_outcomes",
+        "test_source": "internal_paper_trades",
+        "train_rows": 597,
+        "test_rows": 446,
+        "status": "OK",
+        "majority_baseline_accuracy": 0.571749,
+        "model_accuracy": 0.439462,
+        "model_vs_baseline_delta": -0.132287
+      }
+    ],
+    "failing_boundary_folds": [
+      1,
+      3
+    ]
+  },
+  "notes": [
+    "Uses _production_universe_dataset() from ml_engine.py.",
+    "TP1 HIT is mapped to WIN only in target_binary for audit views.",
+    "No database writes, runtime changes, execution engine changes, portfolio changes, or model promotion are performed."
+  ]
+}
