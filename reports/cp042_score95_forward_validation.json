@@ -1,0 +1,2470 @@
+{
+  "classifier_gate": "FROZEN",
+  "cp_id": "CP-042",
+  "dataset_overview": {
+    "binary_target_distribution": {
+      "LOSS": 554,
+      "WIN": 489
+    },
+    "pnl_availability": {
+      "available_rows": 1043,
+      "missing_rows": 0
+    },
+    "score95_row_count": 107,
+    "score95_source_distribution": {
+      "historical_outcomes": 3,
+      "internal_paper_trades": 104
+    },
+    "score_availability": {
+      "available_rows": 1043,
+      "missing_rows": 0
+    },
+    "source_distribution": {
+      "historical_outcomes": 597,
+      "internal_paper_trades": 446
+    },
+    "target_distribution": {
+      "LOSS": 554,
+      "TP1 HIT": 190,
+      "WIN": 299
+    },
+    "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+    "timestamp_min": "2026-05-09T07:29:59.999000+00:00",
+    "total_rows": 1043
+  },
+  "execution_changed": false,
+  "forward_chronological_splits": [
+    {
+      "loss_avoidance_delta": 0.24521531100478466,
+      "low_sample": false,
+      "non_score95_avg_profit": 2.3138390263157893,
+      "non_score95_loss_rate": 0.49521531100478466,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 418,
+      "non_score95_total_profit": 967.184713,
+      "non_score95_win_rate": 0.5047846889952153,
+      "profit_delta": 6.325946579453441,
+      "rows": 522,
+      "score95_avg_profit": 8.63978560576923,
+      "score95_loss_rate": 0.25,
+      "score95_median_profit": 6.560143,
+      "score95_rows": 104,
+      "score95_source_distribution": {
+        "internal_paper_trades": 104
+      },
+      "score95_total_profit": 898.537703,
+      "score95_win_rate": 0.75,
+      "segment_name": "all_first_50_last_50",
+      "source_distribution": {
+        "historical_outcomes": 76,
+        "internal_paper_trades": 446
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-05-23T11:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.20743034055727555,
+      "low_sample": false,
+      "non_score95_avg_profit": 3.429743318885449,
+      "non_score95_loss_rate": 0.47058823529411764,
+      "non_score95_median_profit": 5.588462,
+      "non_score95_rows": 323,
+      "non_score95_total_profit": 1107.807092,
+      "non_score95_win_rate": 0.5294117647058824,
+      "profit_delta": 5.331595754798761,
+      "rows": 418,
+      "score95_avg_profit": 8.76133907368421,
+      "score95_loss_rate": 0.2631578947368421,
+      "score95_median_profit": 6.396747,
+      "score95_rows": 95,
+      "score95_source_distribution": {
+        "internal_paper_trades": 95
+      },
+      "score95_total_profit": 832.327212,
+      "score95_win_rate": 0.7368421052631579,
+      "segment_name": "all_first_60_last_40",
+      "source_distribution": {
+        "internal_paper_trades": 418
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-05-30T13:50:50.312138+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.17108738718908212,
+      "low_sample": false,
+      "non_score95_avg_profit": 2.7547708262711867,
+      "non_score95_loss_rate": 0.4957627118644068,
+      "non_score95_median_profit": 5.079261000000001,
+      "non_score95_rows": 236,
+      "non_score95_total_profit": 650.1259150000001,
+      "non_score95_win_rate": 0.5042372881355932,
+      "profit_delta": 2.361561641261279,
+      "rows": 313,
+      "score95_avg_profit": 5.116332467532466,
+      "score95_loss_rate": 0.3246753246753247,
+      "score95_median_profit": 5.901366,
+      "score95_rows": 77,
+      "score95_source_distribution": {
+        "internal_paper_trades": 77
+      },
+      "score95_total_profit": 393.9575999999999,
+      "score95_win_rate": 0.6753246753246753,
+      "segment_name": "all_first_70_last_30",
+      "source_distribution": {
+        "internal_paper_trades": 313
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-08T17:25:55.952950+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.22230837394771819,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.4990857364864867,
+      "non_score95_loss_rate": 0.5337837837837838,
+      "non_score95_median_profit": -3.0181810000000002,
+      "non_score95_rows": 148,
+      "non_score95_total_profit": -221.86468900000003,
+      "non_score95_win_rate": 0.46621621621621623,
+      "profit_delta": 5.507038310256979,
+      "rows": 209,
+      "score95_avg_profit": 4.007952573770492,
+      "score95_loss_rate": 0.3114754098360656,
+      "score95_median_profit": 5.643001,
+      "score95_rows": 61,
+      "score95_source_distribution": {
+        "internal_paper_trades": 61
+      },
+      "score95_total_profit": 244.485107,
+      "score95_win_rate": 0.6885245901639344,
+      "segment_name": "all_first_80_last_20",
+      "source_distribution": {
+        "internal_paper_trades": 209
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-12T15:55:09.523340+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.43618143459915615,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.05735666772151899,
+      "non_score95_loss_rate": 0.6028481012658228,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 632,
+      "non_score95_total_profit": 36.249414,
+      "non_score95_win_rate": 0.3971518987341772,
+      "profit_delta": 21.098193943389592,
+      "rows": 650,
+      "score95_avg_profit": 21.15555061111111,
+      "score95_loss_rate": 0.16666666666666666,
+      "score95_median_profit": 6.92078,
+      "score95_rows": 18,
+      "score95_source_distribution": {
+        "historical_outcomes": 3,
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 380.799911,
+      "score95_win_rate": 0.8333333333333334,
+      "segment_name": "all_monthly_2026-05-31",
+      "source_distribution": {
+        "historical_outcomes": 597,
+        "internal_paper_trades": 53
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-31T12:29:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.19607480780603193,
+      "low_sample": false,
+      "non_score95_avg_profit": 3.177418746710526,
+      "non_score95_loss_rate": 0.4769736842105263,
+      "non_score95_median_profit": 5.6118144999999995,
+      "non_score95_rows": 304,
+      "non_score95_total_profit": 965.935299,
+      "non_score95_win_rate": 0.5230263157894737,
+      "profit_delta": 2.628623860031046,
+      "rows": 393,
+      "score95_avg_profit": 5.806042606741572,
+      "score95_loss_rate": 0.2808988764044944,
+      "score95_median_profit": 6.396747,
+      "score95_rows": 89,
+      "score95_source_distribution": {
+        "internal_paper_trades": 89
+      },
+      "score95_total_profit": 516.7377919999999,
+      "score95_win_rate": 0.7191011235955056,
+      "segment_name": "all_monthly_2026-06-30",
+      "source_distribution": {
+        "internal_paper_trades": 393
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-01T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.5066666666666666,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.72,
+      "non_score95_loss_rate": 0.49333333333333335,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": 54.0,
+      "non_score95_win_rate": 0.5066666666666667,
+      "profit_delta": -2.7199999999999998,
+      "rows": 76,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "all_weekly_2026-05-10",
+      "source_distribution": {
+        "historical_outcomes": 76
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-10T23:29:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.14473684210526316,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.07456140350877193,
+      "non_score95_loss_rate": 0.6447368421052632,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 228,
+      "non_score95_total_profit": -17.0,
+      "non_score95_win_rate": 0.35526315789473684,
+      "profit_delta": 0.5745614035087719,
+      "rows": 230,
+      "score95_avg_profit": 0.5,
+      "score95_loss_rate": 0.5,
+      "score95_median_profit": 0.5,
+      "score95_rows": 2,
+      "score95_source_distribution": {
+        "historical_outcomes": 2
+      },
+      "score95_total_profit": 1.0,
+      "score95_win_rate": 0.5,
+      "segment_name": "all_weekly_2026-05-17",
+      "source_distribution": {
+        "historical_outcomes": 230
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-17T23:29:59.999000+00:00",
+      "timestamp_min": "2026-05-11T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.09621993127147767,
+      "non_score95_loss_rate": 0.6082474226804123,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 291,
+      "non_score95_total_profit": 28.0,
+      "non_score95_win_rate": 0.3917525773195876,
+      "profit_delta": null,
+      "rows": 291,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "all_weekly_2026-05-24",
+      "source_distribution": {
+        "historical_outcomes": 291
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-18T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.45964912280701753,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.7565943684210525,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -4.917218500000001,
+      "non_score95_rows": 38,
+      "non_score95_total_profit": -28.750586,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 26.20992176842105,
+      "rows": 53,
+      "score95_avg_profit": 25.4533274,
+      "score95_loss_rate": 0.06666666666666667,
+      "score95_median_profit": 10.976,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 381.799911,
+      "score95_win_rate": 0.9333333333333333,
+      "segment_name": "all_weekly_2026-05-31",
+      "source_distribution": {
+        "internal_paper_trades": 53
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-31T12:29:59.999000+00:00",
+      "timestamp_min": "2026-05-26T11:05:12.445670+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.425531914893617,
+      "low_sample": false,
+      "non_score95_avg_profit": 4.822068531914892,
+      "non_score95_loss_rate": 0.425531914893617,
+      "non_score95_median_profit": 7.333333,
+      "non_score95_rows": 47,
+      "non_score95_total_profit": 226.63722099999995,
+      "non_score95_win_rate": 0.574468085106383,
+      "profit_delta": 6.449701468085108,
+      "rows": 56,
+      "score95_avg_profit": 11.27177,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 9.713812,
+      "score95_rows": 9,
+      "score95_source_distribution": {
+        "internal_paper_trades": 9
+      },
+      "score95_total_profit": 101.44593,
+      "score95_win_rate": 1.0,
+      "segment_name": "all_weekly_2026-06-07",
+      "source_distribution": {
+        "internal_paper_trades": 56
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-07T23:25:48.264869+00:00",
+      "timestamp_min": "2026-06-01T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.16460987261146498,
+      "low_sample": false,
+      "non_score95_avg_profit": 5.3318253757961775,
+      "non_score95_loss_rate": 0.445859872611465,
+      "non_score95_median_profit": 6.136957,
+      "non_score95_rows": 157,
+      "non_score95_total_profit": 837.0965839999999,
+      "non_score95_win_rate": 0.554140127388535,
+      "profit_delta": 1.8860077804538227,
+      "rows": 189,
+      "score95_avg_profit": 7.21783315625,
+      "score95_loss_rate": 0.28125,
+      "score95_median_profit": 6.352577,
+      "score95_rows": 32,
+      "score95_source_distribution": {
+        "internal_paper_trades": 32
+      },
+      "score95_total_profit": 230.970661,
+      "score95_win_rate": 0.71875,
+      "segment_name": "all_weekly_2026-06-14",
+      "source_distribution": {
+        "internal_paper_trades": 189
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-14T21:41:21.445035+00:00",
+      "timestamp_min": "2026-06-08T02:05:46.171489+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.21679197994987465,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.08260063157894723,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -2.36696,
+      "non_score95_rows": 95,
+      "non_score95_total_profit": 7.847059999999987,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 2.6064524874686716,
+      "rows": 137,
+      "score95_avg_profit": 2.689053119047619,
+      "score95_loss_rate": 0.30952380952380953,
+      "score95_median_profit": 5.7996685,
+      "score95_rows": 42,
+      "score95_source_distribution": {
+        "internal_paper_trades": 42
+      },
+      "score95_total_profit": 112.940231,
+      "score95_win_rate": 0.6904761904761905,
+      "segment_name": "all_weekly_2026-06-21",
+      "source_distribution": {
+        "internal_paper_trades": 137
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-21T18:35:34.901559+00:00",
+      "timestamp_min": "2026-06-15T00:10:15.228515+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.5,
+      "low_sample": false,
+      "non_score95_avg_profit": -21.1291132,
+      "non_score95_loss_rate": 1.0,
+      "non_score95_median_profit": -10.998097,
+      "non_score95_rows": 5,
+      "non_score95_total_profit": -105.645566,
+      "non_score95_win_rate": 0.0,
+      "profit_delta": 33.02594153333333,
+      "rows": 11,
+      "score95_avg_profit": 11.896828333333334,
+      "score95_loss_rate": 0.5,
+      "score95_median_profit": 11.837999,
+      "score95_rows": 6,
+      "score95_source_distribution": {
+        "internal_paper_trades": 6
+      },
+      "score95_total_profit": 71.38097,
+      "score95_win_rate": 0.5,
+      "segment_name": "all_weekly_2026-06-28",
+      "source_distribution": {
+        "internal_paper_trades": 11
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-22T01:40:17.532675+00:00"
+    }
+  ],
+  "gate_policy_recommendation": "Draft only: retain score >=95 as a PAPER_ONLY candidate gate requiring source-aware IPT/live-like evidence, minimum rolling-window evidence, no automatic execution, no model promotion, and no Phase 3 unlock.",
+  "gate_stability_audit": [
+    {
+      "avg_profit": 7.951529726114648,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.5756207674943566,
+      "loss_avoidance_delta": 0.29536599042429296,
+      "loss_rate": 0.2802547770700637,
+      "low_sample_count": 0,
+      "pass_count": 4,
+      "rows_kept": 157,
+      "sample_pct": 0.15052732502396932,
+      "source_scope": "all",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "threshold": 90,
+      "total_profit": 1248.3901669999998,
+      "win_rate": 0.7197452229299363
+    },
+    {
+      "avg_profit": 9.057767525862069,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.5663430420711975,
+      "loss_avoidance_delta": 0.31634304207119746,
+      "loss_rate": 0.25,
+      "low_sample_count": 0,
+      "pass_count": 4,
+      "rows_kept": 116,
+      "sample_pct": 0.1112176414189837,
+      "source_scope": "all",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "threshold": 92,
+      "total_profit": 1050.701033,
+      "win_rate": 0.75
+    },
+    {
+      "avg_profit": 8.3882028317757,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.561965811965812,
+      "loss_avoidance_delta": 0.3002835689751578,
+      "loss_rate": 0.2616822429906542,
+      "low_sample_count": 0,
+      "pass_count": 4,
+      "rows_kept": 107,
+      "sample_pct": 0.10258868648130393,
+      "source_scope": "all",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "threshold": 95,
+      "total_profit": 897.537703,
+      "win_rate": 0.7383177570093458
+    },
+    {
+      "avg_profit": 8.595174098039218,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.5600425079702445,
+      "loss_avoidance_delta": 0.2953366256173033,
+      "loss_rate": 0.2647058823529412,
+      "low_sample_count": 0,
+      "pass_count": 4,
+      "rows_kept": 102,
+      "sample_pct": 0.0977948226270374,
+      "source_scope": "all",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "threshold": 97,
+      "total_profit": 876.7077580000001,
+      "win_rate": 0.7352941176470589
+    },
+    {
+      "avg_profit": 8.769812677083333,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.5596620908130939,
+      "loss_avoidance_delta": 0.3096620908130939,
+      "loss_rate": 0.25,
+      "low_sample_count": 0,
+      "pass_count": 4,
+      "rows_kept": 96,
+      "sample_pct": 0.09204218600191755,
+      "source_scope": "all",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "threshold": 99,
+      "total_profit": 841.902017,
+      "win_rate": 0.75
+    },
+    {
+      "avg_profit": 8.112923162337662,
+      "fail_count": 2,
+      "filtered_loss_rate": 0.5102739726027398,
+      "loss_avoidance_delta": 0.23754669987546706,
+      "loss_rate": 0.2727272727272727,
+      "low_sample_count": 0,
+      "pass_count": 2,
+      "rows_kept": 154,
+      "sample_pct": 0.3452914798206278,
+      "source_scope": "internal_paper_trades",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "threshold": 90,
+      "total_profit": 1249.390167,
+      "win_rate": 0.7272727272727273
+    },
+    {
+      "avg_profit": 9.30708878761062,
+      "fail_count": 2,
+      "filtered_loss_rate": 0.4924924924924925,
+      "loss_avoidance_delta": 0.2535544393951473,
+      "loss_rate": 0.23893805309734514,
+      "low_sample_count": 0,
+      "pass_count": 2,
+      "rows_kept": 113,
+      "sample_pct": 0.2533632286995516,
+      "source_scope": "internal_paper_trades",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "threshold": 92,
+      "total_profit": 1051.701033,
+      "win_rate": 0.7610619469026548
+    },
+    {
+      "avg_profit": 8.63978560576923,
+      "fail_count": 2,
+      "filtered_loss_rate": 0.4824561403508772,
+      "loss_avoidance_delta": 0.2324561403508772,
+      "loss_rate": 0.25,
+      "low_sample_count": 0,
+      "pass_count": 2,
+      "rows_kept": 104,
+      "sample_pct": 0.23318385650224216,
+      "source_scope": "internal_paper_trades",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "threshold": 95,
+      "total_profit": 898.537703,
+      "win_rate": 0.75
+    },
+    {
+      "avg_profit": 8.807077580000001,
+      "fail_count": 2,
+      "filtered_loss_rate": 0.4797687861271676,
+      "loss_avoidance_delta": 0.2297687861271676,
+      "loss_rate": 0.25,
+      "low_sample_count": 0,
+      "pass_count": 2,
+      "rows_kept": 100,
+      "sample_pct": 0.2242152466367713,
+      "source_scope": "internal_paper_trades",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "threshold": 97,
+      "total_profit": 880.7077580000001,
+      "win_rate": 0.75
+    },
+    {
+      "avg_profit": 8.998957627659577,
+      "fail_count": 2,
+      "filtered_loss_rate": 0.48011363636363635,
+      "loss_avoidance_delta": 0.246071083172147,
+      "loss_rate": 0.23404255319148937,
+      "low_sample_count": 0,
+      "pass_count": 2,
+      "rows_kept": 94,
+      "sample_pct": 0.21076233183856502,
+      "source_scope": "internal_paper_trades",
+      "stability_across_forward_splits": [
+        "PASS",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "threshold": 99,
+      "total_profit": 845.9020170000002,
+      "win_rate": 0.7659574468085106
+    },
+    {
+      "avg_profit": -0.3333333333333333,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.6077441077441077,
+      "loss_avoidance_delta": -0.05892255892255893,
+      "loss_rate": 0.6666666666666666,
+      "low_sample_count": 4,
+      "pass_count": 0,
+      "rows_kept": 3,
+      "sample_pct": 0.005025125628140704,
+      "source_scope": "historical_outcomes",
+      "stability_across_forward_splits": [
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE"
+      ],
+      "threshold": 90,
+      "total_profit": -1.0,
+      "win_rate": 0.3333333333333333
+    },
+    {
+      "avg_profit": -0.3333333333333333,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.6077441077441077,
+      "loss_avoidance_delta": -0.05892255892255893,
+      "loss_rate": 0.6666666666666666,
+      "low_sample_count": 4,
+      "pass_count": 0,
+      "rows_kept": 3,
+      "sample_pct": 0.005025125628140704,
+      "source_scope": "historical_outcomes",
+      "stability_across_forward_splits": [
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE"
+      ],
+      "threshold": 92,
+      "total_profit": -1.0,
+      "win_rate": 0.3333333333333333
+    },
+    {
+      "avg_profit": -0.3333333333333333,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.6077441077441077,
+      "loss_avoidance_delta": -0.05892255892255893,
+      "loss_rate": 0.6666666666666666,
+      "low_sample_count": 4,
+      "pass_count": 0,
+      "rows_kept": 3,
+      "sample_pct": 0.005025125628140704,
+      "source_scope": "historical_outcomes",
+      "stability_across_forward_splits": [
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE"
+      ],
+      "threshold": 95,
+      "total_profit": -1.0,
+      "win_rate": 0.3333333333333333
+    },
+    {
+      "avg_profit": -2.0,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.6067226890756302,
+      "loss_avoidance_delta": -0.3932773109243698,
+      "loss_rate": 1.0,
+      "low_sample_count": 4,
+      "pass_count": 0,
+      "rows_kept": 2,
+      "sample_pct": 0.0033500837520938024,
+      "source_scope": "historical_outcomes",
+      "stability_across_forward_splits": [
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE"
+      ],
+      "threshold": 97,
+      "total_profit": -4.0,
+      "win_rate": 0.0
+    },
+    {
+      "avg_profit": -2.0,
+      "fail_count": 0,
+      "filtered_loss_rate": 0.6067226890756302,
+      "loss_avoidance_delta": -0.3932773109243698,
+      "loss_rate": 1.0,
+      "low_sample_count": 4,
+      "pass_count": 0,
+      "rows_kept": 2,
+      "sample_pct": 0.0033500837520938024,
+      "source_scope": "historical_outcomes",
+      "stability_across_forward_splits": [
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE",
+        "LOW_SAMPLE"
+      ],
+      "threshold": 99,
+      "total_profit": -4.0,
+      "win_rate": 0.0
+    }
+  ],
+  "generated_at_utc": "2026-06-28T15:17:52.176788+00:00",
+  "historical_only_comparison": [
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.056856187290969896,
+      "non_score95_loss_rate": 0.6153846153846154,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 299,
+      "non_score95_total_profit": 17.0,
+      "non_score95_win_rate": 0.38461538461538464,
+      "profit_delta": null,
+      "rows": 299,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "historical_only_first_50_last_50",
+      "source_distribution": {
+        "historical_outcomes": 299
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-17T20:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.21338912133891214,
+      "non_score95_loss_rate": 0.5857740585774058,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 239,
+      "non_score95_total_profit": 51.0,
+      "non_score95_win_rate": 0.41422594142259417,
+      "profit_delta": null,
+      "rows": 239,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "historical_only_first_60_last_40",
+      "source_distribution": {
+        "historical_outcomes": 239
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-19T17:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.15555555555555556,
+      "non_score95_loss_rate": 0.6,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 180,
+      "non_score95_total_profit": 28.0,
+      "non_score95_win_rate": 0.4,
+      "profit_delta": null,
+      "rows": 180,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "historical_only_first_70_last_30",
+      "source_distribution": {
+        "historical_outcomes": 180
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-21T00:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.05,
+      "non_score95_loss_rate": 0.6166666666666667,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 120,
+      "non_score95_total_profit": 6.0,
+      "non_score95_win_rate": 0.38333333333333336,
+      "profit_delta": null,
+      "rows": 120,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "historical_only_first_80_last_20",
+      "source_distribution": {
+        "historical_outcomes": 120
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-22T07:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.05892255892255893,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.10942760942760943,
+      "non_score95_loss_rate": 0.6077441077441077,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 594,
+      "non_score95_total_profit": 65.0,
+      "non_score95_win_rate": 0.39225589225589225,
+      "profit_delta": -0.44276094276094274,
+      "rows": 597,
+      "score95_avg_profit": -0.3333333333333333,
+      "score95_loss_rate": 0.6666666666666666,
+      "score95_median_profit": -2.0,
+      "score95_rows": 3,
+      "score95_source_distribution": {
+        "historical_outcomes": 3
+      },
+      "score95_total_profit": -1.0,
+      "score95_win_rate": 0.3333333333333333,
+      "segment_name": "historical_only_monthly_2026-05-31",
+      "source_distribution": {
+        "historical_outcomes": 597
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.5066666666666666,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.72,
+      "non_score95_loss_rate": 0.49333333333333335,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": 54.0,
+      "non_score95_win_rate": 0.5066666666666667,
+      "profit_delta": -2.7199999999999998,
+      "rows": 76,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "historical_only_weekly_2026-05-10",
+      "source_distribution": {
+        "historical_outcomes": 76
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-10T23:29:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.14473684210526316,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.07456140350877193,
+      "non_score95_loss_rate": 0.6447368421052632,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 228,
+      "non_score95_total_profit": -17.0,
+      "non_score95_win_rate": 0.35526315789473684,
+      "profit_delta": 0.5745614035087719,
+      "rows": 230,
+      "score95_avg_profit": 0.5,
+      "score95_loss_rate": 0.5,
+      "score95_median_profit": 0.5,
+      "score95_rows": 2,
+      "score95_source_distribution": {
+        "historical_outcomes": 2
+      },
+      "score95_total_profit": 1.0,
+      "score95_win_rate": 0.5,
+      "segment_name": "historical_only_weekly_2026-05-17",
+      "source_distribution": {
+        "historical_outcomes": 230
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-17T23:29:59.999000+00:00",
+      "timestamp_min": "2026-05-11T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.09621993127147767,
+      "non_score95_loss_rate": 0.6082474226804123,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 291,
+      "non_score95_total_profit": 28.0,
+      "non_score95_win_rate": 0.3917525773195876,
+      "profit_delta": null,
+      "rows": 291,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "historical_only_weekly_2026-05-24",
+      "source_distribution": {
+        "historical_outcomes": 291
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-24T21:59:59.999000+00:00",
+      "timestamp_min": "2026-05-18T00:14:59.999000+00:00"
+    }
+  ],
+  "ipt_only_forward_validation": [
+    {
+      "loss_avoidance_delta": 0.22400320577038674,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.6052623540372677,
+      "non_score95_loss_rate": 0.546583850931677,
+      "non_score95_median_profit": -3.311027,
+      "non_score95_rows": 161,
+      "non_score95_total_profit": -258.4472390000001,
+      "non_score95_win_rate": 0.453416149068323,
+      "profit_delta": 5.461689402424366,
+      "rows": 223,
+      "score95_avg_profit": 3.8564270483870975,
+      "score95_loss_rate": 0.3225806451612903,
+      "score95_median_profit": 5.640237,
+      "score95_rows": 62,
+      "score95_source_distribution": {
+        "internal_paper_trades": 62
+      },
+      "score95_total_profit": 239.09847700000003,
+      "score95_win_rate": 0.6774193548387096,
+      "segment_name": "ipt_only_first_50_last_50",
+      "source_distribution": {
+        "internal_paper_trades": 223
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-12T05:20:55.105818+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.20133941293815905,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.17985732231404944,
+      "non_score95_loss_rate": 0.5289256198347108,
+      "non_score95_median_profit": -2.663551,
+      "non_score95_rows": 121,
+      "non_score95_total_profit": -21.762735999999983,
+      "non_score95_win_rate": 0.47107438016528924,
+      "profit_delta": 4.102069029210601,
+      "rows": 179,
+      "score95_avg_profit": 3.9222117068965514,
+      "score95_loss_rate": 0.3275862068965517,
+      "score95_median_profit": 5.670486,
+      "score95_rows": 58,
+      "score95_source_distribution": {
+        "internal_paper_trades": 58
+      },
+      "score95_total_profit": 227.48827899999998,
+      "score95_win_rate": 0.6724137931034483,
+      "segment_name": "ipt_only_first_60_last_40",
+      "source_distribution": {
+        "internal_paper_trades": 179
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-13T21:55:32.174702+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.20115394702334122,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.6018853440860215,
+      "non_score95_loss_rate": 0.5913978494623656,
+      "non_score95_median_profit": -3.634175,
+      "non_score95_rows": 93,
+      "non_score95_total_profit": -148.975337,
+      "non_score95_win_rate": 0.40860215053763443,
+      "profit_delta": 4.515159173354314,
+      "rows": 134,
+      "score95_avg_profit": 2.9132738292682925,
+      "score95_loss_rate": 0.3902439024390244,
+      "score95_median_profit": 5.516136,
+      "score95_rows": 41,
+      "score95_source_distribution": {
+        "internal_paper_trades": 41
+      },
+      "score95_total_profit": 119.444227,
+      "score95_win_rate": 0.6097560975609756,
+      "segment_name": "ipt_only_first_70_last_30",
+      "source_distribution": {
+        "internal_paper_trades": 134
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-15T07:40:14.213464+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.07527579493835168,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.2080094925373137,
+      "non_score95_loss_rate": 0.5970149253731343,
+      "non_score95_median_profit": -4.052443,
+      "non_score95_rows": 67,
+      "non_score95_total_profit": -80.93663600000002,
+      "non_score95_win_rate": 0.40298507462686567,
+      "profit_delta": 2.5756385794938357,
+      "rows": 90,
+      "score95_avg_profit": 1.3676290869565217,
+      "score95_loss_rate": 0.5217391304347826,
+      "score95_median_profit": -3.371113,
+      "score95_rows": 23,
+      "score95_source_distribution": {
+        "internal_paper_trades": 23
+      },
+      "score95_total_profit": 31.455469,
+      "score95_win_rate": 0.4782608695652174,
+      "segment_name": "ipt_only_first_80_last_20",
+      "source_distribution": {
+        "internal_paper_trades": 90
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-16T01:12:59.167887+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.45964912280701753,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.7565943684210525,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -4.917218500000001,
+      "non_score95_rows": 38,
+      "non_score95_total_profit": -28.750586,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 26.20992176842105,
+      "rows": 53,
+      "score95_avg_profit": 25.4533274,
+      "score95_loss_rate": 0.06666666666666667,
+      "score95_median_profit": 10.976,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 381.799911,
+      "score95_win_rate": 0.9333333333333333,
+      "segment_name": "ipt_only_monthly_2026-05-31",
+      "source_distribution": {
+        "internal_paper_trades": 53
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-31T12:29:59.999000+00:00",
+      "timestamp_min": "2026-05-26T11:05:12.445670+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.19607480780603193,
+      "low_sample": false,
+      "non_score95_avg_profit": 3.177418746710526,
+      "non_score95_loss_rate": 0.4769736842105263,
+      "non_score95_median_profit": 5.6118144999999995,
+      "non_score95_rows": 304,
+      "non_score95_total_profit": 965.935299,
+      "non_score95_win_rate": 0.5230263157894737,
+      "profit_delta": 2.628623860031046,
+      "rows": 393,
+      "score95_avg_profit": 5.806042606741572,
+      "score95_loss_rate": 0.2808988764044944,
+      "score95_median_profit": 6.396747,
+      "score95_rows": 89,
+      "score95_source_distribution": {
+        "internal_paper_trades": 89
+      },
+      "score95_total_profit": 516.7377919999999,
+      "score95_win_rate": 0.7191011235955056,
+      "segment_name": "ipt_only_monthly_2026-06-30",
+      "source_distribution": {
+        "internal_paper_trades": 393
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-01T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.45964912280701753,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.7565943684210525,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -4.917218500000001,
+      "non_score95_rows": 38,
+      "non_score95_total_profit": -28.750586,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 26.20992176842105,
+      "rows": 53,
+      "score95_avg_profit": 25.4533274,
+      "score95_loss_rate": 0.06666666666666667,
+      "score95_median_profit": 10.976,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 381.799911,
+      "score95_win_rate": 0.9333333333333333,
+      "segment_name": "ipt_only_weekly_2026-05-31",
+      "source_distribution": {
+        "internal_paper_trades": 53
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-31T12:29:59.999000+00:00",
+      "timestamp_min": "2026-05-26T11:05:12.445670+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.425531914893617,
+      "low_sample": true,
+      "non_score95_avg_profit": 4.822068531914892,
+      "non_score95_loss_rate": 0.425531914893617,
+      "non_score95_median_profit": 7.333333,
+      "non_score95_rows": 47,
+      "non_score95_total_profit": 226.63722099999995,
+      "non_score95_win_rate": 0.574468085106383,
+      "profit_delta": 6.449701468085108,
+      "rows": 56,
+      "score95_avg_profit": 11.27177,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 9.713812,
+      "score95_rows": 9,
+      "score95_source_distribution": {
+        "internal_paper_trades": 9
+      },
+      "score95_total_profit": 101.44593,
+      "score95_win_rate": 1.0,
+      "segment_name": "ipt_only_weekly_2026-06-07",
+      "source_distribution": {
+        "internal_paper_trades": 56
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-06-07T23:25:48.264869+00:00",
+      "timestamp_min": "2026-06-01T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.16460987261146498,
+      "low_sample": false,
+      "non_score95_avg_profit": 5.3318253757961775,
+      "non_score95_loss_rate": 0.445859872611465,
+      "non_score95_median_profit": 6.136957,
+      "non_score95_rows": 157,
+      "non_score95_total_profit": 837.0965839999999,
+      "non_score95_win_rate": 0.554140127388535,
+      "profit_delta": 1.8860077804538227,
+      "rows": 189,
+      "score95_avg_profit": 7.21783315625,
+      "score95_loss_rate": 0.28125,
+      "score95_median_profit": 6.352577,
+      "score95_rows": 32,
+      "score95_source_distribution": {
+        "internal_paper_trades": 32
+      },
+      "score95_total_profit": 230.970661,
+      "score95_win_rate": 0.71875,
+      "segment_name": "ipt_only_weekly_2026-06-14",
+      "source_distribution": {
+        "internal_paper_trades": 189
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-14T21:41:21.445035+00:00",
+      "timestamp_min": "2026-06-08T02:05:46.171489+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.21679197994987465,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.08260063157894723,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -2.36696,
+      "non_score95_rows": 95,
+      "non_score95_total_profit": 7.847059999999987,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 2.6064524874686716,
+      "rows": 137,
+      "score95_avg_profit": 2.689053119047619,
+      "score95_loss_rate": 0.30952380952380953,
+      "score95_median_profit": 5.7996685,
+      "score95_rows": 42,
+      "score95_source_distribution": {
+        "internal_paper_trades": 42
+      },
+      "score95_total_profit": 112.940231,
+      "score95_win_rate": 0.6904761904761905,
+      "segment_name": "ipt_only_weekly_2026-06-21",
+      "source_distribution": {
+        "internal_paper_trades": 137
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-21T18:35:34.901559+00:00",
+      "timestamp_min": "2026-06-15T00:10:15.228515+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.5,
+      "low_sample": true,
+      "non_score95_avg_profit": -21.1291132,
+      "non_score95_loss_rate": 1.0,
+      "non_score95_median_profit": -10.998097,
+      "non_score95_rows": 5,
+      "non_score95_total_profit": -105.645566,
+      "non_score95_win_rate": 0.0,
+      "profit_delta": 33.02594153333333,
+      "rows": 11,
+      "score95_avg_profit": 11.896828333333334,
+      "score95_loss_rate": 0.5,
+      "score95_median_profit": 11.837999,
+      "score95_rows": 6,
+      "score95_source_distribution": {
+        "internal_paper_trades": 6
+      },
+      "score95_total_profit": 71.38097,
+      "score95_win_rate": 0.5,
+      "segment_name": "ipt_only_weekly_2026-06-28",
+      "source_distribution": {
+        "internal_paper_trades": 11
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+      "timestamp_min": "2026-06-22T01:40:17.532675+00:00"
+    }
+  ],
+  "model_promotion": "HOLD",
+  "next_recommendation": "Keep Phase 3 LOCKED and classifier promotion on HOLD. Continue PAPER_ONLY forward collection until live-like rolling windows provide sufficient source-aware evidence.",
+  "paper_only": true,
+  "phase3_status": "LOCKED",
+  "registry_changed": false,
+  "rolling_forward_windows": [
+    {
+      "loss_avoidance_delta": -0.6122448979591837,
+      "low_sample": false,
+      "non_score95_avg_profit": 1.3061224489795917,
+      "non_score95_loss_rate": 0.3877551020408163,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 49,
+      "non_score95_total_profit": 64.0,
+      "non_score95_win_rate": 0.6122448979591837,
+      "profit_delta": -3.3061224489795915,
+      "rows": 50,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "rolling_50_0_49",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-10T16:14:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.6530612244897959,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.10204081632653061,
+      "non_score95_loss_rate": 0.6530612244897959,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 49,
+      "non_score95_total_profit": -5.0,
+      "non_score95_win_rate": 0.3469387755102041,
+      "profit_delta": 3.1020408163265305,
+      "rows": 50,
+      "score95_avg_profit": 3.0,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 3.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": 3.0,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_50_50_99",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-11T19:59:59.999000+00:00",
+      "timestamp_min": "2026-05-10T16:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.2,
+      "non_score95_loss_rate": 0.68,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": -10.0,
+      "non_score95_win_rate": 0.32,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_100_149",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-13T09:44:59.999000+00:00",
+      "timestamp_min": "2026-05-11T23:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.16,
+      "non_score95_loss_rate": 0.64,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": -8.0,
+      "non_score95_win_rate": 0.36,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_150_199",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-14T18:59:59.999000+00:00",
+      "timestamp_min": "2026-05-13T09:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.76,
+      "non_score95_loss_rate": 0.76,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": -38.0,
+      "non_score95_win_rate": 0.24,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_200_249",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-16T04:44:59.999000+00:00",
+      "timestamp_min": "2026-05-14T19:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.5306122448979591,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.9387755102040817,
+      "non_score95_loss_rate": 0.46938775510204084,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 49,
+      "non_score95_total_profit": 46.0,
+      "non_score95_win_rate": 0.5306122448979592,
+      "profit_delta": -2.938775510204082,
+      "rows": 50,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "rolling_50_250_299",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-17T21:14:59.999000+00:00",
+      "timestamp_min": "2026-05-16T06:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -1.0,
+      "non_score95_loss_rate": 0.8,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": -50.0,
+      "non_score95_win_rate": 0.2,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_300_349",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-19T07:44:59.999000+00:00",
+      "timestamp_min": "2026-05-17T21:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.84,
+      "non_score95_loss_rate": 0.48,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": 42.0,
+      "non_score95_win_rate": 0.52,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_350_399",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-20T16:59:59.999000+00:00",
+      "timestamp_min": "2026-05-19T07:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.22,
+      "non_score95_loss_rate": 0.66,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": -11.0,
+      "non_score95_win_rate": 0.34,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_400_449",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-21T13:59:59.999000+00:00",
+      "timestamp_min": "2026-05-20T17:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.3,
+      "non_score95_loss_rate": 0.58,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": 15.0,
+      "non_score95_win_rate": 0.42,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_450_499",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-22T13:29:59.999000+00:00",
+      "timestamp_min": "2026-05-21T13:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.42,
+      "non_score95_loss_rate": 0.54,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 50,
+      "non_score95_total_profit": 21.0,
+      "non_score95_win_rate": 0.46,
+      "profit_delta": null,
+      "rows": 50,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_50_500_549",
+      "source_distribution": {
+        "historical_outcomes": 50
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-23T20:59:59.999000+00:00",
+      "timestamp_min": "2026-05-22T13:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.6382978723404256,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.02127659574468085,
+      "non_score95_loss_rate": 0.6382978723404256,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 47,
+      "non_score95_total_profit": -1.0,
+      "non_score95_win_rate": 0.3617021276595745,
+      "profit_delta": 6.923285262411348,
+      "rows": 50,
+      "score95_avg_profit": 6.902008666666667,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 6.92078,
+      "score95_rows": 3,
+      "score95_source_distribution": {
+        "internal_paper_trades": 3
+      },
+      "score95_total_profit": 20.706026,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_50_550_599",
+      "source_distribution": {
+        "historical_outcomes": 47,
+        "internal_paper_trades": 3
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-26T11:05:48.735914+00:00",
+      "timestamp_min": "2026-05-23T20:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.44298245614035087,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.7565943684210525,
+      "non_score95_loss_rate": 0.5263157894736842,
+      "non_score95_median_profit": -4.917218500000001,
+      "non_score95_rows": 38,
+      "non_score95_total_profit": -28.750586,
+      "non_score95_win_rate": 0.47368421052631576,
+      "profit_delta": 30.847751451754384,
+      "rows": 50,
+      "score95_avg_profit": 30.091157083333332,
+      "score95_loss_rate": 0.08333333333333333,
+      "score95_median_profit": 11.1538575,
+      "score95_rows": 12,
+      "score95_source_distribution": {
+        "internal_paper_trades": 12
+      },
+      "score95_total_profit": 361.093885,
+      "score95_win_rate": 0.9166666666666666,
+      "segment_name": "rolling_50_600_649",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-31T12:29:59.999000+00:00",
+      "timestamp_min": "2026-05-26T14:20:13.099917+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.45454545454545453,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.5814383863636374,
+      "non_score95_loss_rate": 0.45454545454545453,
+      "non_score95_median_profit": 6.450108999999999,
+      "non_score95_rows": 44,
+      "non_score95_total_profit": -69.58328900000005,
+      "non_score95_win_rate": 0.5454545454545454,
+      "profit_delta": 9.910025386363639,
+      "rows": 50,
+      "score95_avg_profit": 8.328587,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 8.3012665,
+      "score95_rows": 6,
+      "score95_source_distribution": {
+        "internal_paper_trades": 6
+      },
+      "score95_total_profit": 49.971522,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_50_650_699",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-07T22:14:59.999000+00:00",
+      "timestamp_min": "2026-06-01T00:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.20325203252032525,
+      "low_sample": false,
+      "non_score95_avg_profit": 14.55548351219512,
+      "non_score95_loss_rate": 0.5365853658536586,
+      "non_score95_median_profit": -2.628927,
+      "non_score95_rows": 41,
+      "non_score95_total_profit": 596.774824,
+      "non_score95_win_rate": 0.4634146341463415,
+      "profit_delta": -10.499253289972899,
+      "rows": 50,
+      "score95_avg_profit": 4.056230222222222,
+      "score95_loss_rate": 0.3333333333333333,
+      "score95_median_profit": 6.770833,
+      "score95_rows": 9,
+      "score95_source_distribution": {
+        "internal_paper_trades": 9
+      },
+      "score95_total_profit": 36.506071999999996,
+      "score95_win_rate": 0.6666666666666666,
+      "segment_name": "rolling_50_700_749",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-09T07:25:48.256964+00:00",
+      "timestamp_min": "2026-06-07T22:25:12.832775+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.3023255813953488,
+      "low_sample": false,
+      "non_score95_avg_profit": 12.880507395348836,
+      "non_score95_loss_rate": 0.3023255813953488,
+      "non_score95_median_profit": 8.209535,
+      "non_score95_rows": 43,
+      "non_score95_total_profit": 553.861818,
+      "non_score95_win_rate": 0.6976744186046512,
+      "profit_delta": 5.957792176079735,
+      "rows": 50,
+      "score95_avg_profit": 18.83829957142857,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 13.522461,
+      "score95_rows": 7,
+      "score95_source_distribution": {
+        "internal_paper_trades": 7
+      },
+      "score95_total_profit": 131.868097,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_50_750_799",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-11T15:55:52.664984+00:00",
+      "timestamp_min": "2026-06-09T14:40:12.269591+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.2276422764227643,
+      "low_sample": false,
+      "non_score95_avg_profit": -3.9502702439024384,
+      "non_score95_loss_rate": 0.5609756097560976,
+      "non_score95_median_profit": -3.311027,
+      "non_score95_rows": 41,
+      "non_score95_total_profit": -161.96107999999998,
+      "non_score95_win_rate": 0.43902439024390244,
+      "profit_delta": 11.828472688346883,
+      "rows": 50,
+      "score95_avg_profit": 7.878202444444445,
+      "score95_loss_rate": 0.3333333333333333,
+      "score95_median_profit": 5.175734,
+      "score95_rows": 9,
+      "score95_source_distribution": {
+        "internal_paper_trades": 9
+      },
+      "score95_total_profit": 70.903822,
+      "score95_win_rate": 0.6666666666666666,
+      "segment_name": "rolling_50_800_849",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-13T01:55:54.633757+00:00",
+      "timestamp_min": "2026-06-11T19:30:30.284876+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.06578947368421051,
+      "low_sample": false,
+      "non_score95_avg_profit": 4.331366342105262,
+      "non_score95_loss_rate": 0.3157894736842105,
+      "non_score95_median_profit": 9.186752,
+      "non_score95_rows": 38,
+      "non_score95_total_profit": 164.59192099999999,
+      "non_score95_win_rate": 0.6842105263157895,
+      "profit_delta": 1.1243498245614036,
+      "rows": 50,
+      "score95_avg_profit": 5.455716166666666,
+      "score95_loss_rate": 0.25,
+      "score95_median_profit": 7.0806505,
+      "score95_rows": 12,
+      "score95_source_distribution": {
+        "internal_paper_trades": 12
+      },
+      "score95_total_profit": 65.468594,
+      "score95_win_rate": 0.75,
+      "segment_name": "rolling_50_850_899",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-15T01:50:31.845210+00:00",
+      "timestamp_min": "2026-06-13T03:10:32.572376+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.3075684380032206,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.3357527407407404,
+      "non_score95_loss_rate": 0.48148148148148145,
+      "non_score95_median_profit": 5.867493,
+      "non_score95_rows": 27,
+      "non_score95_total_profit": -36.06532399999999,
+      "non_score95_win_rate": 0.5185185185185185,
+      "profit_delta": 7.012457784219,
+      "rows": 50,
+      "score95_avg_profit": 5.67670504347826,
+      "score95_loss_rate": 0.17391304347826086,
+      "score95_median_profit": 6.558798,
+      "score95_rows": 23,
+      "score95_source_distribution": {
+        "internal_paper_trades": 23
+      },
+      "score95_total_profit": 130.564216,
+      "score95_win_rate": 0.8260869565217391,
+      "segment_name": "rolling_50_900_949",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-16T01:10:13.992797+00:00",
+      "timestamp_min": "2026-06-15T01:50:52.335842+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.02857142857142858,
+      "low_sample": false,
+      "non_score95_avg_profit": 2.1426022285714286,
+      "non_score95_loss_rate": 0.5714285714285714,
+      "non_score95_median_profit": -2.36696,
+      "non_score95_rows": 35,
+      "non_score95_total_profit": 74.991078,
+      "non_score95_win_rate": 0.42857142857142855,
+      "profit_delta": -5.474112428571428,
+      "rows": 50,
+      "score95_avg_profit": -3.3315101999999994,
+      "score95_loss_rate": 0.6,
+      "score95_median_profit": -3.731007,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": -49.972652999999994,
+      "score95_win_rate": 0.4,
+      "segment_name": "rolling_50_950_999",
+      "source_distribution": {
+        "internal_paper_trades": 50
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-20T06:55:59.805987+00:00",
+      "timestamp_min": "2026-06-16T01:11:20.257148+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.5135135135135135,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.7567567567567568,
+      "non_score95_loss_rate": 0.4864864864864865,
+      "non_score95_median_profit": 3.0,
+      "non_score95_rows": 74,
+      "non_score95_total_profit": 56.0,
+      "non_score95_win_rate": 0.5135135135135135,
+      "profit_delta": -2.756756756756757,
+      "rows": 75,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "rolling_75_0_74",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-10T23:14:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.6621621621621622,
+      "low_sample": false,
+      "non_score95_avg_profit": -0.0945945945945946,
+      "non_score95_loss_rate": 0.6621621621621622,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 74,
+      "non_score95_total_profit": -7.0,
+      "non_score95_win_rate": 0.33783783783783783,
+      "profit_delta": 3.0945945945945947,
+      "rows": 75,
+      "score95_avg_profit": 3.0,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 3.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": 3.0,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_75_75_149",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-13T09:44:59.999000+00:00",
+      "timestamp_min": "2026-05-10T23:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.37333333333333335,
+      "non_score95_loss_rate": 0.68,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": -28.0,
+      "non_score95_win_rate": 0.32,
+      "profit_delta": null,
+      "rows": 75,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_75_150_224",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-15T07:44:59.999000+00:00",
+      "timestamp_min": "2026-05-13T09:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.43243243243243246,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.3783783783783784,
+      "non_score95_loss_rate": 0.5675675675675675,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 74,
+      "non_score95_total_profit": 28.0,
+      "non_score95_win_rate": 0.43243243243243246,
+      "profit_delta": -2.3783783783783785,
+      "rows": 75,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "rolling_75_225_299",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-17T21:14:59.999000+00:00",
+      "timestamp_min": "2026-05-15T07:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.44,
+      "non_score95_loss_rate": 0.72,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": -33.0,
+      "non_score95_win_rate": 0.28,
+      "profit_delta": null,
+      "rows": 75,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_75_300_374",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-20T10:59:59.999000+00:00",
+      "timestamp_min": "2026-05-17T21:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.18666666666666668,
+      "non_score95_loss_rate": 0.5733333333333334,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": 14.0,
+      "non_score95_win_rate": 0.4266666666666667,
+      "profit_delta": null,
+      "rows": 75,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_75_375_449",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-21T13:59:59.999000+00:00",
+      "timestamp_min": "2026-05-20T12:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.16,
+      "non_score95_loss_rate": 0.6,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 75,
+      "non_score95_total_profit": 12.0,
+      "non_score95_win_rate": 0.4,
+      "profit_delta": null,
+      "rows": 75,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_75_450_524",
+      "source_distribution": {
+        "historical_outcomes": 75
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-23T13:14:59.999000+00:00",
+      "timestamp_min": "2026-05-21T13:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.5694444444444444,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.3194444444444444,
+      "non_score95_loss_rate": 0.5694444444444444,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 72,
+      "non_score95_total_profit": 23.0,
+      "non_score95_win_rate": 0.4305555555555556,
+      "profit_delta": 6.5825642222222225,
+      "rows": 75,
+      "score95_avg_profit": 6.902008666666667,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 6.92078,
+      "score95_rows": 3,
+      "score95_source_distribution": {
+        "internal_paper_trades": 3
+      },
+      "score95_total_profit": 20.706026,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_75_525_599",
+      "source_distribution": {
+        "historical_outcomes": 72,
+        "internal_paper_trades": 3
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-26T11:05:48.735914+00:00",
+      "timestamp_min": "2026-05-23T13:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.4666666666666667,
+      "low_sample": false,
+      "non_score95_avg_profit": 1.358272033333333,
+      "non_score95_loss_rate": 0.5333333333333333,
+      "non_score95_median_profit": -5.024118,
+      "non_score95_rows": 60,
+      "non_score95_total_profit": 81.49632199999998,
+      "non_score95_win_rate": 0.4666666666666667,
+      "profit_delta": 24.046372166666668,
+      "rows": 75,
+      "score95_avg_profit": 25.4046442,
+      "score95_loss_rate": 0.06666666666666667,
+      "score95_median_profit": 10.976,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 381.069663,
+      "score95_win_rate": 0.9333333333333333,
+      "segment_name": "rolling_75_600_674",
+      "source_distribution": {
+        "internal_paper_trades": 75
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-07T02:55:50.013035+00:00",
+      "timestamp_min": "2026-05-26T14:20:13.099917+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.22619047619047616,
+      "low_sample": false,
+      "non_score95_avg_profit": 6.618168682539683,
+      "non_score95_loss_rate": 0.47619047619047616,
+      "non_score95_median_profit": 5.635167,
+      "non_score95_rows": 63,
+      "non_score95_total_profit": 416.944627,
+      "non_score95_win_rate": 0.5238095238095238,
+      "profit_delta": -1.076350682539684,
+      "rows": 75,
+      "score95_avg_profit": 5.541817999999999,
+      "score95_loss_rate": 0.25,
+      "score95_median_profit": 8.7797305,
+      "score95_rows": 12,
+      "score95_source_distribution": {
+        "internal_paper_trades": 12
+      },
+      "score95_total_profit": 66.50181599999999,
+      "score95_win_rate": 0.75,
+      "segment_name": "rolling_75_675_749",
+      "source_distribution": {
+        "internal_paper_trades": 75
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-09T07:25:48.256964+00:00",
+      "timestamp_min": "2026-06-07T04:15:09.116948+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.04342431761786597,
+      "low_sample": false,
+      "non_score95_avg_profit": 11.243916403225809,
+      "non_score95_loss_rate": 0.27419354838709675,
+      "non_score95_median_profit": 8.2209185,
+      "non_score95_rows": 62,
+      "non_score95_total_profit": 697.1228170000002,
+      "non_score95_win_rate": 0.7258064516129032,
+      "profit_delta": 3.046475212158809,
+      "rows": 75,
+      "score95_avg_profit": 14.290391615384618,
+      "score95_loss_rate": 0.23076923076923078,
+      "score95_median_profit": 13.522461,
+      "score95_rows": 13,
+      "score95_source_distribution": {
+        "internal_paper_trades": 13
+      },
+      "score95_total_profit": 185.77509100000003,
+      "score95_win_rate": 0.7692307692307693,
+      "segment_name": "rolling_75_750_824",
+      "source_distribution": {
+        "internal_paper_trades": 75
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-06-12T06:10:13.491250+00:00",
+      "timestamp_min": "2026-06-09T14:40:12.269591+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.3166666666666667,
+      "low_sample": false,
+      "non_score95_avg_profit": -2.343835966666667,
+      "non_score95_loss_rate": 0.5166666666666667,
+      "non_score95_median_profit": -2.9976190000000003,
+      "non_score95_rows": 60,
+      "non_score95_total_profit": -140.63015800000002,
+      "non_score95_win_rate": 0.48333333333333334,
+      "profit_delta": 7.841530766666667,
+      "rows": 75,
+      "score95_avg_profit": 5.4976948,
+      "score95_loss_rate": 0.2,
+      "score95_median_profit": 5.637473,
+      "score95_rows": 15,
+      "score95_source_distribution": {
+        "internal_paper_trades": 15
+      },
+      "score95_total_profit": 82.46542199999999,
+      "score95_win_rate": 0.8,
+      "segment_name": "rolling_75_825_899",
+      "source_distribution": {
+        "internal_paper_trades": 75
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-15T01:50:31.845210+00:00",
+      "timestamp_min": "2026-06-12T06:10:33.542559+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.3935185185185185,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.1301660833333333,
+      "non_score95_loss_rate": 0.5416666666666666,
+      "non_score95_median_profit": -2.347828,
+      "non_score95_rows": 48,
+      "non_score95_total_profit": -54.247972,
+      "non_score95_win_rate": 0.4583333333333333,
+      "profit_delta": 7.035237564814814,
+      "rows": 75,
+      "score95_avg_profit": 5.905071481481481,
+      "score95_loss_rate": 0.14814814814814814,
+      "score95_median_profit": 6.583434,
+      "score95_rows": 27,
+      "score95_source_distribution": {
+        "internal_paper_trades": 27
+      },
+      "score95_total_profit": 159.43693,
+      "score95_win_rate": 0.8518518518518519,
+      "segment_name": "rolling_75_900_974",
+      "source_distribution": {
+        "internal_paper_trades": 75
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-16T11:10:13.664948+00:00",
+      "timestamp_min": "2026-06-15T01:50:52.335842+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.020408163265306145,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.6020408163265306,
+      "non_score95_loss_rate": 0.5204081632653061,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 98,
+      "non_score95_total_profit": 59.0,
+      "non_score95_win_rate": 0.47959183673469385,
+      "profit_delta": -0.10204081632653061,
+      "rows": 100,
+      "score95_avg_profit": 0.5,
+      "score95_loss_rate": 0.5,
+      "score95_median_profit": 0.5,
+      "score95_rows": 2,
+      "score95_source_distribution": {
+        "historical_outcomes": 2
+      },
+      "score95_total_profit": 1.0,
+      "score95_win_rate": 0.5,
+      "segment_name": "rolling_100_0_99",
+      "source_distribution": {
+        "historical_outcomes": 100
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-11T19:59:59.999000+00:00",
+      "timestamp_min": "2026-05-09T07:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.18,
+      "non_score95_loss_rate": 0.66,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 100,
+      "non_score95_total_profit": -18.0,
+      "non_score95_win_rate": 0.34,
+      "profit_delta": null,
+      "rows": 100,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_100_100_199",
+      "source_distribution": {
+        "historical_outcomes": 100
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-14T18:59:59.999000+00:00",
+      "timestamp_min": "2026-05-11T23:44:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": -0.38383838383838387,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.08080808080808081,
+      "non_score95_loss_rate": 0.6161616161616161,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 99,
+      "non_score95_total_profit": 8.0,
+      "non_score95_win_rate": 0.3838383838383838,
+      "profit_delta": -2.080808080808081,
+      "rows": 100,
+      "score95_avg_profit": -2.0,
+      "score95_loss_rate": 1.0,
+      "score95_median_profit": -2.0,
+      "score95_rows": 1,
+      "score95_source_distribution": {
+        "historical_outcomes": 1
+      },
+      "score95_total_profit": -2.0,
+      "score95_win_rate": 0.0,
+      "segment_name": "rolling_100_200_299",
+      "source_distribution": {
+        "historical_outcomes": 100
+      },
+      "status": "FAIL",
+      "timestamp_max": "2026-05-17T21:14:59.999000+00:00",
+      "timestamp_min": "2026-05-14T19:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": -0.08,
+      "non_score95_loss_rate": 0.64,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 100,
+      "non_score95_total_profit": -8.0,
+      "non_score95_win_rate": 0.36,
+      "profit_delta": null,
+      "rows": 100,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_100_300_399",
+      "source_distribution": {
+        "historical_outcomes": 100
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-20T16:59:59.999000+00:00",
+      "timestamp_min": "2026-05-17T21:29:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": null,
+      "low_sample": true,
+      "non_score95_avg_profit": 0.04,
+      "non_score95_loss_rate": 0.62,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 100,
+      "non_score95_total_profit": 4.0,
+      "non_score95_win_rate": 0.38,
+      "profit_delta": null,
+      "rows": 100,
+      "score95_avg_profit": null,
+      "score95_loss_rate": null,
+      "score95_median_profit": null,
+      "score95_rows": 0,
+      "score95_source_distribution": {},
+      "score95_total_profit": null,
+      "score95_win_rate": null,
+      "segment_name": "rolling_100_400_499",
+      "source_distribution": {
+        "historical_outcomes": 100
+      },
+      "status": "LOW_SAMPLE",
+      "timestamp_max": "2026-05-22T13:29:59.999000+00:00",
+      "timestamp_min": "2026-05-20T17:14:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.5876288659793815,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.20618556701030927,
+      "non_score95_loss_rate": 0.5876288659793815,
+      "non_score95_median_profit": -2.0,
+      "non_score95_rows": 97,
+      "non_score95_total_profit": 20.0,
+      "non_score95_win_rate": 0.41237113402061853,
+      "profit_delta": 6.695823099656358,
+      "rows": 100,
+      "score95_avg_profit": 6.902008666666667,
+      "score95_loss_rate": 0.0,
+      "score95_median_profit": 6.92078,
+      "score95_rows": 3,
+      "score95_source_distribution": {
+        "internal_paper_trades": 3
+      },
+      "score95_total_profit": 20.706026,
+      "score95_win_rate": 1.0,
+      "segment_name": "rolling_100_500_599",
+      "source_distribution": {
+        "historical_outcomes": 97,
+        "internal_paper_trades": 3
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-05-26T11:05:48.735914+00:00",
+      "timestamp_min": "2026-05-22T13:59:59.999000+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.4322493224932249,
+      "low_sample": false,
+      "non_score95_avg_profit": -1.1991935975609762,
+      "non_score95_loss_rate": 0.4878048780487805,
+      "non_score95_median_profit": 5.172999,
+      "non_score95_rows": 82,
+      "non_score95_total_profit": -98.33387500000005,
+      "non_score95_win_rate": 0.5121951219512195,
+      "profit_delta": 24.03616065311653,
+      "rows": 100,
+      "score95_avg_profit": 22.83696705555555,
+      "score95_loss_rate": 0.05555555555555555,
+      "score95_median_profit": 10.219111999999999,
+      "score95_rows": 18,
+      "score95_source_distribution": {
+        "internal_paper_trades": 18
+      },
+      "score95_total_profit": 411.06540699999994,
+      "score95_win_rate": 0.9444444444444444,
+      "segment_name": "rolling_100_600_699",
+      "source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-07T22:14:59.999000+00:00",
+      "timestamp_min": "2026-05-26T14:20:13.099917+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.22916666666666669,
+      "low_sample": false,
+      "non_score95_avg_profit": 13.698055261904765,
+      "non_score95_loss_rate": 0.4166666666666667,
+      "non_score95_median_profit": 6.110409,
+      "non_score95_rows": 84,
+      "non_score95_total_profit": 1150.6366420000002,
+      "non_score95_win_rate": 0.5833333333333334,
+      "profit_delta": -3.174669699404763,
+      "rows": 100,
+      "score95_avg_profit": 10.523385562500001,
+      "score95_loss_rate": 0.1875,
+      "score95_median_profit": 7.386387,
+      "score95_rows": 16,
+      "score95_source_distribution": {
+        "internal_paper_trades": 16
+      },
+      "score95_total_profit": 168.37416900000002,
+      "score95_win_rate": 0.8125,
+      "segment_name": "rolling_100_700_799",
+      "source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-11T15:55:52.664984+00:00",
+      "timestamp_min": "2026-06-07T22:25:12.832775+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.15732368896925858,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.03330178481012622,
+      "non_score95_loss_rate": 0.4430379746835443,
+      "non_score95_median_profit": 6.660688,
+      "non_score95_rows": 79,
+      "non_score95_total_profit": 2.630840999999971,
+      "non_score95_win_rate": 0.5569620253164557,
+      "profit_delta": 6.460622786618445,
+      "rows": 100,
+      "score95_avg_profit": 6.493924571428571,
+      "score95_loss_rate": 0.2857142857142857,
+      "score95_median_profit": 5.637473,
+      "score95_rows": 21,
+      "score95_source_distribution": {
+        "internal_paper_trades": 21
+      },
+      "score95_total_profit": 136.372416,
+      "score95_win_rate": 0.7142857142857143,
+      "segment_name": "rolling_100_800_899",
+      "source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-15T01:50:31.845210+00:00",
+      "timestamp_min": "2026-06-11T19:30:30.284876+00:00"
+    },
+    {
+      "loss_avoidance_delta": 0.19015280135823426,
+      "low_sample": false,
+      "non_score95_avg_profit": 0.6278347419354837,
+      "non_score95_loss_rate": 0.532258064516129,
+      "non_score95_median_profit": -2.347828,
+      "non_score95_rows": 62,
+      "non_score95_total_profit": 38.92575399999999,
+      "non_score95_win_rate": 0.46774193548387094,
+      "profit_delta": 1.4929958633276739,
+      "rows": 100,
+      "score95_avg_profit": 2.1208306052631576,
+      "score95_loss_rate": 0.34210526315789475,
+      "score95_median_profit": 5.7996685,
+      "score95_rows": 38,
+      "score95_source_distribution": {
+        "internal_paper_trades": 38
+      },
+      "score95_total_profit": 80.591563,
+      "score95_win_rate": 0.6578947368421053,
+      "segment_name": "rolling_100_900_999",
+      "source_distribution": {
+        "internal_paper_trades": 100
+      },
+      "status": "PASS",
+      "timestamp_max": "2026-06-20T06:55:59.805987+00:00",
+      "timestamp_min": "2026-06-15T01:50:52.335842+00:00"
+    }
+  ],
+  "runtime_changed": false,
+  "verdict": "REVIEW",
+  "verdict_evidence": {
+    "aggregate_score95_status": "PASS",
+    "ipt_fail_segments": 2,
+    "ipt_low_sample_segments": 2,
+    "ipt_pass_segments": 7,
+    "ipt_valid_forward_segments": 9,
+    "major_forward_contradiction": true
+  }
+}
