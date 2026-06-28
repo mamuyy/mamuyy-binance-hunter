@@ -1,9 +1,9 @@
 # CP-041 Ranking / EV / Lifecycle Pivot Audit
 
-Verdict: **REVIEW**  
-Phase 3: **LOCKED**  
-Classifier gate: **FROZEN**  
-Model promotion: **HOLD**  
+Verdict: **REVIEW**
+Phase 3: **LOCKED**
+Classifier gate: **FROZEN**
+Model promotion: **HOLD**
 PAPER_ONLY: **true**
 
 Rows: 1043
