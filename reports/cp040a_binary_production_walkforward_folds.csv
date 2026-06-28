@@ -1,0 +1,6 @@
+fold_id,train_rows,test_rows,fold_class_coverage,binary_accuracy,bin_train_dist,bin_test_dist,orig_test_dist
+1,500,100,OK,0.45,"{'LOSS': 306, 'WIN': 194}","{'LOSS': 57, 'WIN': 43}","{'LOSS': 57, 'TP1 HIT': 33, 'WIN': 10}"
+2,500,100,OK,0.62,"{'LOSS': 311, 'WIN': 189}","{'WIN': 59, 'LOSS': 41}","{'WIN': 59, 'LOSS': 41}"
+3,500,100,OK,0.43,"{'LOSS': 286, 'WIN': 214}","{'WIN': 62, 'LOSS': 38}","{'WIN': 62, 'LOSS': 38}"
+4,500,100,OK,0.54,"{'LOSS': 262, 'WIN': 238}","{'WIN': 59, 'LOSS': 41}","{'WIN': 59, 'LOSS': 41}"
+5,500,100,OK,0.61,"{'WIN': 261, 'LOSS': 239}","{'WIN': 54, 'LOSS': 46}","{'WIN': 54, 'LOSS': 46}"

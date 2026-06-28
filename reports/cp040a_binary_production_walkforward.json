@@ -1,0 +1,180 @@
+{
+  "cp_id": "CP-040A",
+  "generated_at": "2026-06-28T14:31:51.178101+00:00",
+  "sandbox": true,
+  "dataset_rows": 1043,
+  "train_window": 500,
+  "test_window": 100,
+  "source_artifact_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 446
+  },
+  "original_target_distribution": {
+    "LOSS": 554,
+    "WIN": 299,
+    "TP1 HIT": 190
+  },
+  "binary_target_distribution": {
+    "LOSS": 554,
+    "WIN": 489
+  },
+  "fold_count": 5,
+  "invalid_class_coverage_folds": [],
+  "average_accuracy_valid_folds": 0.53,
+  "average_accuracy_all_folds": 0.53,
+  "per_fold_accuracy": [
+    0.45,
+    0.62,
+    0.43,
+    0.54,
+    0.61
+  ],
+  "confusion_matrix": {
+    "LOSS": {
+      "LOSS": 58,
+      "WIN": 165
+    },
+    "WIN": {
+      "LOSS": 70,
+      "WIN": 207
+    }
+  },
+  "verdict": "FAIL",
+  "verdict_logic": {
+    "PASS": ">= 0.6",
+    "REVIEW": ">= 0.55 and < 0.6",
+    "FAIL": "< 0.55"
+  },
+  "folds": [
+    {
+      "fold_id": 1,
+      "train_rows": 500,
+      "test_rows": 100,
+      "fold_class_coverage": "OK",
+      "unseen_test_labels": [],
+      "orig_train_dist": {
+        "LOSS": 306,
+        "TP1 HIT": 157,
+        "WIN": 37
+      },
+      "orig_test_dist": {
+        "LOSS": 57,
+        "TP1 HIT": 33,
+        "WIN": 10
+      },
+      "bin_train_dist": {
+        "LOSS": 306,
+        "WIN": 194
+      },
+      "bin_test_dist": {
+        "LOSS": 57,
+        "WIN": 43
+      },
+      "binary_accuracy": 0.45
+    },
+    {
+      "fold_id": 2,
+      "train_rows": 500,
+      "test_rows": 100,
+      "fold_class_coverage": "OK",
+      "unseen_test_labels": [],
+      "orig_train_dist": {
+        "LOSS": 311,
+        "TP1 HIT": 152,
+        "WIN": 37
+      },
+      "orig_test_dist": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "bin_train_dist": {
+        "LOSS": 311,
+        "WIN": 189
+      },
+      "bin_test_dist": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "binary_accuracy": 0.62
+    },
+    {
+      "fold_id": 3,
+      "train_rows": 500,
+      "test_rows": 100,
+      "fold_class_coverage": "OK",
+      "unseen_test_labels": [],
+      "orig_train_dist": {
+        "LOSS": 286,
+        "TP1 HIT": 124,
+        "WIN": 90
+      },
+      "orig_test_dist": {
+        "WIN": 62,
+        "LOSS": 38
+      },
+      "bin_train_dist": {
+        "LOSS": 286,
+        "WIN": 214
+      },
+      "bin_test_dist": {
+        "WIN": 62,
+        "LOSS": 38
+      },
+      "binary_accuracy": 0.43
+    },
+    {
+      "fold_id": 4,
+      "train_rows": 500,
+      "test_rows": 100,
+      "fold_class_coverage": "OK",
+      "unseen_test_labels": [],
+      "orig_train_dist": {
+        "LOSS": 262,
+        "WIN": 144,
+        "TP1 HIT": 94
+      },
+      "orig_test_dist": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "bin_train_dist": {
+        "LOSS": 262,
+        "WIN": 238
+      },
+      "bin_test_dist": {
+        "WIN": 59,
+        "LOSS": 41
+      },
+      "binary_accuracy": 0.54
+    },
+    {
+      "fold_id": 5,
+      "train_rows": 500,
+      "test_rows": 100,
+      "fold_class_coverage": "OK",
+      "unseen_test_labels": [],
+      "orig_train_dist": {
+        "LOSS": 239,
+        "WIN": 197,
+        "TP1 HIT": 64
+      },
+      "orig_test_dist": {
+        "WIN": 54,
+        "LOSS": 46
+      },
+      "bin_train_dist": {
+        "WIN": 261,
+        "LOSS": 239
+      },
+      "bin_test_dist": {
+        "WIN": 54,
+        "LOSS": 46
+      },
+      "binary_accuracy": 0.61
+    }
+  ],
+  "notes": [
+    "CP-040A read-only. TP1 HIT merged to WIN for binary view only.",
+    "Fold validity guard applied: INVALID_CLASS_COVERAGE excluded from avg."
+  ]
+}

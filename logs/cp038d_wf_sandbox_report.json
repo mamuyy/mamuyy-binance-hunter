@@ -1,0 +1,90 @@
+{
+  "cp_id": "CP-038D",
+  "sandbox": true,
+  "generated_at": "2026-06-28T14:31:48.257980+00:00",
+  "dataset_rows": 1043,
+  "train_window": 500,
+  "test_window": 100,
+  "total_folds": 5,
+  "wf_accuracy": 0.474,
+  "wf_accuracy_gate": 0.6,
+  "wf_accuracy_gate_passed": false,
+  "avg_brier_score": 0.2745,
+  "brier_gate": 0.24,
+  "brier_gate_passed": false,
+  "gate_passed": false,
+  "verdict": "GATE_FAILED_WF_ACCURACY",
+  "folds": [
+    {
+      "fold_id": 1,
+      "train_rows": 500,
+      "test_rows": 100,
+      "train_start": "2026-05-09 07:29:59.999000+00:00",
+      "test_end": "2026-05-26 11:05:48.735914+00:00",
+      "test_accuracy": 0.2,
+      "brier_score": 0.2348,
+      "label_dist_test": {
+        "LOSS": 57,
+        "TP1 HIT": 33,
+        "WIN": 10
+      }
+    },
+    {
+      "fold_id": 2,
+      "train_rows": 500,
+      "test_rows": 100,
+      "train_start": "2026-05-11 23:44:59.999000+00:00",
+      "test_end": "2026-06-07 22:14:59.999000+00:00",
+      "test_accuracy": 0.58,
+      "brier_score": 0.2581,
+      "label_dist_test": {
+        "WIN": 59,
+        "LOSS": 41
+      }
+    },
+    {
+      "fold_id": 3,
+      "train_rows": 500,
+      "test_rows": 100,
+      "train_start": "2026-05-14 19:14:59.999000+00:00",
+      "test_end": "2026-06-11 15:55:52.664984+00:00",
+      "test_accuracy": 0.45,
+      "brier_score": 0.3257,
+      "label_dist_test": {
+        "WIN": 62,
+        "LOSS": 38
+      }
+    },
+    {
+      "fold_id": 4,
+      "train_rows": 500,
+      "test_rows": 100,
+      "train_start": "2026-05-17 21:29:59.999000+00:00",
+      "test_end": "2026-06-15 01:50:31.845210+00:00",
+      "test_accuracy": 0.55,
+      "brier_score": 0.2913,
+      "label_dist_test": {
+        "WIN": 59,
+        "LOSS": 41
+      }
+    },
+    {
+      "fold_id": 5,
+      "train_rows": 500,
+      "test_rows": 100,
+      "train_start": "2026-05-20 17:14:59.999000+00:00",
+      "test_end": "2026-06-20 06:55:59.805987+00:00",
+      "test_accuracy": 0.59,
+      "brier_score": 0.2628,
+      "label_dist_test": {
+        "WIN": 54,
+        "LOSS": 46
+      }
+    }
+  ],
+  "notes": [
+    "CP-038D sandbox - no model promotion",
+    "Dataset source: _production_universe_dataset() CP-039D",
+    "Prior WF baseline (CP-038A): 54.22%"
+  ]
+}
