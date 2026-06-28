@@ -1,0 +1,95 @@
+{
+  "cp_id": "CP-043",
+  "evidence_summary": {
+    "cp041": {
+      "dataset_rows": null,
+      "ipt_only_score_95_100": {
+        "loss_rate": null,
+        "rows": null,
+        "win_rate": null
+      },
+      "score95_kept_loss_rate": null,
+      "score95_kept_rows": null,
+      "score95_kept_win_rate": null,
+      "score95_loss_avoidance_delta": null,
+      "source_distribution": null,
+      "verdict": "REVIEW"
+    },
+    "cp042": {
+      "aggregate_score95_status": null,
+      "dataset_rows": null,
+      "ipt_forward_counts": {
+        "FAIL": 2,
+        "LOW_SAMPLE": 2,
+        "PASS": 7,
+        "total": 11
+      },
+      "major_forward_contradiction": null,
+      "rolling_window_counts": null,
+      "score95_rows": null,
+      "score95_source_distribution": null,
+      "verdict": "REVIEW"
+    }
+  },
+  "explicit_non_goals": [
+    "No execution.",
+    "No runtime integration.",
+    "No Telegram alert change.",
+    "No dashboard change unless future separate CP.",
+    "No live trading.",
+    "No model promotion.",
+    "No Phase 3 unlock."
+  ],
+  "final_recommendation": [
+    "Keep Phase 3 LOCKED.",
+    "Keep classifier gate FROZEN.",
+    "Continue PAPER_ONLY score95 observation.",
+    "CP-044 optional: score95 shadow monitoring dashboard/reporting audit after more forward data exists.",
+    "Do not open live execution."
+  ],
+  "generated_at_utc": "2026-06-28T15:28:53.715682+00:00",
+  "governance": {
+    "candidate_queue_changed": false,
+    "classifier_gate": "FROZEN",
+    "execution_changed": false,
+    "model_promotion": "HOLD",
+    "paper_only": true,
+    "phase3_status": "LOCKED",
+    "registry_changed": false,
+    "runtime_changed": false,
+    "telegram_changed": false
+  },
+  "missing_evidence_flags": {
+    "cp041_report_missing": false,
+    "cp041_report_unreadable": false,
+    "cp042_report_missing": false,
+    "cp042_report_unreadable": false
+  },
+  "policy_name": "Score95 Paper-only Watchlist Gate Draft",
+  "proposed_policy": [
+    "A candidate may be marked score95_watchlist_candidate=true only if score >= 95.",
+    "This marker is informational and PAPER_ONLY.",
+    "It must not trigger execution.",
+    "It must not bypass portfolio risk.",
+    "It must not bypass market regime filters.",
+    "It must not bypass freshness guard.",
+    "It must not bypass daily order caps.",
+    "It must not bypass safety supervisor.",
+    "It must not unlock Phase 3.",
+    "It must not promote classifier.",
+    "It must not create live Binance orders.",
+    "It must require ongoing source-aware forward evidence."
+  ],
+  "required_future_evidence": [
+    "Minimum additional IPT/live-like sample collection.",
+    "Minimum rolling windows.",
+    "No major forward contradiction.",
+    "Stable loss avoidance.",
+    "Positive avg profit.",
+    "Drawdown / adverse outcome review.",
+    "Symbol concentration review.",
+    "Regime-specific review.",
+    "Manual approval chain before any runtime proposal."
+  ],
+  "verdict": "POLICY_DRAFT_REVIEW"
+}
