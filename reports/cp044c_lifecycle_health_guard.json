@@ -1,0 +1,29 @@
+{
+  "baseline_timestamp": "2026-06-22T18:05:35.736930+00:00",
+  "classifier_state": "FROZEN",
+  "cp045_approved": false,
+  "cp_id": "CP-044C",
+  "db_path": "mamuyy_hunter.db",
+  "error": "unable to open database file",
+  "freshness": {},
+  "generated_at_utc": "2026-06-29T15:53:40.796288+00:00",
+  "internal_paper_lifecycle": {
+    "available": false
+  },
+  "live_execution": "OFF",
+  "model_promotion": "HOLD",
+  "overall_status": "DB_UNREADABLE",
+  "paper_only": true,
+  "phase3_locked": true,
+  "read_only": true,
+  "signal_candidates_score_buckets_after_baseline": {},
+  "sqlite_uri_mode": "mode=ro",
+  "tables": {},
+  "verdicts": {
+    "CP045_APPROVED": false,
+    "DB_READABLE": false,
+    "INTERNAL_PAPER_AVAILABLE": false,
+    "PHASE3_LOCKED": true,
+    "SCORE95_EVIDENCE_INSUFFICIENT": true
+  }
+}
