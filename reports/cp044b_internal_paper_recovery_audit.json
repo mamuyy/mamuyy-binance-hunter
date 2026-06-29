@@ -1,0 +1,199 @@
+{
+  "baseline_timestamp": "2026-06-22T18:05:35.736930+00:00",
+  "classifier_state": "FROZEN",
+  "cp_id": "CP-044B",
+  "db_path": "mamuyy_hunter.db",
+  "findings": {
+    "active_cap": 20,
+    "active_cap_comparison": "20/20",
+    "active_count": 20,
+    "active_statuses": [
+      "OPEN",
+      "TP1 HIT"
+    ],
+    "closed_internal_paper_rows_after_baseline": 2,
+    "closed_score95_rows_after_baseline": 0,
+    "cp045": "NOT APPROVED",
+    "expired_orphaned_count": 136,
+    "internal_paper_bridge_recovery": "OPERATIONALLY RESOLVED",
+    "latest_30_closed_rows_after_baseline_count": 2,
+    "latest_internal_paper_source_signal_timestamp": "2026-06-27T14:25:44.807487+00:00",
+    "live_execution": "OFF",
+    "paper_only": true,
+    "phase3": "LOCKED",
+    "score95_forward_evidence": "INSUFFICIENT",
+    "score95_minimum_required_rows": 30,
+    "signal_candidates_score_buckets_after_baseline": {
+      "gte_85": 0,
+      "gte_90": 0,
+      "gte_95": 0,
+      "score_column": "score",
+      "timestamp_column": "timestamp"
+    },
+    "status_counts": {
+      "CLOSED": 588,
+      "OPEN": 16,
+      "TP1 HIT": 4
+    }
+  },
+  "generated_at_utc": "2026-06-29T15:43:57.370205+00:00",
+  "live_execution": "OFF",
+  "max_concurrent_global": 20,
+  "model_promotion": "HOLD",
+  "paper_only": true,
+  "phase3_locked": true,
+  "read_only": true,
+  "tables": {
+    "internal_paper_trades": {
+      "columns": [
+        "id",
+        "timestamp",
+        "source_signal_timestamp",
+        "symbol",
+        "market_type",
+        "side",
+        "entry_price",
+        "exit_price",
+        "pnl",
+        "confidence",
+        "regime",
+        "macro_state",
+        "allocation_tier",
+        "status",
+        "payload_json",
+        "current_price",
+        "sl",
+        "tp1",
+        "tp2",
+        "exit_reason",
+        "updated_at",
+        "prediction_id",
+        "predicted_probability",
+        "model_version",
+        "evaluation_contract",
+        "target_timestamp"
+      ],
+      "exists": true,
+      "latest_timestamp": {
+        "column": "timestamp",
+        "latest": "2026-06-29T15:15:09.554831+00:00"
+      },
+      "row_count": 608
+    },
+    "shadow_trades": {
+      "columns": [
+        "id",
+        "timestamp",
+        "symbol",
+        "lifecycle_status",
+        "regime_name",
+        "signal_score",
+        "expected_fill",
+        "simulated_live_fill",
+        "execution_drift",
+        "latency_impact",
+        "prediction_drift",
+        "regime_drift",
+        "exposure",
+        "pnl_percent",
+        "execution_quality_score"
+      ],
+      "exists": true,
+      "latest_timestamp": {
+        "column": "timestamp",
+        "latest": "2026-06-29T15:15:07.102564+00:00"
+      },
+      "row_count": 61407
+    },
+    "signal_candidates": {
+      "columns": [
+        "id",
+        "timestamp",
+        "symbol",
+        "score",
+        "raw_score",
+        "base_score",
+        "calculated_score",
+        "shadow_score",
+        "regime_name",
+        "regime_model",
+        "regime_model_adjustment",
+        "flow_adjustment",
+        "breakout",
+        "liquidity_sweep",
+        "volume_spike",
+        "squeeze_probability",
+        "pressure_score",
+        "taker_buy_ratio",
+        "funding_warning",
+        "whale_activity",
+        "price",
+        "is_alert",
+        "threshold_at_capture",
+        "data_source"
+      ],
+      "exists": true,
+      "latest_timestamp": {
+        "column": "timestamp",
+        "latest": "2026-06-29T14:20:44.113610+00:00"
+      },
+      "row_count": 512
+    },
+    "signals": {
+      "columns": [
+        "id",
+        "timestamp",
+        "symbol",
+        "price",
+        "score",
+        "base_score",
+        "regime_name",
+        "regime_score",
+        "pre_flow_score",
+        "flow_adjustment",
+        "funding_zscore",
+        "oi_expansion_rate",
+        "taker_delta",
+        "pressure_score",
+        "squeeze_probability",
+        "flow_state",
+        "whale_activity",
+        "squeeze_risk",
+        "funding_warning",
+        "regime_model",
+        "regime_model_adjustment",
+        "adaptive_confidence_score",
+        "model_confidence",
+        "expected_behavior",
+        "volume_spike",
+        "breakout",
+        "liquidity_sweep",
+        "taker_buy_ratio",
+        "funding",
+        "open_interest",
+        "calculated_score",
+        "shadow_score",
+        "penalty_applied",
+        "data_source"
+      ],
+      "exists": true,
+      "latest_timestamp": {
+        "column": "timestamp",
+        "latest": "2026-06-29T14:20:05.945062+00:00"
+      },
+      "row_count": 321726
+    }
+  },
+  "verdicts": {
+    "active_cap_risk": true,
+    "labels": [
+      "RECOVERY_CONFIRMED",
+      "SCORE95_EVIDENCE_INSUFFICIENT",
+      "ACTIVE_CAP_RISK",
+      "PHASE3_LOCKED"
+    ],
+    "phase3_locked": true,
+    "recovery_confirmed": true,
+    "score95_evidence_insufficient": true
+  }
+}
