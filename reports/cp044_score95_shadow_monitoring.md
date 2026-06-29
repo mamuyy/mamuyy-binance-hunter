@@ -16,20 +16,20 @@
 
 ## Dataset Overview
 
-* Total rows: 1043
-* Timestamp range: 2026-05-09T07:29:59.999000+00:00 -> 2026-06-22T18:05:35.736930+00:00
-* Source distribution: {'historical_outcomes': 597, 'internal_paper_trades': 446}
-* Target distribution: {'LOSS': 554, 'WIN': 299, 'TP1 HIT': 190}
+* Total rows: 1045
+* Timestamp range: 2026-05-09T07:29:59.999000+00:00 -> 2026-06-27T13:05:49.272807+00:00
+* Source distribution: {'historical_outcomes': 597, 'internal_paper_trades': 448}
+* Target distribution: {'LOSS': 556, 'WIN': 299, 'TP1 HIT': 190}
 
 ## New Score95 Monitoring Summary
 
-* New forward rows: 0
+* New forward rows: 2
 * New score>=95 rows: 0
 * Win rate: None
 * Loss rate: None
 * Average profit: None
 * Top symbol concentration: None
-* Rolling pass/fail/low-sample: 0/0/0
+* Rolling pass/fail/low-sample: 0/0/1
 
 ## Pass/Fail Checks
 

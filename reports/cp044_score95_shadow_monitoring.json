@@ -13,21 +13,21 @@
     "score_column": "score",
     "source_distribution": {
       "historical_outcomes": 597,
-      "internal_paper_trades": 446
+      "internal_paper_trades": 448
     },
     "target_distribution": {
-      "LOSS": 554,
+      "LOSS": 556,
       "TP1 HIT": 190,
       "WIN": 299
     },
     "timestamp_column": "timestamp",
-    "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+    "timestamp_max": "2026-06-27T13:05:49.272807+00:00",
     "timestamp_min": "2026-05-09T07:29:59.999000+00:00",
-    "total_rows": 1043
+    "total_rows": 1045
   },
   "execution_changed": false,
   "final_recommendation": "CP-044 does not approve unlock. Use this evidence only to decide whether CP-045 readiness review is warranted.",
-  "generated_at_utc": "2026-06-29T14:56:52.935925+00:00",
+  "generated_at_utc": "2026-06-29T15:22:37.593877+00:00",
   "loaded_evidence_files": {
     "cp041": true,
     "cp042": true,
@@ -65,11 +65,11 @@
     "max_profit": null,
     "median_profit": null,
     "min_profit": null,
-    "new_forward_rows": 0,
+    "new_forward_rows": 2,
     "new_score95_rows": 0,
     "recent_consecutive_fails": 0,
     "rolling_fail_count": 0,
-    "rolling_low_sample_count": 0,
+    "rolling_low_sample_count": 1,
     "rolling_pass_count": 0,
     "rolling_pass_rate": null,
     "score95_source_distribution": {},

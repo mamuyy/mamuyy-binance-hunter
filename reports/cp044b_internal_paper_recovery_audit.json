@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-06-29T15:40:05.424417+00:00",
+  "baseline": "2026-06-22T18:05:35.736930+00:00",
+  "governance": {
+    "audit_mode": "READ_ONLY",
+    "db_writes": false,
+    "runtime_changes": false,
+    "model_changes": false,
+    "threshold_changes": false,
+    "execution_changes": false,
+    "paper_only": true,
+    "classifier": "FROZEN",
+    "model_promotion": "HOLD",
+    "phase3": "LOCKED",
+    "live_execution": "OFF"
+  },
+  "internal_paper_trades": {
+    "status_counts": [
+      {
+        "status": "CLOSED",
+        "count": 588
+      },
+      {
+        "status": "OPEN",
+        "count": 16
+      },
+      {
+        "status": "TP1 HIT",
+        "count": 4
+      }
+    ],
+    "active_count": 20,
+    "global_active_cap": 20,
+    "active_cap_full": true,
+    "expired_orphaned_count": 136,
+    "latest_source_signal_timestamp": "2026-06-27T14:25:44.807487+00:00",
+    "closed_after_baseline_count": 2,
+    "closed_score95_after_baseline_count": 0,
+    "latest_closed_after_baseline": [
+      {
+        "id": 38952,
+        "timestamp": "2026-06-29T15:12:59.662607+00:00",
+        "source_signal_timestamp": "2026-06-27T13:05:49.272807+00:00",
+        "symbol": "SKHYNIXUSDT",
+        "confidence": 93.63,
+        "status": "CLOSED",
+        "exit_reason": "STOP_LOSS",
+        "pnl": -2.084731,
+        "updated_at": "2026-06-29T15:15:09.505862+00:00"
+      },
+      {
+        "id": 38949,
+        "timestamp": "2026-06-29T15:12:59.629291+00:00",
+        "source_signal_timestamp": "2026-06-27T13:05:29.561188+00:00",
+        "symbol": "SKHYNIXUSDT",
+        "confidence": 93.38,
+        "status": "CLOSED",
+        "exit_reason": "STOP_LOSS",
+        "pnl": -2.109013,
+        "updated_at": "2026-06-29T15:15:09.505839+00:00"
+      }
+    ]
+  },
+  "signal_candidates": {
+    "available": true,
+    "table": "signal_candidates",
+    "timestamp_column": "timestamp",
+    "score_column": "score",
+    "latest_timestamp": "2026-06-29T14:20:44.113610+00:00",
+    "after_baseline_total": 512,
+    "buckets_after_baseline": {
+      "gte_85": 0,
+      "gte_90": 0,
+      "gte_95": 0
+    }
+  },
+  "signals": {
+    "available": true,
+    "table": "signals",
+    "row_count": 321726,
+    "timestamp_column": "timestamp",
+    "latest_timestamp": "2026-06-29T14:20:05.945062+00:00"
+  },
+  "shadow_trades": {
+    "available": true,
+    "table": "shadow_trades",
+    "row_count": 61407,
+    "timestamp_column": "timestamp",
+    "latest_timestamp": "2026-06-29T15:15:07.102564+00:00"
+  },
+  "verdicts": {
+    "RECOVERY_CONFIRMED": true,
+    "SCORE95_EVIDENCE_INSUFFICIENT": true,
+    "ACTIVE_CAP_RISK": true,
+    "CP045_APPROVED": false,
+    "PHASE3_LOCKED": true
+  }
+}
