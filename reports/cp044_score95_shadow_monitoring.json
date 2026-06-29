@@ -1,0 +1,128 @@
+{
+  "baseline": {
+    "baseline_estimated": false,
+    "baseline_source": "CP-042 dataset timestamp_max",
+    "baseline_timestamp": "2026-06-22T18:05:35.736930+00:00"
+  },
+  "candidate_queue_changed": false,
+  "classifier_gate": "FROZEN",
+  "cp_id": "CP-044",
+  "dashboard_changed": false,
+  "dataset_overview": {
+    "pnl_column": "pnl_percent",
+    "score_column": "score",
+    "source_distribution": {
+      "historical_outcomes": 597,
+      "internal_paper_trades": 446
+    },
+    "target_distribution": {
+      "LOSS": 554,
+      "TP1 HIT": 190,
+      "WIN": 299
+    },
+    "timestamp_column": "timestamp",
+    "timestamp_max": "2026-06-22T18:05:35.736930+00:00",
+    "timestamp_min": "2026-05-09T07:29:59.999000+00:00",
+    "total_rows": 1043
+  },
+  "execution_changed": false,
+  "final_recommendation": "CP-044 does not approve unlock. Use this evidence only to decide whether CP-045 readiness review is warranted.",
+  "generated_at_utc": "2026-06-29T14:56:52.935925+00:00",
+  "loaded_evidence_files": {
+    "cp041": true,
+    "cp042": true,
+    "cp043": true
+  },
+  "missing_flags": {
+    "dataset_unavailable": false,
+    "missing_profit_column": false,
+    "missing_score_column": false,
+    "missing_timestamp_column": false
+  },
+  "model_promotion": "HOLD",
+  "paper_only": true,
+  "pass_fail_checks": {
+    "avg_profit_positive": false,
+    "ideal_new_score95_rows": false,
+    "loss_rate_within_limit": false,
+    "minimum_new_score95_rows": false,
+    "no_major_forward_contradiction": true,
+    "recent_consecutive_fails_within_limit": true,
+    "rolling_pass_rate_within_limit": false,
+    "top_regime_concentration_within_limit": null,
+    "top_symbol_concentration_within_limit": false
+  },
+  "phase3_status": "LOCKED",
+  "registry_changed": false,
+  "risk_notes": [
+    "Insufficient fresh score>=95 rows for CP-045 readiness confidence."
+  ],
+  "runtime_changed": false,
+  "shadow_monitoring_summary": {
+    "avg_profit": null,
+    "loss_rate": null,
+    "major_forward_contradiction": false,
+    "max_profit": null,
+    "median_profit": null,
+    "min_profit": null,
+    "new_forward_rows": 0,
+    "new_score95_rows": 0,
+    "recent_consecutive_fails": 0,
+    "rolling_fail_count": 0,
+    "rolling_low_sample_count": 0,
+    "rolling_pass_count": 0,
+    "rolling_pass_rate": null,
+    "score95_source_distribution": {},
+    "source_cohort_summary": {
+      "all_sources": {
+        "avg_profit": null,
+        "loss_rate": null,
+        "max_profit": null,
+        "median_profit": null,
+        "min_profit": null,
+        "rows": 0,
+        "total_profit": null,
+        "win_rate": null
+      },
+      "historical_outcomes": {
+        "avg_profit": null,
+        "loss_rate": null,
+        "max_profit": null,
+        "median_profit": null,
+        "min_profit": null,
+        "rows": 0,
+        "total_profit": null,
+        "win_rate": null
+      },
+      "internal_paper_trades": {
+        "avg_profit": null,
+        "loss_rate": null,
+        "max_profit": null,
+        "median_profit": null,
+        "min_profit": null,
+        "rows": 0,
+        "total_profit": null,
+        "win_rate": null
+      }
+    },
+    "top_regime": null,
+    "top_regime_concentration": null,
+    "top_symbol": null,
+    "top_symbol_concentration": null,
+    "total_profit": null,
+    "win_rate": null
+  },
+  "telegram_changed": false,
+  "thresholds": {
+    "ideal_loss_rate": 0.3,
+    "ideal_new_score95_rows": 50,
+    "max_loss_rate": 0.35,
+    "max_recent_consecutive_fails": 1,
+    "max_top_regime_concentration": 0.6,
+    "max_top_symbol_concentration": 0.4,
+    "min_avg_profit": 0.0,
+    "min_rolling_pass_rate": 0.7,
+    "minimum_new_score95_rows": 30
+  },
+  "verdict": "INSUFFICIENT_NEW_FORWARD_DATA"
+}
