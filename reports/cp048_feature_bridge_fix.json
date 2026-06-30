@@ -1,0 +1,144 @@
+{
+  "audit_time_utc": "2026-06-30T08:05:18.921770+00:00",
+  "verdict": "PASS",
+  "reason": "production_universe_dataset now preserves non-zero scanner/flow features.",
+  "failed_features": [],
+  "rows": 1064,
+  "source_artifact_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 467
+  },
+  "label_distribution": {
+    "LOSS": 558,
+    "WIN": 316,
+    "TP1 HIT": 190
+  },
+  "raw_signals": {
+    "volume_spike": {
+      "total": 321766,
+      "nonzero": 321765,
+      "min": 0.0,
+      "max": 372.40932138005115
+    },
+    "breakout": {
+      "total": 321766,
+      "nonzero": 17889,
+      "min": 0,
+      "max": 1
+    },
+    "liquidity_sweep": {
+      "total": 321766,
+      "nonzero": 16462,
+      "min": 0,
+      "max": 1
+    },
+    "funding_zscore": {
+      "total": 321766,
+      "nonzero": 2768,
+      "min": -208.64804100763544,
+      "max": 7.364498978348312
+    },
+    "oi_expansion_rate": {
+      "total": 321766,
+      "nonzero": 2789,
+      "min": -29.759842523604068,
+      "max": 997.5498420149822
+    },
+    "taker_delta": {
+      "total": 321766,
+      "nonzero": 2788,
+      "min": -0.665979037804337,
+      "max": 0.9159333098659158
+    },
+    "pressure_score": {
+      "total": 321766,
+      "nonzero": 2789,
+      "min": 27.83268555140341,
+      "max": 93.36900711510319
+    },
+    "squeeze_probability": {
+      "total": 321766,
+      "nonzero": 2460,
+      "min": 0.0,
+      "max": 100.0
+    },
+    "regime_score": {
+      "total": 321766,
+      "nonzero": 22353,
+      "min": 0.0,
+      "max": 100.0
+    }
+  },
+  "production_universe_dataset_features": {
+    "volume_spike": {
+      "present": true,
+      "nonzero": 1064,
+      "nunique": 1063,
+      "min": 0.017486768166138443,
+      "max": 128.11699605849893
+    },
+    "breakout": {
+      "present": true,
+      "nonzero": 874,
+      "nunique": 2,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "liquidity_sweep": {
+      "present": true,
+      "nonzero": 152,
+      "nunique": 2,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "funding_zscore": {
+      "present": true,
+      "nonzero": 437,
+      "nunique": 135,
+      "min": -208.64804100763544,
+      "max": 2.7267024040906094
+    },
+    "oi_expansion_rate": {
+      "present": true,
+      "nonzero": 450,
+      "nunique": 190,
+      "min": -24.754282080644845,
+      "max": 33.1018687617078
+    },
+    "taker_delta": {
+      "present": true,
+      "nonzero": 450,
+      "nunique": 449,
+      "min": -0.3408401477481824,
+      "max": 0.6488417016923762
+    },
+    "pressure_score": {
+      "present": true,
+      "nonzero": 450,
+      "nunique": 449,
+      "min": 0.0,
+      "max": 93.36900711510319
+    },
+    "squeeze_probability": {
+      "present": true,
+      "nonzero": 415,
+      "nunique": 17,
+      "min": 0.0,
+      "max": 90.0
+    },
+    "regime_score": {
+      "present": true,
+      "nonzero": 685,
+      "nunique": 15,
+      "min": 0.0,
+      "max": 100.0
+    }
+  },
+  "governance": {
+    "read_only_validation": true,
+    "runtime_execution_changed": false,
+    "model_promoted": false,
+    "live_unlock": false,
+    "threshold_changed": false
+  }
+}

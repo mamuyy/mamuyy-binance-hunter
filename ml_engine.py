@@ -157,23 +157,54 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
     selected_source = None
     try:
         with sqlite3.connect(database_path) as connection:
+            signal_columns = _table_columns(connection, "signals")
+            sql_zero = "0"
+            sql_empty = "''"
+            sql_unknown = "'UNKNOWN'"
             paper_columns = _table_columns(connection, "internal_paper_trades")
             if paper_columns:
                 target_timestamp_expr = _column_expr(paper_columns, "p", "target_timestamp", _column_expr(paper_columns, "p", "updated_at"))
                 timestamp_expr = _column_expr(paper_columns, "p", "source_signal_timestamp", _column_expr(paper_columns, "p", "timestamp"))
+                paper_symbol_expr = _column_expr(paper_columns, "p", "symbol")
+                paper_signal_join = ""
+                if signal_columns:
+                    paper_signal_join = (
+                        f"LEFT JOIN signals s ON s.symbol = {paper_symbol_expr} "
+                        f"AND s.timestamp = {timestamp_expr}"
+                    )
+                signal_regime_expr = _column_expr(signal_columns, "s", "regime_name", sql_empty)
+                paper_regime_source_expr = _column_expr(paper_columns, "p", "regime", sql_empty)
+                paper_regime_expr = (
+                    f"COALESCE(NULLIF(NULLIF({signal_regime_expr}, ''), 'UNKNOWN'), "
+                    f"NULLIF({paper_regime_source_expr}, ''), 'UNKNOWN')"
+                )
+                paper_feature_select = [
+                    f"{_column_expr(signal_columns, 's', 'volume_spike', sql_zero)} AS volume_spike",
+                    f"{_column_expr(signal_columns, 's', 'breakout', sql_zero)} AS breakout",
+                    f"{_column_expr(signal_columns, 's', 'liquidity_sweep', sql_zero)} AS liquidity_sweep",
+                    f"{_column_expr(signal_columns, 's', 'funding_zscore', sql_zero)} AS funding_zscore",
+                    f"{_column_expr(signal_columns, 's', 'oi_expansion_rate', sql_zero)} AS oi_expansion_rate",
+                    f"{_column_expr(signal_columns, 's', 'taker_delta', sql_zero)} AS taker_delta",
+                    f"{_column_expr(signal_columns, 's', 'pressure_score', sql_zero)} AS pressure_score",
+                    f"{_column_expr(signal_columns, 's', 'squeeze_probability', sql_zero)} AS squeeze_probability",
+                    f"{_column_expr(signal_columns, 's', 'regime_score', sql_zero)} AS regime_score",
+                    f"{_column_expr(signal_columns, 's', 'whale_activity', sql_unknown)} AS whale_activity",
+                    f"{_column_expr(signal_columns, 's', 'funding_warning', sql_unknown)} AS funding_warning",
+                ]
                 paper_select = [
                     f"{timestamp_expr} AS timestamp",
                     f"{target_timestamp_expr} AS target_timestamp",
-                    f"{_column_expr(paper_columns, 'p', 'symbol')} AS symbol",
+                    f"{paper_symbol_expr} AS symbol",
                     f"{_column_expr(paper_columns, 'p', 'exit_reason')} AS raw_outcome",
                     f"{_column_expr(paper_columns, 'p', 'pnl', '0')} AS pnl_percent",
                     f"{_column_expr(paper_columns, 'p', 'confidence', '0')} AS score",
-                    f"{_column_expr(paper_columns, 'p', 'regime', "'UNKNOWN'")} AS regime_name",
+                    f"{paper_regime_expr} AS regime_name",
+                    *paper_feature_select,
                     "'internal_paper_trades' AS source_artifact",
                 ]
                 paper_total = int(connection.execute("SELECT COUNT(*) FROM internal_paper_trades").fetchone()[0])
                 paper = pd.read_sql_query(
-                    f"SELECT {', '.join(paper_select)} FROM internal_paper_trades p WHERE UPPER(COALESCE({_column_expr(paper_columns, 'p', 'status')}, '')) = 'CLOSED' ORDER BY timestamp ASC",
+                    f"SELECT {', '.join(paper_select)} FROM internal_paper_trades p {paper_signal_join} WHERE UPPER(COALESCE({_column_expr(paper_columns, 'p', 'status')}, '')) = 'CLOSED' ORDER BY timestamp ASC",
                     connection,
                 )
                 paper = _apply_production_label_mapping(paper)
@@ -193,19 +224,45 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
                     _column_expr(historical_columns, "h", "status"),
                     _column_expr(historical_columns, "h", "win_loss"),
                 ]
+                hist_symbol_expr = _column_expr(historical_columns, "h", "symbol")
+                hist_timestamp_expr = _column_expr(historical_columns, "h", "signal_timestamp")
+                hist_signal_join = ""
+                if signal_columns:
+                    hist_signal_join = (
+                        f"LEFT JOIN signals s ON s.symbol = {hist_symbol_expr} "
+                        f"AND s.timestamp = {hist_timestamp_expr}"
+                    )
+                hist_regime_expr = (
+                    f"COALESCE(NULLIF(NULLIF({_column_expr(signal_columns, 's', 'regime_name', sql_empty)}, ''), 'UNKNOWN'), "
+                    "'HISTORICAL_DERIVED')"
+                )
+                hist_feature_select = [
+                    f"{_column_expr(signal_columns, 's', 'volume_spike', sql_zero)} AS volume_spike",
+                    f"{_column_expr(signal_columns, 's', 'breakout', sql_zero)} AS breakout",
+                    f"{_column_expr(signal_columns, 's', 'liquidity_sweep', sql_zero)} AS liquidity_sweep",
+                    f"{_column_expr(signal_columns, 's', 'funding_zscore', sql_zero)} AS funding_zscore",
+                    f"{_column_expr(signal_columns, 's', 'oi_expansion_rate', sql_zero)} AS oi_expansion_rate",
+                    f"{_column_expr(signal_columns, 's', 'taker_delta', sql_zero)} AS taker_delta",
+                    f"{_column_expr(signal_columns, 's', 'pressure_score', sql_zero)} AS pressure_score",
+                    f"{_column_expr(signal_columns, 's', 'squeeze_probability', sql_zero)} AS squeeze_probability",
+                    f"{_column_expr(signal_columns, 's', 'regime_score', sql_zero)} AS regime_score",
+                    f"{_column_expr(signal_columns, 's', 'whale_activity', sql_unknown)} AS whale_activity",
+                    f"{_column_expr(signal_columns, 's', 'funding_warning', sql_unknown)} AS funding_warning",
+                ]
                 hist_select = [
-                    f"{_column_expr(historical_columns, 'h', 'signal_timestamp')} AS timestamp",
+                    f"{hist_timestamp_expr} AS timestamp",
                     f"{_column_expr(historical_columns, 'h', 'close_timestamp')} AS target_timestamp",
-                    f"{_column_expr(historical_columns, 'h', 'symbol')} AS symbol",
+                    f"{hist_symbol_expr} AS symbol",
                     f"COALESCE({', '.join(outcome_exprs)}) AS raw_outcome",
                     f"{_column_expr(historical_columns, 'h', 'pnl_pct', '0')} AS pnl_percent",
                     f"{score_expr} AS score",
-                    "'HISTORICAL_DERIVED' AS regime_name",
+                    f"{hist_regime_expr} AS regime_name",
+                    *hist_feature_select,
                     "'historical_outcomes' AS source_artifact",
                 ]
                 hist_total = int(connection.execute("SELECT COUNT(*) FROM historical_outcomes").fetchone()[0])
                 hist = pd.read_sql_query(
-                    f"SELECT {', '.join(hist_select)} FROM historical_outcomes h WHERE {score_expr} >= ? ORDER BY timestamp ASC",
+                    f"SELECT {', '.join(hist_select)} FROM historical_outcomes h {hist_signal_join} WHERE {score_expr} >= ? ORDER BY timestamp ASC",
                     connection,
                     params=(production_score_threshold,),
                 )
