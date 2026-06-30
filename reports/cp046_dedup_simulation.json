@@ -1,0 +1,133 @@
+{
+  "cp_id": "CP-046",
+  "title": "Dedup-Aware Dataset Simulation & WF Re-Validation",
+  "generated_at": "2026-06-30T07:47:43.508976+00:00",
+  "read_only": true,
+  "paper_only": true,
+  "dedup_spec": {
+    "method": "per-symbol cooldown, keep-first-in-window",
+    "cooldown_seconds": 300,
+    "applied_independently_per_source": true,
+    "note": "This is a SPEC SIMULATION only. No entry generator code was modified."
+  },
+  "original": {
+    "label": "ORIGINAL",
+    "rows": 1064,
+    "total_folds": 5,
+    "avg_accuracy": 0.532,
+    "verdict": "FAIL",
+    "folds": [
+      {
+        "fold_id": 1,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.45,
+        "bin_test_dist": {
+          "LOSS": 57,
+          "WIN": 43
+        }
+      },
+      {
+        "fold_id": 2,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.62,
+        "bin_test_dist": {
+          "WIN": 59,
+          "LOSS": 41
+        }
+      },
+      {
+        "fold_id": 3,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.44,
+        "bin_test_dist": {
+          "WIN": 62,
+          "LOSS": 38
+        }
+      },
+      {
+        "fold_id": 4,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.54,
+        "bin_test_dist": {
+          "WIN": 59,
+          "LOSS": 41
+        }
+      },
+      {
+        "fold_id": 5,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.61,
+        "bin_test_dist": {
+          "WIN": 54,
+          "LOSS": 46
+        }
+      }
+    ]
+  },
+  "deduped": {
+    "label": "DEDUPED",
+    "rows": 802,
+    "total_folds": 3,
+    "avg_accuracy": 0.54,
+    "verdict": "FAIL",
+    "folds": [
+      {
+        "fold_id": 1,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.47,
+        "bin_test_dist": {
+          "LOSS": 57,
+          "WIN": 43
+        }
+      },
+      {
+        "fold_id": 2,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.62,
+        "bin_test_dist": {
+          "WIN": 61,
+          "LOSS": 39
+        }
+      },
+      {
+        "fold_id": 3,
+        "train_rows": 500,
+        "test_rows": 100,
+        "fold_class_coverage": "OK",
+        "binary_accuracy": 0.53,
+        "bin_test_dist": {
+          "WIN": 53,
+          "LOSS": 47
+        }
+      }
+    ]
+  },
+  "delta_accuracy": 0.008,
+  "gate_verdict": "DEDUP_NOT_SUFFICIENT",
+  "gate_reason": "Delta (+0.0080) is noise-level, not a meaningful improvement. Deduplication alone does not explain WF instability. Fold 2 (acc=0.620) passes the gate in both original and deduped datasets, suggesting the root cause is tied to specific data segments/regimes rather than duplicate entries. Root cause likely lies in feature quality, regime coverage, or insufficient unique signal diversity -- not entry duplication.",
+  "next_steps": [
+    "If DEDUP_SUFFICIENT: design real-time per-symbol cooldown in entry generator (separate CP, runtime change, requires explicit approval)",
+    "If DEDUP_HELPS_PARTIALLY: combine dedup with CP-040B window sensitivity audit",
+    "If DEDUP_NOT_SUFFICIENT: investigate feature quality / regime coverage / data volume as primary WF blockers"
+  ],
+  "notes": [
+    "CP-046 is READ-ONLY. No runtime, execution, or DB changes made.",
+    "No model retraining/promotion performed against live system.",
+    "Dedup applied in-memory only for simulation purposes."
+  ],
+  "verdict_correction_note": "Original automated verdict (INCONCLUSIVE) was based on a script logic bug that checked fold count instead of delta magnitude. Corrected verdict judges purely on the +0.008 delta, which is noise-level and does not support a meaningful dedup benefit."
+}
