@@ -1,0 +1,50 @@
+{
+  "cp_id": "CP-045",
+  "title": "Entry Deduplication & Signal Re-scan Audit",
+  "generated_at": "2026-06-30T07:37:17.796550+00:00",
+  "read_only": true,
+  "paper_only": true,
+  "total_trades": 627,
+  "total_clusters": 198,
+  "trades_in_clusters": 546,
+  "pct_trades_in_clusters": 87.08,
+  "excess_entries": 348,
+  "pct_excess_entries": 55.5,
+  "rescan_interval_seconds": {
+    "sample_size": 348,
+    "mean": 25.01,
+    "median": 20.23,
+    "min": 15.62,
+    "max": 86.87
+  },
+  "production_universe_dataset_impact": {
+    "dataset_available": true,
+    "dataset_rows": 1064,
+    "dataset_rows_ipt_sourced": 467,
+    "dataset_rows_in_clusters": 414,
+    "dataset_rows_excess": 263,
+    "pct_dataset_in_clusters": 38.91,
+    "pct_dataset_excess": 24.72,
+    "match_method": "symbol + timestamp (tolerance 2s)",
+    "note": "Only internal_paper_trades-sourced dataset rows are candidates for clustering overlap; historical_outcomes rows excluded from this check by definition."
+  },
+  "confidence_cap_100": {
+    "count": 107,
+    "total": 627,
+    "pct": 17.07
+  },
+  "verdict": "REVIEW",
+  "verdict_reason": "24.72% of CP-039D dataset rows are excess duplicate-cluster members (re-scan artifacts at ~20s intervals). This partially explains WF instability in CP-038D/CP-040A and should be addressed via dedup before further model training, but does not invalidate the entire dataset.",
+  "verdict_logic": {
+    "FAIL": ">= 50% trades in clusters",
+    "REVIEW": ">= 20% and < 50%",
+    "PASS": "< 20%"
+  },
+  "notes": [
+    "CP-045 is READ-ONLY. No runtime, execution, or DB changes made.",
+    "No model retraining or promotion performed.",
+    "Recommendation: design dedup/cooldown logic before next ML training cycle (out of scope for this audit)."
+  ],
+  "verdict_basis": "Corrected: based on dataset-level overlap (Section C), not raw internal_paper_trades-wide clustering rate.",
+  "superseded_note": "Initial automated verdict (FAIL, based on 87.08% raw table-wide clustering) was overly broad. Corrected verdict uses the actual CP-039D dataset overlap (24.72% excess), which is the metric relevant to ML training integrity."
+}
