@@ -1,0 +1,161 @@
+{
+  "audit_time_utc": "2026-06-30T08:00:54.831233+00:00",
+  "verdict": "FAIL",
+  "reason": "Raw signals contain non-zero scanner/flow features, but production_universe_dataset outputs those same features as all-zero/constant. This confirms feature bridge zeroing.",
+  "failed_features": [
+    "volume_spike",
+    "breakout",
+    "liquidity_sweep",
+    "funding_zscore",
+    "oi_expansion_rate",
+    "taker_delta",
+    "pressure_score",
+    "squeeze_probability",
+    "regime_score"
+  ],
+  "raw_signals": {
+    "volume_spike": {
+      "total": 321766,
+      "nonzero": 321765,
+      "pct_nonzero": 99.9997,
+      "min": 0.0,
+      "max": 372.40932138005115
+    },
+    "breakout": {
+      "total": 321766,
+      "nonzero": 17889,
+      "pct_nonzero": 5.5596,
+      "min": 0,
+      "max": 1
+    },
+    "liquidity_sweep": {
+      "total": 321766,
+      "nonzero": 16462,
+      "pct_nonzero": 5.1161,
+      "min": 0,
+      "max": 1
+    },
+    "funding_zscore": {
+      "total": 321766,
+      "nonzero": 2768,
+      "pct_nonzero": 0.8603,
+      "min": -208.64804100763544,
+      "max": 7.364498978348312
+    },
+    "oi_expansion_rate": {
+      "total": 321766,
+      "nonzero": 2789,
+      "pct_nonzero": 0.8668,
+      "min": -29.759842523604068,
+      "max": 997.5498420149822
+    },
+    "taker_delta": {
+      "total": 321766,
+      "nonzero": 2788,
+      "pct_nonzero": 0.8665,
+      "min": -0.665979037804337,
+      "max": 0.9159333098659158
+    },
+    "pressure_score": {
+      "total": 321766,
+      "nonzero": 2789,
+      "pct_nonzero": 0.8668,
+      "min": 27.83268555140341,
+      "max": 93.36900711510319
+    },
+    "squeeze_probability": {
+      "total": 321766,
+      "nonzero": 2460,
+      "pct_nonzero": 0.7645,
+      "min": 0.0,
+      "max": 100.0
+    },
+    "regime_score": {
+      "total": 321766,
+      "nonzero": 22353,
+      "pct_nonzero": 6.947,
+      "min": 0.0,
+      "max": 100.0
+    }
+  },
+  "production_universe_dataset": {
+    "rows": 1064,
+    "source_artifact_distribution": {
+      "historical_outcomes": 597,
+      "internal_paper_trades": 467
+    },
+    "features": {
+      "volume_spike": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "breakout": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "liquidity_sweep": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "funding_zscore": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "oi_expansion_rate": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "taker_delta": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "pressure_score": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "squeeze_probability": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "regime_score": {
+        "present": true,
+        "nonzero": 0,
+        "nunique": 1,
+        "min": 0.0,
+        "max": 0.0
+      }
+    }
+  },
+  "governance": {
+    "read_only": true,
+    "runtime_changed": false,
+    "execution_changed": false,
+    "model_promoted": false,
+    "live_unlock": false
+  },
+  "recommended_next_step": "Patch _production_universe_dataset() to join/select feature columns from signals/flow source before any retraining or promotion."
+}
