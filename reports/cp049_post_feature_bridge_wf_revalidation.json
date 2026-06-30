@@ -1,0 +1,210 @@
+{
+  "audit_time_utc": "2026-06-30T08:19:54.922115+00:00",
+  "baseline_cp046_avg_accuracy": 0.532,
+  "post_fix_avg_accuracy": 0.586,
+  "delta_vs_cp046": 0.054,
+  "gate_verdict": "POST_FIX_IMPROVED_REVIEW",
+  "gate_reason": "Post CP-048 WF improved by +0.0540, but remains below 0.60 PASS gate.",
+  "rows": 1064,
+  "source_artifact_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 467
+  },
+  "label_distribution": {
+    "LOSS": 558,
+    "WIN": 316,
+    "TP1 HIT": 190
+  },
+  "feature_stats": {
+    "volume_spike": {
+      "nonzero": 1064,
+      "nunique": 1063,
+      "min": 0.017486768166138443,
+      "max": 128.11699605849893
+    },
+    "breakout": {
+      "nonzero": 874,
+      "nunique": 2,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "liquidity_sweep": {
+      "nonzero": 152,
+      "nunique": 2,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "funding_zscore": {
+      "nonzero": 437,
+      "nunique": 135,
+      "min": -208.64804100763544,
+      "max": 2.7267024040906094
+    },
+    "oi_expansion_rate": {
+      "nonzero": 450,
+      "nunique": 190,
+      "min": -24.754282080644845,
+      "max": 33.1018687617078
+    },
+    "taker_delta": {
+      "nonzero": 450,
+      "nunique": 449,
+      "min": -0.3408401477481824,
+      "max": 0.6488417016923762
+    },
+    "pressure_score": {
+      "nonzero": 450,
+      "nunique": 449,
+      "min": 0.0,
+      "max": 93.36900711510319
+    },
+    "squeeze_probability": {
+      "nonzero": 415,
+      "nunique": 17,
+      "min": 0.0,
+      "max": 90.0
+    },
+    "regime_score": {
+      "nonzero": 685,
+      "nunique": 15,
+      "min": 0.0,
+      "max": 100.0
+    }
+  },
+  "wf": {
+    "folds": [
+      {
+        "fold": 1,
+        "status": "OK",
+        "train_start": "2026-05-09 07:29:59.999000+00:00",
+        "train_end": "2026-05-22 13:29:59.999000+00:00",
+        "test_start": "2026-05-22 13:59:59.999000+00:00",
+        "test_end": "2026-05-26 11:05:48.735914+00:00",
+        "accuracy": 0.53,
+        "train_labels": {
+          "LOSS": 306,
+          "WIN": 194
+        },
+        "test_labels": {
+          "LOSS": 57,
+          "WIN": 43
+        },
+        "train_source": {
+          "historical_outcomes": 500
+        },
+        "test_source": {
+          "historical_outcomes": 97,
+          "internal_paper_trades": 3
+        }
+      },
+      {
+        "fold": 2,
+        "status": "OK",
+        "train_start": "2026-05-11 23:44:59.999000+00:00",
+        "train_end": "2026-05-26 11:05:48.735914+00:00",
+        "test_start": "2026-05-26 14:20:13.099917+00:00",
+        "test_end": "2026-06-07 22:14:59.999000+00:00",
+        "accuracy": 0.66,
+        "train_labels": {
+          "LOSS": 311,
+          "WIN": 189
+        },
+        "test_labels": {
+          "WIN": 59,
+          "LOSS": 41
+        },
+        "train_source": {
+          "historical_outcomes": 497,
+          "internal_paper_trades": 3
+        },
+        "test_source": {
+          "internal_paper_trades": 100
+        }
+      },
+      {
+        "fold": 3,
+        "status": "OK",
+        "train_start": "2026-05-14 19:14:59.999000+00:00",
+        "train_end": "2026-06-07 22:14:59.999000+00:00",
+        "test_start": "2026-06-07 22:25:12.832775+00:00",
+        "test_end": "2026-06-11 15:55:52.664984+00:00",
+        "accuracy": 0.58,
+        "train_labels": {
+          "LOSS": 286,
+          "WIN": 214
+        },
+        "test_labels": {
+          "WIN": 62,
+          "LOSS": 38
+        },
+        "train_source": {
+          "historical_outcomes": 397,
+          "internal_paper_trades": 103
+        },
+        "test_source": {
+          "internal_paper_trades": 100
+        }
+      },
+      {
+        "fold": 4,
+        "status": "OK",
+        "train_start": "2026-05-17 21:29:59.999000+00:00",
+        "train_end": "2026-06-11 15:55:52.664984+00:00",
+        "test_start": "2026-06-11 19:30:30.284876+00:00",
+        "test_end": "2026-06-15 01:50:31.845210+00:00",
+        "accuracy": 0.58,
+        "train_labels": {
+          "LOSS": 262,
+          "WIN": 238
+        },
+        "test_labels": {
+          "WIN": 59,
+          "LOSS": 41
+        },
+        "train_source": {
+          "historical_outcomes": 297,
+          "internal_paper_trades": 203
+        },
+        "test_source": {
+          "internal_paper_trades": 100
+        }
+      },
+      {
+        "fold": 5,
+        "status": "OK",
+        "train_start": "2026-05-20 17:14:59.999000+00:00",
+        "train_end": "2026-06-15 01:50:31.845210+00:00",
+        "test_start": "2026-06-15 01:50:52.335842+00:00",
+        "test_end": "2026-06-20 06:55:59.805987+00:00",
+        "accuracy": 0.58,
+        "train_labels": {
+          "WIN": 261,
+          "LOSS": 239
+        },
+        "test_labels": {
+          "WIN": 54,
+          "LOSS": 46
+        },
+        "train_source": {
+          "internal_paper_trades": 303,
+          "historical_outcomes": 197
+        },
+        "test_source": {
+          "internal_paper_trades": 100
+        }
+      }
+    ],
+    "valid_fold_count": 5,
+    "avg_accuracy": 0.586,
+    "min_accuracy": 0.53,
+    "max_accuracy": 0.66,
+    "verdict": "REVIEW"
+  },
+  "governance": {
+    "read_only_validation": true,
+    "runtime_execution_changed": false,
+    "model_promoted": false,
+    "live_unlock": false,
+    "threshold_changed": false
+  }
+}
