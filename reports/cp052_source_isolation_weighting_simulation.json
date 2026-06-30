@@ -1,0 +1,820 @@
+{
+  "audit_time_utc": "2026-06-30T08:36:21.377400+00:00",
+  "verdict": "SOURCE_WEIGHTING_NOT_SUFFICIENT",
+  "reason": "Source weighting/isolation did not materially improve standard WF enough to justify model promotion.",
+  "rows": 1064,
+  "dataset_source_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 467
+  },
+  "dataset_label_distribution": {
+    "LOSS": 558,
+    "WIN": 316,
+    "TP1 HIT": 190
+  },
+  "standard_train_window": 500,
+  "standard_test_window": 100,
+  "adaptive_train_window": 300,
+  "adaptive_test_window": 50,
+  "baseline_avg_accuracy": 0.586,
+  "best_comparable_label": "standard_hist_weight_0_75",
+  "best_comparable_avg_accuracy": 0.59,
+  "delta_vs_baseline": 0.004,
+  "scenarios": [
+    {
+      "label": "standard_full_additive",
+      "rows": 1064,
+      "train_window": 500,
+      "test_window": 100,
+      "source_weights": {},
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.586,
+      "min_accuracy": 0.53,
+      "max_accuracy": 0.66,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.53,
+          "train_source_distribution": {
+            "historical_outcomes": 500
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 97,
+            "internal_paper_trades": 3
+          },
+          "train_label_distribution": {
+            "LOSS": 306,
+            "WIN": 194
+          },
+          "test_label_distribution": {
+            "LOSS": 57,
+            "WIN": 43
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.66,
+          "train_source_distribution": {
+            "historical_outcomes": 497,
+            "internal_paper_trades": 3
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 311,
+            "WIN": 189
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "historical_outcomes": 397,
+            "internal_paper_trades": 103
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 286,
+            "WIN": 214
+          },
+          "test_label_distribution": {
+            "WIN": 62,
+            "LOSS": 38
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "historical_outcomes": 297,
+            "internal_paper_trades": 203
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 262,
+            "WIN": 238
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "internal_paper_trades": 303,
+            "historical_outcomes": 197
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "WIN": 261,
+            "LOSS": 239
+          },
+          "test_label_distribution": {
+            "WIN": 54,
+            "LOSS": 46
+          }
+        }
+      ]
+    },
+    {
+      "label": "standard_hist_weight_0_75",
+      "rows": 1064,
+      "train_window": 500,
+      "test_window": 100,
+      "source_weights": {
+        "historical_outcomes": 0.75,
+        "internal_paper_trades": 1.0
+      },
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.59,
+      "min_accuracy": 0.53,
+      "max_accuracy": 0.67,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.53,
+          "train_source_distribution": {
+            "historical_outcomes": 500
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 97,
+            "internal_paper_trades": 3
+          },
+          "train_label_distribution": {
+            "LOSS": 306,
+            "WIN": 194
+          },
+          "test_label_distribution": {
+            "LOSS": 57,
+            "WIN": 43
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.67,
+          "train_source_distribution": {
+            "historical_outcomes": 497,
+            "internal_paper_trades": 3
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 311,
+            "WIN": 189
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "historical_outcomes": 397,
+            "internal_paper_trades": 103
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 286,
+            "WIN": 214
+          },
+          "test_label_distribution": {
+            "WIN": 62,
+            "LOSS": 38
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.59,
+          "train_source_distribution": {
+            "historical_outcomes": 297,
+            "internal_paper_trades": 203
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 262,
+            "WIN": 238
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "internal_paper_trades": 303,
+            "historical_outcomes": 197
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "WIN": 261,
+            "LOSS": 239
+          },
+          "test_label_distribution": {
+            "WIN": 54,
+            "LOSS": 46
+          }
+        }
+      ]
+    },
+    {
+      "label": "standard_hist_weight_0_50",
+      "rows": 1064,
+      "train_window": 500,
+      "test_window": 100,
+      "source_weights": {
+        "historical_outcomes": 0.5,
+        "internal_paper_trades": 1.0
+      },
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.572,
+      "min_accuracy": 0.53,
+      "max_accuracy": 0.6,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.53,
+          "train_source_distribution": {
+            "historical_outcomes": 500
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 97,
+            "internal_paper_trades": 3
+          },
+          "train_label_distribution": {
+            "LOSS": 306,
+            "WIN": 194
+          },
+          "test_label_distribution": {
+            "LOSS": 57,
+            "WIN": 43
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.6,
+          "train_source_distribution": {
+            "historical_outcomes": 497,
+            "internal_paper_trades": 3
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 311,
+            "WIN": 189
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.57,
+          "train_source_distribution": {
+            "historical_outcomes": 397,
+            "internal_paper_trades": 103
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 286,
+            "WIN": 214
+          },
+          "test_label_distribution": {
+            "WIN": 62,
+            "LOSS": 38
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.6,
+          "train_source_distribution": {
+            "historical_outcomes": 297,
+            "internal_paper_trades": 203
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 262,
+            "WIN": 238
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.56,
+          "train_source_distribution": {
+            "internal_paper_trades": 303,
+            "historical_outcomes": 197
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "WIN": 261,
+            "LOSS": 239
+          },
+          "test_label_distribution": {
+            "WIN": 54,
+            "LOSS": 46
+          }
+        }
+      ]
+    },
+    {
+      "label": "standard_hist_weight_0_25",
+      "rows": 1064,
+      "train_window": 500,
+      "test_window": 100,
+      "source_weights": {
+        "historical_outcomes": 0.25,
+        "internal_paper_trades": 1.0
+      },
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.572,
+      "min_accuracy": 0.53,
+      "max_accuracy": 0.6,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.53,
+          "train_source_distribution": {
+            "historical_outcomes": 500
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 97,
+            "internal_paper_trades": 3
+          },
+          "train_label_distribution": {
+            "LOSS": 306,
+            "WIN": 194
+          },
+          "test_label_distribution": {
+            "LOSS": 57,
+            "WIN": 43
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.57,
+          "train_source_distribution": {
+            "historical_outcomes": 497,
+            "internal_paper_trades": 3
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 311,
+            "WIN": 189
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.57,
+          "train_source_distribution": {
+            "historical_outcomes": 397,
+            "internal_paper_trades": 103
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 286,
+            "WIN": 214
+          },
+          "test_label_distribution": {
+            "WIN": 62,
+            "LOSS": 38
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.59,
+          "train_source_distribution": {
+            "historical_outcomes": 297,
+            "internal_paper_trades": 203
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 262,
+            "WIN": 238
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.6,
+          "train_source_distribution": {
+            "internal_paper_trades": 303,
+            "historical_outcomes": 197
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "WIN": 261,
+            "LOSS": 239
+          },
+          "test_label_distribution": {
+            "WIN": 54,
+            "LOSS": 46
+          }
+        }
+      ]
+    },
+    {
+      "label": "standard_hist_weight_0_10",
+      "rows": 1064,
+      "train_window": 500,
+      "test_window": 100,
+      "source_weights": {
+        "historical_outcomes": 0.1,
+        "internal_paper_trades": 1.0
+      },
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.564,
+      "min_accuracy": 0.53,
+      "max_accuracy": 0.59,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.53,
+          "train_source_distribution": {
+            "historical_outcomes": 500
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 97,
+            "internal_paper_trades": 3
+          },
+          "train_label_distribution": {
+            "LOSS": 306,
+            "WIN": 194
+          },
+          "test_label_distribution": {
+            "LOSS": 57,
+            "WIN": 43
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.56,
+          "train_source_distribution": {
+            "historical_outcomes": 497,
+            "internal_paper_trades": 3
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 311,
+            "WIN": 189
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.57,
+          "train_source_distribution": {
+            "historical_outcomes": 397,
+            "internal_paper_trades": 103
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 286,
+            "WIN": 214
+          },
+          "test_label_distribution": {
+            "WIN": 62,
+            "LOSS": 38
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.59,
+          "train_source_distribution": {
+            "historical_outcomes": 297,
+            "internal_paper_trades": 203
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "LOSS": 262,
+            "WIN": 238
+          },
+          "test_label_distribution": {
+            "WIN": 59,
+            "LOSS": 41
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.57,
+          "train_source_distribution": {
+            "internal_paper_trades": 303,
+            "historical_outcomes": 197
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 100
+          },
+          "train_label_distribution": {
+            "WIN": 261,
+            "LOSS": 239
+          },
+          "test_label_distribution": {
+            "WIN": 54,
+            "LOSS": 46
+          }
+        }
+      ]
+    },
+    {
+      "label": "standard_internal_paper_only",
+      "rows": 467,
+      "train_window": 500,
+      "test_window": 100,
+      "valid_fold_count": 0,
+      "avg_accuracy": null,
+      "min_accuracy": null,
+      "max_accuracy": null,
+      "verdict": "INSUFFICIENT_ROWS",
+      "reason": "Rows 467 < required 600.",
+      "folds": []
+    },
+    {
+      "label": "standard_historical_only",
+      "rows": 597,
+      "train_window": 500,
+      "test_window": 100,
+      "valid_fold_count": 0,
+      "avg_accuracy": null,
+      "min_accuracy": null,
+      "max_accuracy": null,
+      "verdict": "INSUFFICIENT_ROWS",
+      "reason": "Rows 597 < required 600.",
+      "folds": []
+    },
+    {
+      "label": "adaptive_internal_paper_only",
+      "rows": 467,
+      "train_window": 300,
+      "test_window": 50,
+      "source_weights": {},
+      "valid_fold_count": 3,
+      "avg_accuracy": 0.52,
+      "min_accuracy": 0.38,
+      "max_accuracy": 0.64,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.64,
+          "train_source_distribution": {
+            "internal_paper_trades": 300
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 50
+          },
+          "train_label_distribution": {
+            "WIN": 180,
+            "LOSS": 120
+          },
+          "test_label_distribution": {
+            "WIN": 34,
+            "LOSS": 16
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.54,
+          "train_source_distribution": {
+            "internal_paper_trades": 300
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 50
+          },
+          "train_label_distribution": {
+            "WIN": 183,
+            "LOSS": 117
+          },
+          "test_label_distribution": {
+            "LOSS": 30,
+            "WIN": 20
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.38,
+          "train_source_distribution": {
+            "internal_paper_trades": 300
+          },
+          "test_source_distribution": {
+            "internal_paper_trades": 50
+          },
+          "train_label_distribution": {
+            "WIN": 175,
+            "LOSS": 125
+          },
+          "test_label_distribution": {
+            "LOSS": 26,
+            "WIN": 24
+          }
+        }
+      ]
+    },
+    {
+      "label": "adaptive_historical_only",
+      "rows": 597,
+      "train_window": 300,
+      "test_window": 50,
+      "source_weights": {},
+      "valid_fold_count": 5,
+      "avg_accuracy": 0.432,
+      "min_accuracy": 0.2,
+      "max_accuracy": 0.58,
+      "verdict": "REVIEW",
+      "folds": [
+        {
+          "fold": 1,
+          "status": "OK",
+          "accuracy": 0.36,
+          "train_source_distribution": {
+            "historical_outcomes": 300
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 50
+          },
+          "train_label_distribution": {
+            "LOSS": 180,
+            "WIN": 120
+          },
+          "test_label_distribution": {
+            "LOSS": 40,
+            "WIN": 10
+          }
+        },
+        {
+          "fold": 2,
+          "status": "OK",
+          "accuracy": 0.58,
+          "train_source_distribution": {
+            "historical_outcomes": 300
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 50
+          },
+          "train_label_distribution": {
+            "LOSS": 200,
+            "WIN": 100
+          },
+          "test_label_distribution": {
+            "WIN": 26,
+            "LOSS": 24
+          }
+        },
+        {
+          "fold": 3,
+          "status": "OK",
+          "accuracy": 0.2,
+          "train_source_distribution": {
+            "historical_outcomes": 300
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 50
+          },
+          "train_label_distribution": {
+            "LOSS": 192,
+            "WIN": 108
+          },
+          "test_label_distribution": {
+            "LOSS": 33,
+            "WIN": 17
+          }
+        },
+        {
+          "fold": 4,
+          "status": "OK",
+          "accuracy": 0.52,
+          "train_source_distribution": {
+            "historical_outcomes": 300
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 50
+          },
+          "train_label_distribution": {
+            "LOSS": 191,
+            "WIN": 109
+          },
+          "test_label_distribution": {
+            "LOSS": 29,
+            "WIN": 21
+          }
+        },
+        {
+          "fold": 5,
+          "status": "OK",
+          "accuracy": 0.5,
+          "train_source_distribution": {
+            "historical_outcomes": 300
+          },
+          "test_source_distribution": {
+            "historical_outcomes": 50
+          },
+          "train_label_distribution": {
+            "LOSS": 188,
+            "WIN": 112
+          },
+          "test_label_distribution": {
+            "LOSS": 27,
+            "WIN": 23
+          }
+        }
+      ]
+    }
+  ],
+  "governance": {
+    "read_only_validation": true,
+    "runtime_execution_changed": false,
+    "model_promoted": false,
+    "live_unlock": false,
+    "threshold_changed": false
+  }
+}
