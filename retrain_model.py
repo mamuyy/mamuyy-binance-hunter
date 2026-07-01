@@ -162,6 +162,8 @@ def retrain_model(
         signals_log_path,
         flow_log_path,
         database_path=database_path,
+        use_production_universe=True,
+        production_score_threshold=75,
     )
     registry = _load_registry(registry_path)
     production = registry.get("production")
@@ -228,6 +230,7 @@ def retrain_model(
         output_path=walkforward_output_path,
         chart_dir=chart_dir,
         database_path=database_path,
+        prebuilt_dataset=dataset,
     )
 
     candidate = {

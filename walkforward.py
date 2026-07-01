@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(os.getcwd(), ".matplotlib"))
 
@@ -135,6 +135,7 @@ def run_walkforward_validation(
     database_path: str = "mamuyy_hunter.db",
     train_window: int = 30,
     test_window: int = 10,
+    prebuilt_dataset: Optional[pd.DataFrame] = None,
 ) -> Dict[str, Any]:
     os.makedirs(chart_dir, exist_ok=True)
     charts = {
@@ -142,12 +143,15 @@ def run_walkforward_validation(
         "rolling_accuracy": os.path.join(chart_dir, "rolling_accuracy.png"),
         "rolling_winrate": os.path.join(chart_dir, "rolling_winrate.png"),
     }
-    dataset = build_ml_dataset(
-        paper_trades_path,
-        signals_log_path,
-        "__missing_flow_log.csv",
-        database_path=database_path,
-    )
+    if prebuilt_dataset is not None:
+        dataset = prebuilt_dataset.copy()
+    else:
+        dataset = build_ml_dataset(
+            paper_trades_path,
+            signals_log_path,
+            "__missing_flow_log.csv",
+            database_path=database_path,
+        )
     if "timestamp" in dataset.columns:
         dataset["timestamp"] = pd.to_datetime(dataset["timestamp"], errors="coerce", utc=True)
         dataset = dataset.sort_values("timestamp").reset_index(drop=True)
