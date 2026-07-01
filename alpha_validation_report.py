@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import math
 import random
 import sqlite3
@@ -346,6 +347,11 @@ def apply_empty_failure(report: dict[str, Any], reason: str) -> dict[str, Any]:
     return report
 
 def build_report(db_path: str = DB_DEFAULT) -> dict[str, Any]:
+    try:
+        from binance_futures_testnet_client import load_dotenv_file
+        load_dotenv_file()
+    except Exception:
+        pass
     report: dict[str, Any] = {
         "mode": "PAPER_ONLY READ_ONLY NO_BROKER_API NO_REAL_CAPITAL NO_RUNTIME_MODIFICATION",
         "database": db_path,
@@ -367,6 +373,15 @@ def build_report(db_path: str = DB_DEFAULT) -> dict[str, Any]:
         time_col = pick(cols, ["closed_at", "exit_time", "exit_timestamp", "timestamp", "created_at", "opened_at", "entry_time", "time", "date"])
         id_col = pick(cols, ["id", "trade_id", "uuid"])
         starting_equity, starting_equity_col, starting_equity_reason = detect_starting_equity(rows, cols)
+        if starting_equity is None:
+            _env_eq = os.getenv("ALPHA_STARTING_EQUITY")
+            if _env_eq:
+                try:
+                    starting_equity = float(_env_eq)
+                    starting_equity_col = "ALPHA_STARTING_EQUITY (env override)"
+                    starting_equity_reason = None
+                except ValueError:
+                    pass
 
         classifications = [classify_status(row.get(status_col)) if status_col else "closed" for row in rows]
         closed_rows = [row for row, status in zip(rows, classifications) if status == "closed"]
