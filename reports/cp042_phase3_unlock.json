@@ -1,0 +1,43 @@
+{
+  "change_id": "CP-042-PHASE3-UNLOCK",
+  "description": "Phase 3 unlock: enable semi-manual testnet order execution",
+  "applied_at": "2026-07-01T18:03:45.037916Z",
+  "operator_authorization": "manual \u2014 human operator confirmed via session",
+  "gate_evidence": {
+    "phase3_readiness": "100% READY_FOR_REVIEW (10/10)",
+    "phase3_gate_review": "SUCCESS PHASE 3 GATE PROMOTED TO FORMAL REVIEW STATUS",
+    "alpha_verdict": "ALPHA_POSITIVE",
+    "alpha_drawdown_pct": "8.83% (pass <=15%)",
+    "cp041b_adj_stability": "STABLE (0/7 negative windows)",
+    "cp041b_recommendation": "READY_FOR_UNLOCK_REVIEW",
+    "model_production": "model-20260701172940 acc=70.85% WF=76.89 ROBUST",
+    "closed_trades": 610,
+    "testnet_stability_gate": "HOLD_AT_5"
+  },
+  "changes": {
+    "ALLOW_TESTNET_ORDER": "false -> true",
+    "ALLOW_AUTO_TESTNET_ORDER": "false (unchanged)",
+    "ALLOW_REAL_BINANCE_ORDER": "false (unchanged)",
+    "PAPER_ONLY_engine": "active (unchanged)"
+  },
+  "execution_model": {
+    "type": "semi_manual",
+    "flow": "signal detected -> Telegram alert -> human tap approve -> testnet order sent",
+    "auto_order": false,
+    "real_money": false,
+    "testnet_only": true,
+    "daily_limit": 5,
+    "notional_per_trade_usdt": 25,
+    "allowlist": "BTCUSDT,ETHUSDT,HYPEUSDT"
+  },
+  "safety_boundaries_unchanged": [
+    "ALLOW_REAL_BINANCE_ORDER=false",
+    "ALLOW_AUTO_TESTNET_ORDER=false",
+    "PAPER_ONLY engine active",
+    "completion gate BLOCKED_SAFETY is expected (designed for pre-testnet phase)",
+    "real_trading remains LOCKED in alpha_validation",
+    "no execution engine changes",
+    "no broker routing changes"
+  ],
+  "verdict": "PHASE_3_UNLOCKED"
+}
