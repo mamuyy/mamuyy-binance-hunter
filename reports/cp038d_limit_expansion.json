@@ -1,0 +1,18 @@
+{
+  "change_id": "CP-038D",
+  "description": "Expand testnet daily order limit 3 to 5",
+  "applied_at": "2026-07-01T17:43:12.528347Z",
+  "env_var": "TESTNET_MAX_ORDERS_PER_DAY",
+  "old_value": 3,
+  "new_value": 5,
+  "authorization": "testnet_stability_limit_expansion_gate.py --evaluate: ELIGIBLE_FOR_5_REVIEW",
+  "gate_output_post_patch": "TESTNET STABILITY LIMIT EXPANSION GATE: HOLD_AT_5\nCurrent Limit: 5\nRecommended Limit: 5\nValid Roundtrips: 3\nDistinct UTC Days: 3\nCurrent Safety: PASS\nChecksums: PASS\nDuplicate Entries: 0\nEmergency Recoveries: 0\nLimit Changed: NO\nOrder Sent: NO",
+  "safety_constraints": [
+    "No execution engine changes",
+    "No broker changes",
+    "PAPER_ONLY remains active",
+    "ALLOW_REAL_BINANCE_ORDER=false unchanged",
+    "ALLOW_TESTNET_ORDER=false unchanged"
+  ],
+  "verdict": "APPLIED"
+}
