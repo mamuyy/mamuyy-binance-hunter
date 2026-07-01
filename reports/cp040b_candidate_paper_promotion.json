@@ -1,0 +1,31 @@
+{
+  "generated_utc": "2026-07-01T17:32:26.243643+00:00",
+  "cp": "CP-040B",
+  "verdict": "PASS",
+  "verdict_issues": [],
+  "promoted_candidate_id": "model-20260701172940",
+  "old_production_sha256": "504788a3",
+  "new_production_sha256": "529ee3cd",
+  "previous_model_sha256": "504788a3",
+  "candidate_metrics": {
+    "accuracy": 0.7085427135678392,
+    "precision": 0.7717345135745549,
+    "walkforward_stability_score": 76.89181075508324,
+    "walkforward_health": "ROBUST",
+    "walkforward_avg_pf": 5.200833410411007,
+    "dataset_rows": 663
+  },
+  "promotion_method": "copy_existing_audited_candidate_artifact",
+  "production_model_replaced": true,
+  "previous_model_backup_created": true,
+  "model_promoted": true,
+  "promotion_scope": "PAPER_ONLY_MODEL",
+  "runtime_execution_changed": false,
+  "threshold_changed": false,
+  "scanner_changed": false,
+  "telegram_execution_changed": false,
+  "portfolio_engine_changed": false,
+  "live_unlock": false,
+  "phase3_unlock": false,
+  "paper_only": true
+}
