@@ -227,14 +227,21 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
                 hist_symbol_expr = _column_expr(historical_columns, "h", "symbol")
                 hist_timestamp_expr = _column_expr(historical_columns, "h", "signal_timestamp")
                 hist_signal_join = ""
+                hist_regime_filter = ""
                 if signal_columns:
+                    # CP-040: INNER JOIN excludes historical rows where signals.regime_name
+                    # is NULL/empty/placeholder — those rows degrade model accuracy by
+                    # injecting HISTORICAL_DERIVED noise into 60%+ of historical dataset.
                     hist_signal_join = (
-                        f"LEFT JOIN signals s ON s.symbol = {hist_symbol_expr} "
+                        f"INNER JOIN signals s ON s.symbol = {hist_symbol_expr} "
                         f"AND s.timestamp = {hist_timestamp_expr}"
                     )
+                    hist_regime_filter = (
+                        " AND s.regime_name IS NOT NULL"
+                        " AND s.regime_name NOT IN ('', 'UNKNOWN', 'HISTORICAL_DERIVED')"
+                    )
                 hist_regime_expr = (
-                    f"COALESCE(NULLIF(NULLIF({_column_expr(signal_columns, 's', 'regime_name', sql_empty)}, ''), 'UNKNOWN'), "
-                    "'HISTORICAL_DERIVED')"
+                    f"{_column_expr(signal_columns, 's', 'regime_name', sql_empty)}"
                 )
                 hist_feature_select = [
                     f"{_column_expr(signal_columns, 's', 'volume_spike', sql_zero)} AS volume_spike",
@@ -262,7 +269,7 @@ def _production_universe_dataset(database_path: str = "mamuyy_hunter.db", produc
                 ]
                 hist_total = int(connection.execute("SELECT COUNT(*) FROM historical_outcomes").fetchone()[0])
                 hist = pd.read_sql_query(
-                    f"SELECT {', '.join(hist_select)} FROM historical_outcomes h {hist_signal_join} WHERE {score_expr} >= ? ORDER BY timestamp ASC",
+                    f"SELECT {', '.join(hist_select)} FROM historical_outcomes h {hist_signal_join} WHERE {score_expr} >= ?{hist_regime_filter} ORDER BY timestamp ASC",
                     connection,
                     params=(production_score_threshold,),
                 )
