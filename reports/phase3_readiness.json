@@ -1,0 +1,113 @@
+{
+  "blockers": [],
+  "closed_paper_trades": 610,
+  "closed_paper_trades_progress": "610/100",
+  "closed_paper_trades_target": 100,
+  "criteria_details": [
+    {
+      "blocker": "",
+      "detail": "consistency=100%, conflicts=0",
+      "name": "governance_audit consistency >= 95 and conflicts == 0",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "recommendation=NORMAL",
+      "name": "portfolio_risk_budget recommendation not worse than DEFENSIVE",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "top_recommendation=WATCHLIST, freeze_count=0, readiness_freeze_count=0",
+      "name": "promotion_scorecard readiness not FREEZE",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "closed_paper_trades: 610/100 (internal_paper_trades=610, legacy_csv=0)",
+      "name": "internal_paper_trades closed >= 100",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "verdict=REVIEW, path=logs/label_quality_audit.json",
+      "name": "label quality audit PASS/REVIEW",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "verdict=PASS, db_integrity=ok, backup=db_backups/mamuyy_hunter_20260701_175629.db, backup_integrity=ok, backup_age_hours=0.0235",
+      "name": "backup verification artifact PASS",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "verdict=PASS, path=reports/stress_test_report.json, age_minutes=2.99, fresh_minutes=1440",
+      "name": "stress test report PASS/REVIEW and fresh",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "path=docs/OPERATOR_RUNBOOK.md, missing_sections=none",
+      "name": "operator runbook complete",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "db_readable=True, heartbeat_age_minutes=0.25, system_health_score=100, diagnostics=UNKNOWN, tmux_hunter=RUNNING, tmux_dashboard=RUNNING, daily_ops_report_age_minutes=929.10",
+      "name": "system health stable",
+      "next_action": "",
+      "passed": true
+    },
+    {
+      "blocker": "",
+      "detail": "violations=none",
+      "name": "PAPER_ONLY enforced",
+      "next_action": "",
+      "passed": true
+    }
+  ],
+  "failed_criteria": [],
+  "generated_at": "2026-07-01T17:59:12.678109+00:00",
+  "governance_constraints": {
+    "no_broker_routing": true,
+    "no_execution_changes": true,
+    "no_live_trading": true,
+    "no_phase_3_unlock_automation": true,
+    "no_strategy_promotion": true,
+    "paper_only": "PAPER_ONLY",
+    "read_only_analytics": true
+  },
+  "next_actions": [],
+  "paper_only": true,
+  "passed_criteria": [
+    "governance_audit consistency >= 95 and conflicts == 0",
+    "portfolio_risk_budget recommendation not worse than DEFENSIVE",
+    "promotion_scorecard readiness not FREEZE",
+    "internal_paper_trades closed >= 100",
+    "label quality audit PASS/REVIEW",
+    "backup verification artifact PASS",
+    "stress test report PASS/REVIEW and fresh",
+    "operator runbook complete",
+    "system health stable",
+    "PAPER_ONLY enforced"
+  ],
+  "readiness_percent": 100.0,
+  "source_reports": {
+    "backup_verification": "reports/backup_verification.json",
+    "governance_audit": "reports/governance_audit.json",
+    "label_quality_audit": "reports/label_quality_audit.json",
+    "portfolio_risk_budget": "reports/portfolio_risk_budget.json",
+    "promotion_scorecard": "reports/promotion_scorecard.json",
+    "stress_test_report": "reports/stress_test_report.json"
+  },
+  "status": "READY_FOR_REVIEW"
+}

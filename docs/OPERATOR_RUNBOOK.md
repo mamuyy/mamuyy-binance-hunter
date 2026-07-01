@@ -198,6 +198,22 @@ Do not change `PAPER_ONLY` mode without explicit operator sign-off on all gates 
 
 ## 7. Key Commands Reference
 
+### Dashboard Access
+The Streamlit dashboard is accessible via browser at http://168.110.200.231:8501
+Dashboard access requires the  tmux session to be running.
+Verify dashboard session: 
+
+
+### Dashboard Access
+
+The Streamlit dashboard is accessible via browser at http://168.110.200.231:8501
+Dashboard access requires the `dashboard` tmux session to be active on the VPS.
+Verify dashboard session is running before attempting access:
+```bash
+tmux ls | grep dashboard
+```
+If session is missing, see Section 8 (Restart Dashboard) to restore dashboard access.
+
 ### SSH into VPS
 ```bash
 ssh -i ~/Downloads/ssh-key-2026-05-15.key ubuntu@168.110.200.231
