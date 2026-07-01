@@ -1,0 +1,67 @@
+{
+  "generated_utc": "2026-07-01T17:24:22.576882+00:00",
+  "cp": "CP-039D",
+  "candidate_version": "model-20260701172105",
+  "verdict": "PASS",
+  "verdict_issues": [],
+  "dataset_rows": 1067,
+  "train_rows": 746,
+  "test_rows": 321,
+  "train_accuracy": 0.6113,
+  "test_accuracy": 0.5545,
+  "overfit_gap": 0.0567,
+  "per_class_metrics": {
+    "LOSS": {
+      "precision": 0.8596,
+      "recall": 0.2917,
+      "f1": 0.4356,
+      "support": 168
+    },
+    "TP1 HIT": {
+      "precision": 0.3311,
+      "recall": 0.8772,
+      "f1": 0.4808,
+      "support": 57
+    },
+    "WIN": {
+      "precision": 0.6991,
+      "recall": 0.8229,
+      "f1": 0.756,
+      "support": 96
+    }
+  },
+  "confusion_matrix": {
+    "actual_LOSS_pred_LOSS": 49,
+    "actual_LOSS_pred_TP1 HIT": 86,
+    "actual_LOSS_pred_WIN": 33,
+    "actual_TP1 HIT_pred_LOSS": 6,
+    "actual_TP1 HIT_pred_TP1 HIT": 50,
+    "actual_TP1 HIT_pred_WIN": 1,
+    "actual_WIN_pred_LOSS": 2,
+    "actual_WIN_pred_TP1 HIT": 15,
+    "actual_WIN_pred_WIN": 79
+  },
+  "top10_feature_importance": {
+    "pressure_score": 0.154373,
+    "volume_spike": 0.127986,
+    "whale_activity_UNKNOWN": 0.11337,
+    "squeeze_probability": 0.105141,
+    "regime_name_TRENDING BULL": 0.094216,
+    "taker_delta": 0.091224,
+    "score": 0.075844,
+    "funding_zscore": 0.065641,
+    "oi_expansion_rate": 0.050483,
+    "regime_score": 0.035961
+  },
+  "historical_derived_rows": 417,
+  "historical_derived_pct": 39.1,
+  "real_regime_rows": 650,
+  "class_imbalance_ratio": 2.94,
+  "minority_class": "TP1 HIT",
+  "model_weights_written": false,
+  "model_promoted": false,
+  "runtime_execution_changed": false,
+  "threshold_changed": false,
+  "live_unlock": false,
+  "paper_only": true
+}
