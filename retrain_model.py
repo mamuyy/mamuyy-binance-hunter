@@ -155,6 +155,7 @@ def retrain_model(
     previous_model_path: str = "model_weights_previous.pkl",
     walkforward_output_path: str = "logs/retrain_walkforward.csv",
     chart_dir: str = "charts",
+    candidate_only: bool = False,
 ) -> Dict[str, Any]:
     os.makedirs(os.path.dirname(walkforward_output_path) or ".", exist_ok=True)
     dataset = build_ml_dataset(
@@ -252,12 +253,15 @@ def retrain_model(
 
     accepted, reasons = _replacement_allowed(candidate, production)
     warnings = _drift_warnings(candidate, production, registry.get("history", []))
-    if accepted:
+    if accepted and not candidate_only:
         if os.path.exists(production_model_path):
             shutil.copy2(production_model_path, previous_model_path)
         shutil.copy2(candidate_model_path, production_model_path)
         candidate["status"] = "production"
         registry["production"] = candidate
+    elif accepted and candidate_only:
+        candidate["status"] = "candidate_pending_review"
+        candidate["promotion_blocked_by"] = "candidate_only"
     else:
         candidate["status"] = "rejected"
 

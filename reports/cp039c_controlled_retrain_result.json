@@ -1,0 +1,59 @@
+{
+  "generated_utc": "2026-07-01T17:21:06.404271+00:00",
+  "cp": "CP-039C",
+  "patch_commit": "pending",
+  "verdict": "PASS",
+  "verdict_issues": [],
+  "candidate_only": true,
+  "dataset_rows": 1067,
+  "source_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 470
+  },
+  "raw_label_distribution": {
+    "LOSS": 558,
+    "WIN": 319,
+    "TP1 HIT": 190
+  },
+  "binary_effective_label_distribution": {
+    "WIN_effective (WIN + TP1 HIT)": 509,
+    "WIN_effective_pct": 47.7,
+    "LOSS": 558,
+    "LOSS_pct": 52.3
+  },
+  "model_accuracy": 0.5545,
+  "model_precision": 0.7178,
+  "model_recall": 0.5545,
+  "model_profit_factor": 1.6589,
+  "walkforward_rows": 1067,
+  "walkforward_folds": 0,
+  "walkforward_health": "ROBUST",
+  "walkforward_stability_score": 79.25,
+  "walkforward_avg_accuracy": 0.5545,
+  "walkforward_avg_pf": 2.8988,
+  "overfit_risk": 0.0,
+  "replacement_gate_result": {
+    "accepted": true,
+    "reasons": [
+      "Accepted: no production model exists."
+    ],
+    "candidate_status": "candidate_pending_review",
+    "promotion_blocked_by": "candidate_only"
+  },
+  "candidate_status": "candidate_pending_review",
+  "candidate_version": "model-20260701172105",
+  "model_artifact_written": true,
+  "model_artifact_path": "model_weights_candidate.pkl",
+  "model_artifact_sha256_prefix": "e170d4d1c0a09179",
+  "production_model_mtime_before": "2026-06-23T16:20:14.237187+00:00",
+  "production_model_mtime_after": "2026-06-23T16:20:14.237187+00:00",
+  "production_model_sha256_before": "504788a3c5d8cc0d",
+  "production_model_sha256_after": "504788a3c5d8cc0d",
+  "production_model_replaced": false,
+  "previous_model_replaced": false,
+  "model_promoted": false,
+  "runtime_execution_changed": false,
+  "threshold_changed": false,
+  "live_unlock": false,
+  "paper_only": true
+}
