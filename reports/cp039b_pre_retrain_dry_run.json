@@ -1,0 +1,79 @@
+{
+  "generated_utc": "2026-07-01T17:15:13.684590+00:00",
+  "cp": "CP-039B",
+  "patch_commit": "d247679",
+  "model_weights_written": false,
+  "model_promoted": false,
+  "runtime_execution_changed": false,
+  "threshold_changed": false,
+  "live_unlock": false,
+  "dataset_rows": 1067,
+  "label_distribution_raw": {
+    "LOSS": 558,
+    "WIN": 319,
+    "TP1 HIT": 190
+  },
+  "label_distribution_binary_effective": {
+    "WIN_effective (WIN + TP1 HIT)": 509,
+    "LOSS": 558,
+    "WIN_effective_pct": 47.7,
+    "LOSS_pct": 52.3,
+    "note": "TP1 HIT is profitable \u2014 if binary model, WIN effective counts both"
+  },
+  "source_distribution": {
+    "historical_outcomes": 597,
+    "internal_paper_trades": 470
+  },
+  "regime_distribution": {
+    "TRENDING BULL": 433,
+    "HISTORICAL_DERIVED": 417,
+    "BREAKOUT EXPANSION": 91,
+    "HIGH VOLATILITY": 60,
+    "MEAN REVERSION": 37,
+    "RISK OFF": 13,
+    "SIDEWAYS / CHOPPY": 12,
+    "nan": 4
+  },
+  "score_stats": {
+    "min": 75.0,
+    "max": 100.0,
+    "mean": 83.63,
+    "all_above_threshold_75": true
+  },
+  "walkforward_rows": 1067,
+  "walkforward_folds": 103,
+  "walkforward_health": "ROBUST",
+  "walkforward_stability_score": 79.25,
+  "walkforward_overfit_risk": 45.79,
+  "walkforward_average_accuracy": 0.5301,
+  "walkforward_average_pf": 2.8988,
+  "walkforward_dataset_match": true,
+  "replacement_gate_preview": {
+    "note": "Simulated with walkforward_score only \u2014 accuracy/PF unknown until retrain",
+    "walkforward_score": 79.25,
+    "walkforward_gate_45_pass": true,
+    "dataset_rows_gate_8_pass": true,
+    "production_model_exists": false,
+    "production_version": "-",
+    "gate_result_with_zero_metrics": true,
+    "gate_reasons": [
+      "Accepted: no production model exists."
+    ]
+  },
+  "model_weights_check": {
+    "model_weights.pkl": {
+      "exists": true,
+      "mtime_utc": "2026-06-23T16:20:14.237187+00:00"
+    },
+    "model_weights_candidate.pkl": {
+      "exists": true,
+      "mtime_utc": "2026-06-23T16:20:14.237187+00:00"
+    },
+    "model_weights_previous.pkl": {
+      "exists": true,
+      "mtime_utc": "2026-05-21T23:00:49.914198+00:00"
+    }
+  },
+  "verdict": "PASS",
+  "verdict_issues": []
+}
