@@ -403,7 +403,7 @@ def build_result(mode: str, symbol: str) -> Dict[str, Any]:
         "evidence_directory": None, "evidence_required_files_present": False, "checksum_status": "NOT_CHECKED", "evidence_checksum_passed": False,
         "daily_actual_order_count": 0, "daily_order_limit": DEFAULT_DAILY_ORDER_LIMIT, "remaining_daily_order_slots": 0,
         "emergency_close_slot_available": False, "full_roundtrip_required_slots": 3, "full_roundtrip_capacity_passed": False,
-        "blocked_reasons": [], "review_reasons": [], "next_action": None,
+        "blocked_reasons": [], "review_reasons": [], "soft_safety_warnings": [], "phase3_armed": False, "next_action": None,
     }
     return result
 
@@ -416,7 +416,13 @@ def finalize(result: Dict[str, Any], blocked: List[str], review: List[str]) -> N
     if result["allow_auto_testnet_order"]:
         blocked.append("automatic execution is enabled")
     if result["allow_testnet_order"]:
-        blocked.append("Testnet order gate is enabled")
+        # CP-044A: since the CP-042 Phase 3 unlock, ALLOW_TESTNET_ORDER=true is
+        # the approved semi-manual steady state, not an anomaly. Report it as an
+        # armed-state warning; hard blockers below are unchanged.
+        result["phase3_armed"] = True
+        result["soft_safety_warnings"].append(
+            "Testnet order gate is enabled (Phase 3 semi-manual armed state)"
+        )
     if result["allow_manual_actual_roundtrip"]:
         blocked.append("manual actual roundtrip gate is enabled")
     if result["execution_halt_active"]:
@@ -454,7 +460,8 @@ def telegram_preview(result: Dict[str, Any]) -> Dict[str, Any]:
         f"Emergency Slot: {'AVAILABLE' if result['emergency_close_slot_available'] else 'UNAVAILABLE'}",
         f"New Roundtrip Capacity: {'PASS' if result['full_roundtrip_capacity_passed'] else 'BLOCKED'}", "",
         f"HALT: {'ON' if result['execution_halt_active'] else 'OFF'}", f"Real Binance: {'ON' if result['real_binance_enabled'] else 'OFF'}",
-        f"Auto Execution: {'ON' if result['allow_auto_testnet_order'] else 'OFF'}", "", "Read-only report.", "No order sent.",
+        f"Auto Execution: {'ON' if result['allow_auto_testnet_order'] else 'OFF'}",
+        f"Phase 3 Armed: {'YES' if result.get('phase3_armed') else 'NO'}", "", "Read-only report.", "No order sent.",
     ])
     return {"generated_at": utc_now(), "preview": text}
 
@@ -472,6 +479,9 @@ def print_summary(result: Dict[str, Any]) -> None:
     print(f"New Full Roundtrip: {'PERMITTED' if result['full_roundtrip_capacity_passed'] else 'NOT PERMITTED'}")
     print(f"Real Binance: {'ON' if result['real_binance_enabled'] else 'OFF'}")
     print(f"Auto Execution: {'ON' if result['allow_auto_testnet_order'] else 'OFF'}")
+    print(f"Phase 3 Armed: {'YES' if result.get('phase3_armed') else 'NO'}")
+    for warning in result.get("soft_safety_warnings", []):
+        print(f"Soft Warning: {warning}")
 
 
 def run(mode: str, symbol: str, make_preview: bool = False, client_factory: Any = None) -> Dict[str, Any]:
