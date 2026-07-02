@@ -1,0 +1,34 @@
+{
+  "change_id": "CP-044A",
+  "title": "Align operations supervisor with Phase 3 testnet semi-manual semantics",
+  "generated_at": "2026-07-02T15:05:00Z",
+  "verdict": "PASS",
+  "root_cause": "testnet_operations_evidence_supervisor.py finalize() treated ALLOW_TESTNET_ORDER=true as a hard blocked_reason ('Testnet order gate is enabled'). That semantic predates CP-042: under Phase 2.97 the flag was only enabled briefly during a controlled roundtrip, so an enabled gate at idle was an anomaly. After the CP-042 Phase 3 unlock the flag is the approved semi-manual steady state, which made the supervisor return HALTED permanently and contradict the manual approval gate that requires ALLOW_TESTNET_ORDER=true. CP-044 preflight was therefore unpassable by design.",
+  "files_changed": [
+    "testnet_operations_evidence_supervisor.py",
+    "tests/test_testnet_operations_evidence_supervisor.py"
+  ],
+  "semantic_change_summary": "ALLOW_TESTNET_ORDER=true alone no longer forces HALTED. It now sets phase3_armed=true and appends 'Testnet order gate is enabled (Phase 3 semi-manual armed state)' to a new soft_safety_warnings list that does not affect the verdict. The armed state is surfaced in the CLI summary ('Phase 3 Armed: YES' plus soft warning lines) and the Telegram preview. This mirrors the precedent set by commit 14f0a5e, which made the same flag a soft check in testnet_stability_policy.py.",
+  "hard_blockers_preserved": [
+    "REAL_BINANCE_ENABLED=true",
+    "ALLOW_REAL_BINANCE_ORDER=true",
+    "ALLOW_AUTO_TESTNET_ORDER=true",
+    "ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP=true at idle",
+    "TESTNET_EXECUTION_HALT env or halt file active",
+    "execution lock actively held",
+    "non-demo or production Binance base URL",
+    "broker mode not BINANCE_FUTURES_TESTNET_ONLY",
+    "live non-flat position, open orders, or other non-zero positions",
+    "final flat state not verified (live check required for definitive verdict)"
+  ],
+  "soft_warnings_added": [
+    "Testnet order gate is enabled (Phase 3 semi-manual armed state)"
+  ],
+  "targeted_tests_after": "tests/test_testnet_operations_evidence_supervisor.py + tests/test_testnet_stability_limit_expansion_gate.py + tests/test_phase3_runtime_status.py: 39 passed, 21 subtests passed",
+  "full_suite_after": "pytest tests/ (excluding test_manual_actual_testnet_roundtrip_controller.py, tracked separately): 506 passed, 0 failed, 24 subtests passed",
+  "orders_placed": false,
+  "broker_called": false,
+  "real_trading_locked": true,
+  "auto_execution_locked": true,
+  "phase3_mode": "TESTNET_SEMI_MANUAL"
+}

@@ -152,8 +152,62 @@ class SupervisorTests(unittest.TestCase):
         self.client = Other; self.assertEqual(self.run_supervisor()[0]["verdict"], "HALTED")
 
     def test_env_safety_halts(self):
-        for key, value in [("REAL_BINANCE_ENABLED","true"),("ALLOW_AUTO_TESTNET_ORDER","true"),("BINANCE_FUTURES_TESTNET_BASE_URL","https://fapi.binance.com")]:
+        for key, value in [
+            ("REAL_BINANCE_ENABLED", "true"),
+            ("ALLOW_REAL_BINANCE_ORDER", "true"),
+            ("ALLOW_AUTO_TESTNET_ORDER", "true"),
+            ("ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP", "true"),
+            ("BINANCE_FUTURES_TESTNET_BASE_URL", "https://fapi.binance.com"),
+        ]:
             with self.subTest(key=key), mock.patch.dict(os.environ, {key: value}):
+                self.assertEqual(self.run_supervisor()[0]["verdict"], "HALTED")
+
+    def test_phase3_armed_testnet_gate_alone_is_safe_idle_with_soft_warning(self):
+        # CP-044A: ALLOW_TESTNET_ORDER=true is the approved Phase 3 semi-manual
+        # steady state and must not force HALTED on its own.
+        with mock.patch.dict(os.environ, {"ALLOW_TESTNET_ORDER": "true"}):
+            result, output = self.run_supervisor()
+        self.assertEqual(result["verdict"], "SAFE_IDLE")
+        self.assertTrue(result["phase3_armed"])
+        self.assertTrue(result["allow_testnet_order"])
+        self.assertNotIn("Testnet order gate is enabled", result["blocked_reasons"])
+        self.assertIn(
+            "Testnet order gate is enabled (Phase 3 semi-manual armed state)",
+            result["soft_safety_warnings"],
+        )
+        self.assertIn("Phase 3 Armed: YES", output)
+
+    def test_phase3_armed_does_not_weaken_hard_blockers(self):
+        for key, value in [
+            ("REAL_BINANCE_ENABLED", "true"),
+            ("ALLOW_REAL_BINANCE_ORDER", "true"),
+            ("ALLOW_AUTO_TESTNET_ORDER", "true"),
+            ("ALLOW_MANUAL_ACTUAL_TESTNET_ROUNDTRIP", "true"),
+        ]:
+            with self.subTest(key=key), mock.patch.dict(
+                os.environ, {"ALLOW_TESTNET_ORDER": "true", key: value}
+            ):
+                result, _ = self.run_supervisor()
+                self.assertEqual(result["verdict"], "HALTED")
+                self.assertFalse(result["blocked_reasons"] == [])
+
+    def test_phase3_armed_halt_file_still_halts(self):
+        Path(sup.HALT_FILE_PATH).parent.mkdir(exist_ok=True)
+        Path(sup.HALT_FILE_PATH).write_text("halt")
+        self.addCleanup(lambda: Path(sup.HALT_FILE_PATH).unlink(missing_ok=True))
+        with mock.patch.dict(os.environ, {"ALLOW_TESTNET_ORDER": "true"}):
+            self.assertEqual(self.run_supervisor()[0]["verdict"], "HALTED")
+
+    def test_phase3_armed_open_order_and_position_still_halt(self):
+        class Ord(ReadOnlyClient):
+            def get_open_orders(self, symbol=None): return [{"symbol": "ETHUSDT"}]
+        class Pos(ReadOnlyClient):
+            def get_position_risk(self): return [{"symbol": "ETHUSDT", "positionAmt": "0.1", "notional": "20"}]
+        for client in (Ord, Pos):
+            with self.subTest(client=client.__name__), mock.patch.dict(
+                os.environ, {"ALLOW_TESTNET_ORDER": "true"}
+            ):
+                self.client = client
                 self.assertEqual(self.run_supervisor()[0]["verdict"], "HALTED")
 
     def test_evidence_directory_and_checksum_review(self):
