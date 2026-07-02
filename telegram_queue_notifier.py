@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from config import config
+from phase3_runtime_status import resolve_phase3_status
 from telegram import send_telegram_message
 
 QUEUE_JSON_PATH = Path("reports/binance_candidate_queue.json")
@@ -28,7 +29,9 @@ def _fmt_candidate(item: dict[str, Any]) -> str:
     )
 
 
-def build_message(data: dict[str, Any]) -> str:
+def build_message(data: dict[str, Any], status: dict[str, Any] | None = None) -> str:
+    if status is None:
+        status = resolve_phase3_status()
     candidates = data.get("candidates", [])
     lines = [
         "📋 BINANCE CANDIDATE QUEUE",
@@ -50,10 +53,14 @@ def build_message(data: dict[str, Any]) -> str:
     lines.extend([
         "",
         "Status: PROPOSAL_ONLY",
-        "Execution: NOT_ALLOWED",
+        f"Execution: {status.get('execution', 'NOT_ALLOWED')}",
         "Binance: NOT_CALLED",
-        "Phase 3: NOT_UNLOCKED",
+        f"Phase 3: {status.get('phase3', 'NOT_UNLOCKED')}",
+        f"Real Trading: {status.get('real_trading', 'LOCKED')}",
     ])
+
+    for warning in status.get("warnings", []):
+        lines.append(f"⚠️ {warning}")
 
     return "\n".join(lines)
 
