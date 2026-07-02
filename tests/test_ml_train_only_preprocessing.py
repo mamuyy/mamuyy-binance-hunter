@@ -77,7 +77,7 @@ def test_walkforward_folds_keep_preprocessing_isolated_per_fold(tmp_path):
     assert (tmp_path / "walkforward_results.csv").exists()
 
 
-def test_production_universe_prefers_closed_internal_paper_trades(tmp_path, monkeypatch):
+def test_production_universe_merges_closed_paper_and_historical(tmp_path, monkeypatch):
     import json
     import sqlite3
 
@@ -133,21 +133,33 @@ def test_production_universe_prefers_closed_internal_paper_trades(tmp_path, monk
                 ("2026-01-04T00:00:00Z", "BNBUSDT", 0.0, 80, "RANGE", "CLOSED", "EXECUTION_SIMULATED", "2026-01-04T01:00:00Z", "2026-01-04T01:00:00Z"),
             ],
         )
-        connection.execute(
+        connection.executemany(
             """
             INSERT INTO historical_outcomes(signal_timestamp, close_timestamp, symbol, pnl_pct, status, win_loss, score, exit_reason)
-            VALUES ('2026-01-05T00:00:00Z', '2026-01-05T01:00:00Z', 'XRPUSDT', 1.0, 'WIN', 'WIN', 95, 'TAKE_PROFIT_2')
-            """
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-01-05T00:00:00Z", "2026-01-05T01:00:00Z", "XRPUSDT", 1.0, "WIN", "WIN", 95, "TAKE_PROFIT_2"),
+                # Same timestamp+symbol as a closed paper trade: additive merge must
+                # dedupe with internal_paper_trades priority (CP-039D keep="first").
+                ("2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z", "BTCUSDT", -5.0, "LOSS", "LOSS", 95, "STOP_LOSS"),
+            ],
         )
         connection.commit()
 
     dataset = build_ml_dataset("missing.csv", "missing.csv", "missing.csv", database_path=str(db), use_production_universe=True)
 
     assert set(dataset["target"]) == {"WIN", "LOSS"}
-    assert set(dataset["source_artifact"]) == {"internal_paper_trades"}
+    assert set(dataset["source_artifact"]) == {"internal_paper_trades", "historical_outcomes"}
+    btc_rows = dataset[dataset["symbol"] == "BTCUSDT"]
+    assert len(btc_rows) == 1
+    assert set(btc_rows["source_artifact"]) == {"internal_paper_trades"}
+    assert set(btc_rows["target"]) == {"WIN"}
     assert set(["dataset_contract_version", "dataset_build_hash", "production_score_threshold", "label_mapping_version"]).issubset(dataset.columns)
     payload = json.loads(report.read_text())
-    assert payload["selected_source"] == "internal_paper_trades"
+    assert payload["selected_source"] == "additive_merge"
+    assert payload["merge_mode"] == "additive"
+    assert set(payload["source_row_counts"]) == {"internal_paper_trades", "historical_outcomes"}
     assert payload["production_score_threshold"] == 75
 
 
@@ -248,14 +260,14 @@ def test_production_universe_report_tracks_exclusions_distribution_and_range(tmp
                 pnl_pct REAL,
                 status TEXT,
                 win_loss TEXT,
-                confidence REAL,
+                score REAL,
                 exit_reason TEXT
             )
             """
         )
         connection.executemany(
             """
-            INSERT INTO historical_outcomes(signal_timestamp, close_timestamp, symbol, pnl_pct, status, win_loss, confidence, exit_reason)
+            INSERT INTO historical_outcomes(signal_timestamp, close_timestamp, symbol, pnl_pct, status, win_loss, score, exit_reason)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
@@ -290,5 +302,5 @@ def test_production_universe_report_tracks_exclusions_distribution_and_range(tmp
     assert payload["final_label_distribution"] == {"WIN": 1, "LOSS": 1}
     assert payload["timestamp_range"]["min"].startswith("2026-03-01T00:00:00")
     assert payload["timestamp_range"]["max"].startswith("2026-03-02T00:00:00")
-    assert payload["source_priority_used"] == "historical_outcomes"
+    assert payload["source_priority_used"] == "additive_merge"
     assert payload["source_row_counts"]["historical_outcomes"]["total_rows"] == 6
