@@ -174,11 +174,10 @@ class StabilityGateTests(unittest.TestCase):
         self.assertEqual(result["verdict"], "HOLD_AT_3")
         self.assertEqual(result["distinct_utc_days"], 1)
 
-    def test_duplicate_emergency_and_checksum_failure_freeze(self):
+    def test_duplicate_and_emergency_freeze(self):
         cases = [
             {"duplicate": True},
             {"emergency": True},
-            {"checksum_valid": False},
         ]
         for index, kwargs in enumerate(cases, 1):
             with self.subTest(kwargs=kwargs):
@@ -187,12 +186,54 @@ class StabilityGateTests(unittest.TestCase):
                 self.make_session(index, date(2026, 6, 13), **kwargs)
                 self.assertEqual(self.evaluate()["verdict"], "FREEZE_LIMIT")
 
-    def test_unsafe_current_operations_state_freezes(self):
+    def test_checksum_failure_invalidates_evidence_without_freeze(self):
+        self.make_session(1, date(2026, 6, 13), checksum_valid=False)
+        result = self.evaluate()
+        self.assertEqual(result["verdict"], "HOLD_AT_3")
+        self.assertEqual(result["valid_roundtrips"], 0)
+        self.assertEqual(result["invalid_roundtrips"], 1)
+        self.assertFalse(result["all_checksums_passed"])
+        self.assertIn(
+            "one or more evidence snapshots are invalid", result["failed_requirements"]
+        )
+
+    def test_checksum_failure_blocks_expansion_eligibility(self):
+        start = date(2026, 6, 13)
+        for index in range(3):
+            self.make_session(
+                index + 1, start + timedelta(days=index), checksum_valid=index != 2
+            )
+        result = self.evaluate()
+        self.assertEqual(result["verdict"], "HOLD_AT_3")
+        self.assertFalse(result["limit_expansion_authorized"])
+
+    def test_unsafe_current_operations_state_is_soft_warning(self):
         self.make_session(1, date(2026, 6, 13))
         self.write_operations_result(verdict="HALTED", final_flat_live_verified=False)
         result = self.evaluate()
-        self.assertEqual(result["verdict"], "FREEZE_LIMIT")
-        self.assertFalse(result["current_safety_passed"])
+        self.assertEqual(result["verdict"], "HOLD_AT_3")
+        self.assertTrue(result["current_safety_passed"])
+        self.assertEqual(result["current_operations_verdict"], "HALTED")
+        self.assertIn(
+            "operations verdict is not SAFE_IDLE", result["current_soft_safety_warnings"]
+        )
+        self.assertIn(
+            "final flat state not verified", result["current_soft_safety_warnings"]
+        )
+
+    def test_hard_safety_violations_freeze(self):
+        cases = [
+            {"real_binance_enabled": True},
+            {"allow_auto_testnet_order": True},
+        ]
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs):
+                self.make_session(1, date(2026, 6, 13))
+                self.write_operations_result(**kwargs)
+                result = self.evaluate()
+                self.assertEqual(result["verdict"], "FREEZE_LIMIT")
+                self.assertFalse(result["current_safety_passed"])
+                self.assertFalse(result["limit_expansion_authorized"])
 
     def test_ten_clean_roundtrips_across_seven_days_qualify_for_ten_review(self):
         start = date(2026, 6, 13)

@@ -346,6 +346,7 @@ def evaluate_policy(current_limit: int, evidence_root: str, operations_path: str
         "human_review_required": human_review,
         "current_safety_passed": safety_passed,
         "current_operations_verdict": operations.get("verdict") if operations else None,
+        "current_soft_safety_warnings": operations.get("_soft_safety_warnings", []) if operations else [],
         "evidence_sessions_discovered": len(records),
         "valid_roundtrips": len(valid),
         "invalid_roundtrips": len(invalid),
