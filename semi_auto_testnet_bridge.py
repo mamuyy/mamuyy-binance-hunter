@@ -29,12 +29,29 @@ VALID_LONG_DIRECTIONS = {"BUY", "LONG"}
 VALID_SHORT_DIRECTIONS = {"SELL", "SHORT"}
 VALID_SUGGESTED_RISK = {"NORMAL", "NEED_REVIEW"}
 DEFAULT_MIN_NOTIONAL = 20.0
+DEFAULT_OVERLAY_FRESHNESS_SECONDS = 6 * 60 * 60
+STALE_OVERLAY_STATUS = "BLOCKED_STALE_OVERLAY"
 MIN_NOTIONAL_BLOCKED_REASON = "estimated notional is below TESTNET_MIN_NOTIONAL_USDT"
 SECRET_KEY_FRAGMENTS = ("SECRET", "KEY", "TOKEN", "PASSWORD", "SIGNATURE")
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def parse_timestamp(value: Any) -> Optional[datetime]:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def read_json(path: str) -> Optional[Dict[str, Any]]:
@@ -120,6 +137,39 @@ def nested_get(payload: Dict[str, Any], *path: str) -> Any:
             return None
         current = current.get(key)
     return current
+
+
+def overlay_freshness_check(overlay_report: Optional[Dict[str, Any]], freshness_seconds: float) -> Tuple[bool, List[str], Dict[str, Any]]:
+    if overlay_report is None:
+        return False, ["overlay report not readable for freshness check"], {"overlay_freshness_passed": False}
+    signal = overlay_report.get("signal") if isinstance(overlay_report.get("signal"), dict) else {}
+    overlay = overlay_report.get("overlay") if isinstance(overlay_report.get("overlay"), dict) else {}
+    timestamp_value = first_value(
+        overlay_report.get("generated_at"),
+        overlay_report.get("created_at"),
+        overlay_report.get("timestamp"),
+        signal.get("generated_at"),
+        signal.get("timestamp"),
+        signal.get("signal_time"),
+        overlay.get("generated_at"),
+    )
+    generated_at = parse_timestamp(timestamp_value)
+    details: Dict[str, Any] = {
+        "overlay_freshness_passed": False,
+        "overlay_freshness_window_seconds": freshness_seconds,
+        "overlay_timestamp": timestamp_value,
+        "overlay_age_seconds": None,
+    }
+    if generated_at is None:
+        return False, ["overlay report timestamp is missing or invalid"], details
+    age_seconds = (datetime.now(timezone.utc) - generated_at).total_seconds()
+    details["overlay_age_seconds"] = age_seconds
+    if age_seconds < 0:
+        return False, ["overlay report timestamp is in the future"], details
+    if age_seconds > freshness_seconds:
+        return False, ["overlay report is stale beyond freshness window"], details
+    details["overlay_freshness_passed"] = True
+    return True, [], details
 
 
 def pick_from_dicts(dicts: List[Optional[Dict[str, Any]]], keys: List[str]) -> Any:
@@ -381,6 +431,8 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     inputs = extract_decision_inputs(overlay_report, overlay_telegram, args.symbol or "")
     safety_passed, safety_reasons, safety = safety_check()
     daily_count, daily_limit, daily_passed, daily_reason = daily_limit_status()
+    freshness_seconds = env_float("TESTNET_OVERLAY_FRESHNESS_SECONDS", DEFAULT_OVERLAY_FRESHNESS_SECONDS)
+    freshness_passed, freshness_reasons, freshness = overlay_freshness_check(overlay_report, freshness_seconds)
     min_notional = env_float("TESTNET_MIN_NOTIONAL_USDT", DEFAULT_MIN_NOTIONAL)
     max_notional = env_float("TESTNET_MAX_NOTIONAL_USDT", DEFAULT_MAX_NOTIONAL)
     quantity, estimated_notional, sizing_reasons = estimate_quantity_and_notional(inputs, min_notional, max_notional)
@@ -392,13 +444,17 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     blocked_reasons: List[str] = []
     if overlay_report is None:
         blocked_reasons.append(f"overlay report not readable: {args.overlay_report_path}")
+    blocked_reasons.extend(freshness_reasons)
     blocked_reasons.extend(safety_reasons)
     blocked_reasons.extend(sizing_reasons)
     blocked_reasons.extend(policy_reasons)
     if not daily_passed and daily_reason not in blocked_reasons:
         blocked_reasons.append(daily_reason)
 
-    status = "WOULD_ORDER" if safety_passed and policy_passed and overlay_report is not None else "BLOCKED"
+    if not freshness_passed and overlay_report is not None:
+        status = STALE_OVERLAY_STATUS
+    else:
+        status = "WOULD_ORDER" if safety_passed and policy_passed and freshness_passed and overlay_report is not None else "BLOCKED"
     would_order_payload = {
         "symbol": inputs.get("symbol"),
         "side": inputs.get("side"),
@@ -414,6 +470,7 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
         "mode": MODE,
         "status": status,
         "overlay_report_path": args.overlay_report_path,
+        **freshness,
         "symbol": inputs.get("symbol"),
         "direction": inputs.get("direction"),
         "side": inputs.get("side"),
@@ -450,7 +507,7 @@ def run(args: argparse.Namespace) -> Dict[str, Any]:
     if args.telegram_preview:
         write_json(TELEGRAM_PREVIEW_PATH, build_telegram_preview(result))
     # --- Telegram approval proposal (non-fatal) ---
-    if status == "WOULD_ORDER":
+    if status == "WOULD_ORDER" and not getattr(args, "suppress_approval_proposal", False):
         try:
             from telegram_bot import send_approval_request
             from dotenv import load_dotenv

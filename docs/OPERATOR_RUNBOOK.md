@@ -388,3 +388,26 @@ three orchestrator engine lambdas (scanner, regime, flow) all pointing to
 the same run_once() function which contained the regime send call.
 Fixed in commit df64a46 — 60-second cooldown guard added. One message per
 cycle now.
+
+---
+
+## 12. CP-044B Overlay Freshness Guard & Valid Signal Watch (added 2026-07-02)
+
+The semi-auto testnet bridge refuses to evaluate stale ML overlay reports. The
+freshness window is controlled by `TESTNET_OVERLAY_FRESHNESS_SECONDS` and
+defaults to 6 hours. If the overlay/report timestamp is missing, invalid, in the
+future, or older than the configured window, the bridge returns
+`BLOCKED_STALE_OVERLAY` (or `BLOCKED` for unreadable input) and must not proceed
+to approval prepare.
+
+Read-only regeneration path for a stale overlay/report:
+```
+python ml_signal_overlay_v1.py
+python semi_auto_testnet_bridge.py --telegram-preview
+python cp044_valid_signal_watch.py --refresh-supervisor
+```
+These commands regenerate/read advisory reports only. Do not use
+`--allow-need-review` to bypass freshness, do not run `--send`, and do not run
+order-test send. CP-044 prepare is authorized only when
+`reports/cp044_valid_signal_watch.json` reports `READY_FOR_PREPARE`; order send,
+real trading, and auto testnet execution remain unauthorized.
