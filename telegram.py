@@ -173,6 +173,25 @@ def format_performance_report_message(metrics: Dict[str, Any]) -> str:
     return message
 
 
+def _production_model_line(registry_path: str = "model_registry.json") -> str:
+    try:
+        with open(registry_path, encoding="utf-8") as registry_file:
+            registry = json.load(registry_file)
+    except (OSError, ValueError):
+        return "Production Model (registry): UNAVAILABLE"
+
+    production = registry.get("production") if isinstance(registry, dict) else None
+    if not isinstance(production, dict):
+        return "Production Model (registry): NONE"
+
+    try:
+        accuracy_text = f"{float(production.get('accuracy', 0.0)):.2%}"
+    except (TypeError, ValueError):
+        accuracy_text = "-"
+    trained = str(production.get("train_timestamp", "-"))[:10]
+    return f"Production Model (registry): accuracy {accuracy_text} | trained {trained}"
+
+
 def format_ml_analysis_message(result: Dict[str, Any]) -> str:
     top_features = result.get("feature_importance", [])[:3]
     feature_lines = []
@@ -190,7 +209,8 @@ def format_ml_analysis_message(result: Dict[str, Any]) -> str:
         f"{feature_lines[2]}\n\n"
         f"Most Profitable Regime: {result.get('most_profitable_regime', '-')}\n"
         f"Worst Regime: {result.get('worst_regime', '-')}\n\n"
-        f"Current Model Accuracy: {result.get('accuracy', 0.0):.2%}\n"
+        f"Current Model Accuracy: {result.get('accuracy', 0.0):.2%} (research pipeline)\n"
+        f"{_production_model_line()}\n"
         f"AI Confidence: {result.get('ai_confidence_score', 0)}/100\n"
         f"Setup Ranking: {result.get('setup_ranking', 'LOW QUALITY')}"
     )
